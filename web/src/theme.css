@@ -1,0 +1,95 @@
+:root {
+  --bg-base: #06090a;
+  --panel-1: #080c0d;
+  --panel-2: #0a0f10;
+  --panel-3: #0a1011;
+  --map-bg: #070b0c;
+
+  --hairline: #1a2725;
+  --hairline-subtle: #16221f;
+  --hairline-subtle2: #16201f;
+  --hairline-mid: #1c2a28;
+
+  --ink: #cdd9d7;
+  --ink-bright: #dfe9e7;
+  --ink-brighter: #e6efed;
+  --ink-warm: #f3ede0;
+  --ink-dim: #7a8d8a;
+  --ink-dim2: #6f8480;
+  --ink-faint: #5d6f6c;
+  --ink-faint2: #46554f;
+  --ink-faint3: #4a5a59;
+  --ink-mute: #9fb2ae;
+  --ink-mute2: #8aa09c;
+
+  --amber: #ffab38;
+  --amber-dim: #9a7430;
+  --cyan: #3fd2e6;
+  --blue: #5b9dff;
+  --red: #ff5a47;
+  --red-crit: #ff3b30;
+  --yellow: #ffd23f;
+  --green: #5fe39a;
+  --green-alt: #4fae7e;
+
+  --font-display: 'Chakra Petch', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
+
+html,
+body {
+  margin: 0;
+  background: var(--bg-base);
+}
+* {
+  box-sizing: border-box;
+}
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--hairline-mid);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2a3d3a;
+}
+
+@keyframes twbspin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes twbblink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 0.25;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@keyframes twbpulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@keyframes twbscan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(2400%);
+  }
+}

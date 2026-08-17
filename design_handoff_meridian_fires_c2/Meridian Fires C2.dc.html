@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  html,body{margin:0;background:#06090a;}
+  *{box-sizing:border-box;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:#1c2a28;border-radius:4px;}
+  ::-webkit-scrollbar-thumb:hover{background:#2a3d3a;}
+  @keyframes twbspin{to{transform:rotate(360deg);}}
+  @keyframes twbblink{0%,55%{opacity:1;}70%{opacity:.25;}100%{opacity:1;}}
+  @keyframes twbpulse{0%,100%{opacity:.35;}50%{opacity:1;}}
+  @keyframes twbscan{0%{transform:translateY(-100%);}100%{transform:translateY(2400%);}}
+</style>
+</helmet>
+<div style="width:100vw;height:100vh;min-width:1280px;min-height:760px;background:#06090a;color:#cdd9d7;font-family:'IBM Plex Mono',monospace;display:grid;grid-template-rows:24px 58px 1fr 234px 22px;overflow:hidden;position:relative;">
+
+  <!-- ══ TOP CLASSIFICATION BANNER ══ -->
+  <div style="background:#2a3324;border-bottom:1px solid #3c4a30;display:flex;align-items:center;justify-content:center;gap:24px;font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:600;letter-spacing:.32em;color:#c7e08a;">
+    <span>// CLASSIFICATION // DISSEMINATION //</span>
+    <span style="color:#ffab38;letter-spacing:.32em;">SIMULATION — TRAINING USE ONLY — NOT FOR OPERATIONAL USE</span>
+    <span>// CLASSIFICATION // DISSEMINATION //</span>
+  </div>
+
+  <!-- ══ COMMAND BAR ══ -->
+  <div style="display:flex;align-items:stretch;background:linear-gradient(180deg,#0c1315,#080d0e);border-bottom:1px solid #1a2725;">
+    <!-- system identity -->
+    <div style="display:flex;align-items:center;gap:11px;padding:0 18px;border-right:1px solid #1a2725;">
+      <div style="width:30px;height:30px;position:relative;flex-shrink:0;">
+        <div style="position:absolute;inset:0;border:1.5px solid #ffab38;transform:rotate(45deg);"></div>
+        <div style="position:absolute;inset:7px;border:1.5px solid #ffab38;border-radius:50%;opacity:.6;"></div>
+        <div style="position:absolute;left:50%;top:50%;width:5px;height:5px;background:#ffab38;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 8px #ffab38;"></div>
+      </div>
+      <div>
+        <div style="font-family:'Chakra Petch',sans-serif;font-size:15px;font-weight:700;letter-spacing:.16em;color:#f3ede0;line-height:1;">MERIDIAN<span style="color:#ffab38;">·</span>FIRES</div>
+        <div style="font-size:9px;letter-spacing:.22em;color:#5d6f6c;margin-top:3px;">JOINT C2 / TARGETING CELL</div>
+      </div>
+    </div>
+
+    <!-- mission -->
+    <div style="display:flex;flex-direction:column;justify-content:center;padding:0 18px;border-right:1px solid #1a2725;min-width:0;">
+      <div style="font-family:'Chakra Petch',sans-serif;font-size:12.5px;font-weight:600;letter-spacing:.12em;color:#dfe9e7;white-space:nowrap;">OP {{ missionName }}</div>
+      <div style="font-size:9.5px;letter-spacing:.14em;color:#6f8480;margin-top:3px;white-space:nowrap;">SEAD / TIME-SENSITIVE TARGETING · AO {{ ao }}</div>
+    </div>
+
+    <!-- F2T2EA kill chain tracker -->
+    <div style="flex:1;display:flex;align-items:center;justify-content:center;gap:0;padding:0 14px;min-width:0;">
+      <span style="font-size:9px;letter-spacing:.2em;color:#5d6f6c;margin-right:14px;writing-mode:horizontal-tb;">KILL&nbsp;CHAIN</span>
+      <sc-for list="{{ phases }}" as="ph" hint-placeholder-count="6">
+        <div style="display:flex;align-items:center;">
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:0 4px;">
+            <div style="width:30px;height:30px;border:1.5px solid {{ ph.border }};background:{{ ph.bg }};display:flex;align-items:center;justify-content:center;font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;color:{{ ph.fg }};clip-path:polygon(18% 0,100% 0,82% 100%,0 100%);">{{ ph.letter }}</div>
+            <div style="font-size:8px;letter-spacing:.08em;color:{{ ph.lblColor }};">{{ ph.label }}</div>
+          </div>
+          <div style="width:14px;height:1.5px;background:{{ ph.connector }};"></div>
+        </div>
+      </sc-for>
+    </div>
+
+    <!-- ROE + posture + clock -->
+    <div style="display:flex;align-items:center;gap:0;border-left:1px solid #1a2725;">
+      <div onClick="{{ cycleRoe }}" style="display:flex;flex-direction:column;justify-content:center;padding:0 16px;cursor:pointer;border-right:1px solid #1a2725;height:100%;">
+        <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;">RULES OF ENGAGEMENT</div>
+        <div style="display:flex;align-items:center;gap:7px;margin-top:4px;">
+          <span style="width:8px;height:8px;border-radius:50%;background:{{ roeColor }};box-shadow:0 0 8px {{ roeColor }};"></span>
+          <span style="font-family:'Chakra Petch',sans-serif;font-size:13px;font-weight:700;letter-spacing:.1em;color:{{ roeColor }};">{{ roe }}</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;justify-content:center;padding:0 18px;text-align:right;">
+        <div style="font-family:'Chakra Petch',sans-serif;font-size:20px;font-weight:700;letter-spacing:.08em;color:#ffab38;line-height:1;font-variant-numeric:tabular-nums;">{{ dtg }}</div>
+        <div style="font-size:9px;letter-spacing:.14em;color:#6f8480;margin-top:4px;">{{ dateStr }} · ZULU</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ MAIN ══ -->
+  <div style="display:grid;grid-template-columns:308px 1fr 372px;min-height:0;overflow:hidden;">
+
+    <!-- ── LEFT RAIL : COLLECTION MANAGEMENT ── -->
+    <div style="border-right:1px solid #1a2725;background:#080c0d;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #1a2725;background:linear-gradient(180deg,#0d1416,#0a0f10);">
+        <span style="width:5px;height:14px;background:#3fd2e6;box-shadow:0 0 8px #3fd2e6;"></span>
+        <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;letter-spacing:.2em;color:#3fd2e6;font-weight:600;">ISR · COLLECTION</span>
+        <span style="flex:1;"></span>
+        <span style="font-size:9px;color:#5d6f6c;letter-spacing:.1em;">{{ sensorsOn }}/{{ sensorsTotal }} ON STN</span>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:10px;display:flex;flex-direction:column;gap:8px;">
+        <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;padding:0 2px;">SENSOR LAYDOWN</div>
+        <sc-for list="{{ sensors }}" as="s" hint-placeholder-count="6">
+          <div onClick="{{ s.retask }}" style="border:1px solid {{ s.border }};background:{{ s.bg }};padding:8px 9px;cursor:pointer;position:relative;">
+            <div style="display:flex;align-items:center;gap:7px;">
+              <span style="width:7px;height:7px;border-radius:50%;background:{{ s.statusColor }};box-shadow:0 0 6px {{ s.statusColor }};flex-shrink:0;"></span>
+              <span style="font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:600;letter-spacing:.06em;color:#dfe9e7;">{{ s.callsign }}</span>
+              <span style="flex:1;"></span>
+              <span style="font-size:8.5px;letter-spacing:.1em;color:{{ s.statusColor }};font-weight:600;">{{ s.status }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:5px;">
+              <span style="font-size:9.5px;color:#8aa09c;">{{ s.platform }}</span>
+              <span style="width:3px;height:3px;border-radius:50%;background:#3a4a47;"></span>
+              <span style="font-size:9.5px;color:#6f8480;">{{ s.intType }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+              <span style="font-size:8.5px;letter-spacing:.1em;color:#5d6f6c;">TASK</span>
+              <span style="font-size:9.5px;color:{{ s.taskColor }};font-weight:500;">{{ s.tasking }}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+              <span style="font-size:8px;letter-spacing:.1em;color:#5d6f6c;">END</span>
+              <div style="flex:1;height:3px;background:#16201f;overflow:hidden;">
+                <div style="height:100%;width:{{ s.endur }}%;background:{{ s.endColor }};"></div>
+              </div>
+              <span style="font-size:8.5px;color:#6f8480;font-variant-numeric:tabular-nums;">{{ s.endurLabel }}</span>
+            </div>
+          </div>
+        </sc-for>
+
+        <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;padding:6px 2px 0;">NAMED AREAS OF INTEREST</div>
+        <sc-for list="{{ nais }}" as="n" hint-placeholder-count="3">
+          <div style="border:1px solid #1c2a28;border-left:2px solid {{ n.color }};background:#0a1011;padding:7px 9px;display:flex;align-items:center;gap:9px;">
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:600;letter-spacing:.08em;color:{{ n.color }};">{{ n.id }}</span>
+            <span style="font-size:9.5px;color:#8aa09c;flex:1;">{{ n.desc }}</span>
+            <span style="font-size:8.5px;letter-spacing:.1em;color:#5d6f6c;">{{ n.pir }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- ── CENTER : MAP / BOARD ── -->
+    <div style="position:relative;background:#070b0c;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
+      <!-- center toolbar -->
+      <div style="display:flex;align-items:center;gap:10px;padding:7px 12px;border-bottom:1px solid #1a2725;background:#0a0f10;z-index:5;">
+        <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;letter-spacing:.2em;color:#ffab38;font-weight:600;">{{ centerTitle }}</span>
+        <span style="font-size:9px;color:#5d6f6c;letter-spacing:.12em;">{{ centerSub }}</span>
+        <span style="flex:1;"></span>
+        <div style="display:flex;border:1px solid #1c2a28;">
+          <div onClick="{{ viewMap }}" style="padding:4px 14px;font-family:'Chakra Petch',sans-serif;font-size:10.5px;letter-spacing:.14em;font-weight:600;cursor:pointer;background:{{ mapTabBg }};color:{{ mapTabFg }};">MAP</div>
+          <div onClick="{{ viewBoard }}" style="padding:4px 14px;font-family:'Chakra Petch',sans-serif;font-size:10.5px;letter-spacing:.14em;font-weight:600;cursor:pointer;background:{{ boardTabBg }};color:{{ boardTabFg }};border-left:1px solid #1c2a28;">WORKBENCH</div>
+        </div>
+      </div>
+
+      <!-- MAP -->
+      <sc-if value="{{ isMap }}" hint-placeholder-val="{{ true }}">
+        <div style="flex:1;position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% 40%,#0a1416 0%,#070b0c 55%,#05080a 100%);">
+          <div style="position:absolute;inset:0;">{{ mapSymbols }}</div>
+          <!-- scanline -->
+          <div style="position:absolute;left:0;right:0;top:0;height:18px;background:linear-gradient(180deg,rgba(63,210,230,0),rgba(63,210,230,.05));pointer-events:none;animation:twbscan 9s linear infinite;"></div>
+          <!-- corner brackets -->
+          <div style="position:absolute;top:8px;left:8px;width:22px;height:22px;border-top:2px solid #ffab38;border-left:2px solid #ffab38;opacity:.7;pointer-events:none;"></div>
+          <div style="position:absolute;top:8px;right:8px;width:22px;height:22px;border-top:2px solid #ffab38;border-right:2px solid #ffab38;opacity:.7;pointer-events:none;"></div>
+          <div style="position:absolute;bottom:8px;left:8px;width:22px;height:22px;border-bottom:2px solid #ffab38;border-left:2px solid #ffab38;opacity:.7;pointer-events:none;"></div>
+          <div style="position:absolute;bottom:8px;right:8px;width:22px;height:22px;border-bottom:2px solid #ffab38;border-right:2px solid #ffab38;opacity:.7;pointer-events:none;"></div>
+          <!-- legend -->
+          <div style="position:absolute;left:14px;bottom:14px;background:rgba(8,13,14,.82);border:1px solid #1c2a28;padding:8px 10px;display:flex;flex-direction:column;gap:5px;pointer-events:none;">
+            <div style="font-size:8.5px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:1px;">TRACK AFFILIATION</div>
+            <div style="display:flex;align-items:center;gap:7px;"><span style="width:10px;height:10px;background:#0c1416;border:1.5px solid #ff5a47;transform:rotate(45deg);"></span><span style="font-size:9px;color:#9fb2ae;">HOSTILE</span></div>
+            <div style="display:flex;align-items:center;gap:7px;"><span style="width:10px;height:10px;background:#0c1416;border:1.5px solid #ffd23f;"></span><span style="font-size:9px;color:#9fb2ae;">UNKNOWN</span></div>
+            <div style="display:flex;align-items:center;gap:7px;"><span style="width:10px;height:10px;background:#0c1416;border:1.5px solid #3fd2e6;border-radius:50%;"></span><span style="font-size:9px;color:#9fb2ae;">FRIENDLY</span></div>
+            <div style="display:flex;align-items:center;gap:7px;"><span style="width:10px;height:10px;background:#0c1416;border:1.5px solid #5fe39a;"></span><span style="font-size:9px;color:#9fb2ae;">NEUTRAL / NSL</span></div>
+          </div>
+          <!-- compass / scale -->
+          <div style="position:absolute;right:14px;top:40px;display:flex;flex-direction:column;align-items:center;gap:3px;pointer-events:none;">
+            <div style="width:32px;height:32px;border:1px solid #2a3d3a;border-radius:50%;position:relative;">
+              <div style="position:absolute;left:50%;top:1px;transform:translateX(-50%);font-size:9px;color:#ffab38;font-weight:700;">N</div>
+              <div style="position:absolute;left:50%;top:3px;bottom:50%;width:1px;background:#ffab38;transform:translateX(-50%);"></div>
+            </div>
+          </div>
+          <div style="position:absolute;right:14px;bottom:14px;display:flex;flex-direction:column;align-items:flex-end;gap:4px;pointer-events:none;">
+            <div style="display:flex;align-items:center;gap:4px;"><div style="width:60px;height:5px;border:1px solid #5d6f6c;border-top:none;"></div></div>
+            <span style="font-size:8.5px;color:#6f8480;letter-spacing:.1em;">0&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;25 NM</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- WORKBENCH BOARD -->
+      <sc-if value="{{ isBoard }}">
+        <div style="flex:1;display:flex;gap:0;min-height:0;overflow:hidden;">
+          <sc-for list="{{ boardCols }}" as="col" hint-placeholder-count="5">
+            <div onDragOver="{{ allowDrop }}" onDrop="{{ col.onDrop }}" style="flex:1;min-width:0;border-right:1px solid #131e1d;display:flex;flex-direction:column;min-height:0;background:{{ col.colBg }};">
+              <div style="padding:8px 9px;border-bottom:1px solid #1a2725;display:flex;align-items:center;gap:7px;">
+                <span style="width:4px;height:13px;background:{{ col.color }};"></span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.1em;font-weight:600;color:{{ col.color }};">{{ col.name }}</span>
+                <span style="flex:1;"></span>
+                <span style="font-size:9px;color:#5d6f6c;font-variant-numeric:tabular-nums;">{{ col.count }}</span>
+              </div>
+              <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 7px;display:flex;flex-direction:column;gap:7px;">
+                <sc-for list="{{ col.cards }}" as="c" hint-placeholder-count="2">
+                  <div draggable="true" onDragStart="{{ c.onDragStart }}" onClick="{{ c.select }}" onDoubleClick="{{ c.openCard }}" style="border:1px solid {{ c.cardBorder }};background:{{ c.cardBg }};padding:8px;cursor:grab;position:relative;">
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="width:9px;height:9px;background:#0c1416;border:1.5px solid {{ c.affColor }};{{ c.affShape }}flex-shrink:0;"></span>
+                      <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;letter-spacing:.05em;color:#e6efed;">{{ c.idShort }}</span>
+                      <span style="font-size:10px;color:{{ c.affColor }};font-weight:600;">{{ c.name }}</span>
+                      <span style="flex:1;"></span>
+                      <span style="font-size:8px;letter-spacing:.08em;color:{{ c.priColor }};font-weight:700;">{{ c.priLabel }}</span>
+                    </div>
+                    <div style="font-size:9.5px;color:#8aa09c;margin-top:5px;">{{ c.type }}</div>
+                    <div style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+                      <span style="font-size:8px;letter-spacing:.08em;padding:1px 5px;border:1px solid {{ c.threatBorder }};color:{{ c.threatColor }};">{{ c.threatLabel }}</span>
+                      <span style="flex:1;"></span>
+                      <span style="font-size:8.5px;color:#6f8480;">{{ c.effLabel }}</span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- ── RIGHT RAIL : TARGET WORKUP ── -->
+    <div style="border-left:1px solid #1a2725;background:#080c0d;display:flex;flex-direction:column;min-height:0;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid #1a2725;background:linear-gradient(180deg,#0d1416,#0a0f10);">
+        <span style="width:5px;height:14px;background:#ffab38;box-shadow:0 0 8px #ffab38;"></span>
+        <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;letter-spacing:.2em;color:#ffab38;font-weight:600;">TARGET WORKUP</span>
+        <span style="flex:1;"></span>
+        <span style="font-size:9px;color:#5d6f6c;letter-spacing:.1em;">TWB / SINGLE</span>
+      </div>
+
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;">
+        <!-- identity header -->
+        <div style="padding:12px 14px;border-bottom:1px solid #1a2725;background:linear-gradient(180deg,{{ sel.affWash }},transparent);">
+          <div style="display:flex;align-items:center;gap:9px;">
+            <span style="width:18px;height:18px;background:#0c1416;border:2px solid {{ sel.affColor }};{{ sel.affShape }}flex-shrink:0;box-shadow:0 0 10px {{ sel.affGlow }};"></span>
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:20px;font-weight:700;letter-spacing:.04em;color:#f3ede0;line-height:1;">{{ sel.idShort }}</span>
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:17px;font-weight:600;color:{{ sel.affColor }};letter-spacing:.06em;">{{ sel.name }}</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:wrap;">
+            <span style="font-size:9px;letter-spacing:.1em;padding:2px 7px;background:{{ sel.affColor }};color:#06090a;font-weight:700;">{{ sel.affFull }}</span>
+            <span style="font-size:9px;letter-spacing:.1em;padding:2px 7px;border:1px solid {{ sel.threatBorder }};color:{{ sel.threatColor }};font-weight:700;">{{ sel.threatLabel }} THREAT</span>
+            <span style="font-size:9px;letter-spacing:.1em;padding:2px 7px;border:1px solid #2a3d3a;color:#9fb2ae;">HPTL #{{ sel.pri }}</span>
+            <sc-if value="{{ sel.nsl }}"><span style="font-size:9px;letter-spacing:.1em;padding:2px 7px;background:#5fe39a;color:#06090a;font-weight:700;">⚠ NSL PROXIMITY</span></sc-if>
+          </div>
+        </div>
+
+        <!-- identification -->
+        <div style="padding:11px 14px;border-bottom:1px solid #131e1d;">
+          <div style="font-size:9px;letter-spacing:.2em;color:#5d6f6c;margin-bottom:9px;">▸ IDENTIFICATION</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:6px;column-gap:12px;font-size:11px;">
+            <span style="color:#6f8480;">TYPE</span><span style="color:#dfe9e7;text-align:right;">{{ sel.type }}</span>
+            <span style="color:#6f8480;">CATEGORY</span><span style="color:#dfe9e7;text-align:right;">{{ sel.catFull }}</span>
+            <span style="color:#6f8480;">SIDC</span><span style="color:#9fb2ae;text-align:right;font-size:10px;">{{ sel.sidc }}</span>
+            <span style="color:#6f8480;">CLASSIFIED BY</span><span style="color:#3fd2e6;text-align:right;">{{ sel.custodyName }}</span>
+          </div>
+          <div style="margin-top:10px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#6f8480;margin-bottom:4px;"><span style="letter-spacing:.1em;">CLASSIFICATION CONFIDENCE</span><span style="color:{{ sel.confColor }};font-weight:600;">{{ sel.conf }}%</span></div>
+            <div style="height:5px;background:#16201f;overflow:hidden;"><div style="height:100%;width:{{ sel.conf }}%;background:{{ sel.confColor }};box-shadow:0 0 6px {{ sel.confColor }};"></div></div>
+          </div>
+        </div>
+
+        <!-- kinematics / track -->
+        <div style="padding:11px 14px;border-bottom:1px solid #131e1d;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;">
+            <span style="font-size:9px;letter-spacing:.2em;color:#5d6f6c;">▸ TRACK / KINEMATICS</span>
+            <span style="font-size:9px;color:{{ sel.decayColor }};font-weight:600;letter-spacing:.06em;">▲ {{ sel.decayLabel }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;letter-spacing:.12em;color:#5d6f6c;">GRID (MGRS)</div><div style="font-size:11px;color:#dfe9e7;margin-top:3px;">{{ sel.mgrs }}</div></div>
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;letter-spacing:.12em;color:#5d6f6c;">ELEV</div><div style="font-size:11px;color:#dfe9e7;margin-top:3px;">{{ sel.elev }}</div></div>
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;letter-spacing:.12em;color:#5d6f6c;">COURSE</div><div style="font-size:11px;color:#dfe9e7;margin-top:3px;">{{ sel.courseLabel }}</div></div>
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;letter-spacing:.12em;color:#5d6f6c;">SPEED</div><div style="font-size:11px;color:#dfe9e7;margin-top:3px;">{{ sel.speedLabel }}</div></div>
+          </div>
+          <div style="margin-top:9px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#6f8480;margin-bottom:4px;"><span style="letter-spacing:.1em;">TRACK QUALITY</span><span style="color:{{ sel.trkColor }};font-weight:600;">TQ {{ sel.trkQ }}</span></div>
+            <div style="height:5px;background:#16201f;overflow:hidden;"><div style="height:100%;width:{{ sel.trkQ }}%;background:{{ sel.trkColor }};"></div></div>
+          </div>
+        </div>
+
+        <!-- kill chain stage -->
+        <div style="padding:11px 14px;border-bottom:1px solid #131e1d;">
+          <div style="font-size:9px;letter-spacing:.2em;color:#5d6f6c;margin-bottom:9px;">▸ TARGET LIFECYCLE</div>
+          <div style="display:flex;align-items:stretch;gap:3px;">
+            <sc-for list="{{ sel.stageSteps }}" as="st" hint-placeholder-count="5">
+              <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                <div style="width:100%;height:4px;background:{{ st.color }};"></div>
+                <div style="font-size:7.5px;letter-spacing:.04em;color:{{ st.labelColor }};text-align:center;font-weight:{{ st.weight }};">{{ st.label }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="display:flex;gap:7px;margin-top:11px;">
+            <div onClick="{{ retreatStage }}" style="flex:1;text-align:center;padding:6px;border:1px solid #2a3d3a;font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.1em;color:#9fb2ae;cursor:pointer;font-weight:600;">◂ REGRESS</div>
+            <div onClick="{{ advanceStage }}" style="flex:1;text-align:center;padding:6px;border:1px solid #ffab38;background:rgba(255,171,56,.1);font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.1em;color:#ffab38;cursor:pointer;font-weight:700;">ADVANCE ▸</div>
+          </div>
+        </div>
+
+        <!-- effector pairing AGM -->
+        <div style="padding:11px 14px;border-bottom:1px solid #131e1d;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;">
+            <span style="font-size:9px;letter-spacing:.2em;color:#5d6f6c;">▸ EFFECTOR PAIRING · AGM</span>
+            <span style="font-size:8.5px;color:#5d6f6c;">PK / TOT / RANGE</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ sel.effectors }}" as="e" hint-placeholder-count="4">
+              <div onClick="{{ e.assign }}" style="border:1px solid {{ e.border }};background:{{ e.bg }};padding:8px 9px;cursor:pointer;position:relative;">
+                <div style="display:flex;align-items:center;gap:7px;">
+                  <span style="width:7px;height:7px;background:{{ e.dot }};flex-shrink:0;{{ e.dotShape }}"></span>
+                  <span style="font-family:'Chakra Petch',sans-serif;font-size:11.5px;font-weight:600;letter-spacing:.04em;color:#e6efed;">{{ e.callsign }}</span>
+                  <span style="font-size:9.5px;color:#8aa09c;">{{ e.platform }}</span>
+                  <span style="flex:1;"></span>
+                  <sc-if value="{{ e.recommended }}"><span style="font-size:7.5px;letter-spacing:.08em;padding:1px 5px;background:#ffab38;color:#06090a;font-weight:700;">REC</span></sc-if>
+                  <sc-if value="{{ e.assigned }}"><span style="font-size:7.5px;letter-spacing:.08em;padding:1px 5px;background:#5fe39a;color:#06090a;font-weight:700;">PAIRED</span></sc-if>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+                  <span style="font-size:9.5px;color:#9fb2ae;">{{ e.weapon }}</span>
+                  <span style="flex:1;"></span>
+                  <span style="font-size:9px;color:{{ e.rangeColor }};">{{ e.rangeLabel }}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:7px;">
+                  <span style="font-size:8px;color:#5d6f6c;letter-spacing:.06em;">PK</span>
+                  <div style="width:54px;height:4px;background:#16201f;overflow:hidden;"><div style="height:100%;width:{{ e.pkPct }}%;background:{{ e.pkColor }};"></div></div>
+                  <span style="font-size:9px;color:{{ e.pkColor }};font-weight:600;">{{ e.pkLabel }}</span>
+                  <span style="flex:1;"></span>
+                  <span style="font-size:9px;color:#6f8480;">TOT {{ e.tot }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- weaponeering / CDE -->
+        <div style="padding:11px 14px;border-bottom:1px solid #131e1d;">
+          <div style="font-size:9px;letter-spacing:.2em;color:#5d6f6c;margin-bottom:9px;">▸ WEAPONEERING / CDE</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:6px;column-gap:12px;font-size:11px;">
+            <span style="color:#6f8480;">METHOD</span><span style="color:#dfe9e7;text-align:right;">{{ sel.method }}</span>
+            <span style="color:#6f8480;">CDE LEVEL</span><span style="color:{{ sel.cdeColor }};text-align:right;font-weight:600;">{{ sel.cde }}</span>
+            <span style="color:#6f8480;">NO-STRIKE PROX</span><span style="color:{{ sel.nslColor }};text-align:right;">{{ sel.nslDist }}</span>
+          </div>
+        </div>
+
+        <!-- engagement authorization -->
+        <div style="padding:11px 14px;">
+          <div style="font-size:9px;letter-spacing:.2em;color:#5d6f6c;margin-bottom:9px;">▸ ENGAGEMENT AUTHORIZATION</div>
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            <sc-for list="{{ sel.approvals }}" as="a" hint-placeholder-count="4">
+              <div onClick="{{ a.toggle }}" style="display:flex;align-items:center;gap:9px;padding:6px 8px;border:1px solid {{ a.border }};background:{{ a.bg }};cursor:pointer;">
+                <span style="width:14px;height:14px;border:1.5px solid {{ a.boxColor }};display:flex;align-items:center;justify-content:center;font-size:10px;color:{{ a.boxColor }};font-weight:700;flex-shrink:0;">{{ a.mark }}</span>
+                <span style="font-size:10.5px;color:#cdd9d7;letter-spacing:.04em;flex:1;">{{ a.label }}</span>
+                <span style="font-size:8.5px;letter-spacing:.08em;color:{{ a.statColor }};font-weight:600;">{{ a.stat }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div onClick="{{ engage }}" style="margin-top:11px;text-align:center;padding:13px;border:1.5px solid {{ engageBorder }};background:{{ engageBg }};cursor:{{ engageCursor }};position:relative;overflow:hidden;">
+            <div style="font-family:'Chakra Petch',sans-serif;font-size:16px;font-weight:700;letter-spacing:.18em;color:{{ engageColor }};">{{ engageLabel }}</div>
+            <div style="font-size:8.5px;letter-spacing:.14em;color:{{ engageSubColor }};margin-top:4px;">{{ engageSub }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ BOTTOM : COLLECTION TABLE + LOG ══ -->
+  <div style="display:grid;grid-template-columns:1fr 420px;border-top:1px solid #1a2725;min-height:0;overflow:hidden;background:#080c0d;">
+    <!-- target collection table -->
+    <div style="display:flex;flex-direction:column;min-height:0;border-right:1px solid #1a2725;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #1a2725;background:#0a0f10;">
+        <span style="width:5px;height:13px;background:#ffab38;"></span>
+        <span style="font-family:'Chakra Petch',sans-serif;font-size:10.5px;letter-spacing:.2em;color:#ffab38;font-weight:600;">TARGET COLLECTION · HPTL</span>
+        <span style="flex:1;"></span>
+        <span style="font-size:9px;color:#6f8480;letter-spacing:.08em;">{{ tracksTotal }} TRACKS · {{ hostileCount }} HOSTILE · {{ execCount }} IN EXECUTION</span>
+      </div>
+      <!-- column header -->
+      <div style="display:grid;grid-template-columns:34px 96px 1fr 64px 96px 52px 70px 100px 58px;gap:6px;padding:6px 12px;border-bottom:1px solid #131e1d;font-size:8px;letter-spacing:.1em;color:#5d6f6c;">
+        <span>PRI</span><span>TGT</span><span>TYPE</span><span>AFF</span><span>STAGE</span><span>CONF</span><span>CUSTODY</span><span>EFFECTOR</span><span>STATUS</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;">
+        <sc-for list="{{ targets }}" as="t" hint-placeholder-count="12">
+          <div onClick="{{ t.select }}" onDoubleClick="{{ t.openCard }}" style="display:grid;grid-template-columns:34px 96px 1fr 64px 96px 52px 70px 100px 58px;gap:6px;padding:6px 12px;border-bottom:1px solid #0e1716;cursor:pointer;align-items:center;background:{{ t.rowBg }};border-left:2px solid {{ t.rowAccent }};">
+            <span style="font-family:'Chakra Petch',sans-serif;font-size:12px;font-weight:700;color:{{ t.priColor }};">{{ t.priLabel }}</span>
+            <span style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;background:#0c1416;border:1.5px solid {{ t.affColor }};{{ t.affShape }}flex-shrink:0;"></span><span style="font-size:11px;font-weight:600;color:#e6efed;">{{ t.idShort }}</span></span>
+            <span style="font-size:10.5px;color:#9fb2ae;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ t.name }} · {{ t.type }}</span>
+            <span style="font-size:9px;color:{{ t.affColor }};font-weight:600;">{{ t.affFull }}</span>
+            <span style="font-size:9px;color:{{ t.stageColor }};font-weight:600;letter-spacing:.04em;">{{ t.stageName }}</span>
+            <span style="font-size:10px;color:{{ t.confColor }};font-variant-numeric:tabular-nums;">{{ t.conf }}%</span>
+            <span style="font-size:9.5px;color:#3fd2e6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ t.custodyShort }}</span>
+            <span style="font-size:9.5px;color:{{ t.effColor }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ t.effLabel }}</span>
+            <span style="font-size:8px;letter-spacing:.04em;color:{{ t.statusColor }};font-weight:600;">{{ t.statusShort }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <!-- fires / event log -->
+    <div style="display:flex;flex-direction:column;min-height:0;overflow:hidden;">
+      <div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid #1a2725;background:#0a0f10;">
+        <span style="width:5px;height:13px;background:#3fd2e6;"></span>
+        <span style="font-family:'Chakra Petch',sans-serif;font-size:10.5px;letter-spacing:.2em;color:#3fd2e6;font-weight:600;">FIRES · EVENT LOG</span>
+        <span style="flex:1;"></span>
+        <span style="width:6px;height:6px;border-radius:50%;background:#5fe39a;animation:twbblink 1.4s infinite;"></span>
+        <span style="font-size:9px;color:#6f8480;letter-spacing:.08em;">LIVE</span>
+      </div>
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:6px 0;">
+        <sc-for list="{{ log }}" as="l" hint-placeholder-count="8">
+          <div style="display:flex;gap:9px;padding:4px 12px;align-items:baseline;">
+            <span style="font-size:9px;color:#5d6f6c;font-variant-numeric:tabular-nums;flex-shrink:0;">{{ l.time }}</span>
+            <span style="font-size:8px;letter-spacing:.06em;color:{{ l.tagColor }};font-weight:700;width:36px;flex-shrink:0;">{{ l.tag }}</span>
+            <span style="font-size:10px;color:{{ l.textColor }};line-height:1.4;">{{ l.text }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ BOTTOM CLASSIFICATION ══ -->
+  <div style="background:#2a3324;border-top:1px solid #3c4a30;display:flex;align-items:center;justify-content:space-between;padding:0 16px;font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:600;letter-spacing:.28em;color:#c7e08a;">
+    <span>// CLASSIFICATION // DISSEMINATION //</span>
+    <span style="color:#6f8480;letter-spacing:.16em;">MERIDIAN·FIRES v4.2 · NODE STRIKE-CELL-7 · {{ opStatus }}</span>
+    <span>// CLASSIFICATION // DISSEMINATION //</span>
+  </div>
+
+  <!-- ══ OBJECT CARD ══ -->
+  <sc-if value="{{ cardOpen }}">
+    <div style="position:fixed;left:{{ card.x }}px;top:{{ card.y }}px;width:544px;max-height:80vh;z-index:200;background:#0a0f10;border:1px solid #2a3d3a;box-shadow:0 28px 90px rgba(0,0,0,.72),0 0 0 1px rgba(255,171,56,.12);display:flex;flex-direction:column;font-family:'IBM Plex Mono',monospace;">
+      <!-- header / drag -->
+      <div onPointerDown="{{ startCardDrag }}" style="display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid #1a2725;background:linear-gradient(180deg,{{ card.affWash }},#0c1315);cursor:move;position:relative;">
+        <span style="width:16px;height:16px;background:#0c1416;border:2px solid {{ card.affColor }};{{ card.affShape }}flex-shrink:0;box-shadow:0 0 8px {{ card.affGlow }};"></span>
+        <span style="font-family:'Chakra Petch',sans-serif;font-size:17px;font-weight:700;color:#f3ede0;letter-spacing:.04em;">{{ card.idShort }}</span>
+        <span style="font-family:'Chakra Petch',sans-serif;font-size:15px;font-weight:600;color:{{ card.affColor }};">{{ card.name }}</span>
+        <span style="font-size:8.5px;letter-spacing:.1em;padding:2px 6px;background:{{ card.affColor }};color:#06090a;font-weight:700;">{{ card.affFull }}</span>
+        <span style="font-size:8.5px;letter-spacing:.1em;padding:2px 6px;border:1px solid {{ card.typePillBorder }};color:{{ card.typePillColor }};font-weight:700;">{{ card.typePillLabel }}</span>
+        <span style="flex:1;"></span>
+        <span style="font-size:8.5px;letter-spacing:.16em;color:#5d6f6c;">OBJECT CARD</span>
+        <div onClick="{{ closeCard }}" onPointerDown="{{ stopProp }}" style="width:22px;height:22px;border:1px solid #2a3d3a;display:flex;align-items:center;justify-content:center;font-size:13px;color:#9fb2ae;cursor:pointer;">✕</div>
+      </div>
+      <!-- tabs -->
+      <div style="display:flex;border-bottom:1px solid #1a2725;background:#080c0d;">
+        <sc-for list="{{ cardTabs }}" as="tb" hint-placeholder-count="5">
+          <div onClick="{{ tb.onClick }}" style="padding:8px 13px;font-family:'Chakra Petch',sans-serif;font-size:10px;letter-spacing:.1em;font-weight:600;cursor:pointer;color:{{ tb.fg }};background:{{ tb.bg }};border-right:1px solid #131e1d;">{{ tb.name }}</div>
+        </sc-for>
+      </div>
+      <!-- body -->
+      <div style="flex:1;overflow-y:auto;overflow-x:hidden;padding:14px;">
+        <!-- OVERVIEW -->
+        <sc-if value="{{ card.isOverview }}">
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:7px;column-gap:14px;font-size:11px;">
+            <span style="color:#6f8480;">TYPE</span><span style="color:#dfe9e7;text-align:right;">{{ card.type }}</span>
+            <span style="color:#6f8480;">CATEGORY</span><span style="color:#dfe9e7;text-align:right;">{{ card.catFull }}</span>
+            <span style="color:#6f8480;">SIDC</span><span style="color:#9fb2ae;text-align:right;font-size:10px;">{{ card.sidc }}</span>
+            <span style="color:#6f8480;">PARENT UNIT</span><span style="color:#dfe9e7;text-align:right;">{{ card.unit }}</span>
+            <span style="color:#6f8480;">FIRST DETECTED</span><span style="color:#9fb2ae;text-align:right;">{{ card.firstDet }}</span>
+            <span style="color:#6f8480;">CUSTODY</span><span style="color:#3fd2e6;text-align:right;">{{ card.custodyName }}</span>
+            <span style="color:#6f8480;">LIFECYCLE</span><span style="color:{{ card.stageColor }};text-align:right;font-weight:600;">{{ card.stageName }}</span>
+            <span style="color:#6f8480;">STATUS</span><span style="color:{{ card.statusColor }};text-align:right;font-weight:600;">{{ card.status }}</span>
+          </div>
+          <div style="margin-top:12px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#6f8480;margin-bottom:4px;"><span style="letter-spacing:.1em;">CLASSIFICATION CONFIDENCE</span><span style="color:{{ card.confColor }};font-weight:600;">{{ card.conf }}%</span></div>
+            <div style="height:5px;background:#16201f;"><div style="height:100%;width:{{ card.conf }}%;background:{{ card.confColor }};"></div></div>
+          </div>
+          <div style="margin-top:9px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#6f8480;margin-bottom:4px;"><span style="letter-spacing:.1em;">TRACK QUALITY</span><span style="color:{{ card.trkColor }};font-weight:600;">TQ {{ card.trkQ }}</span></div>
+            <div style="height:5px;background:#16201f;"><div style="height:100%;width:{{ card.trkQ }}%;background:{{ card.trkColor }};"></div></div>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 8px;">KINEMATICS</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;color:#5d6f6c;letter-spacing:.1em;">MGRS</div><div style="font-size:10.5px;color:#dfe9e7;margin-top:3px;">{{ card.mgrs }}</div></div>
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;color:#5d6f6c;letter-spacing:.1em;">ELEV</div><div style="font-size:10.5px;color:#dfe9e7;margin-top:3px;">{{ card.elev }}</div></div>
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;color:#5d6f6c;letter-spacing:.1em;">DECAY</div><div style="font-size:10.5px;color:{{ card.decayColor }};margin-top:3px;">{{ card.decayLabel }}</div></div>
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;color:#5d6f6c;letter-spacing:.1em;">COURSE</div><div style="font-size:10.5px;color:#dfe9e7;margin-top:3px;">{{ card.courseLabel }}</div></div>
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;color:#5d6f6c;letter-spacing:.1em;">SPEED</div><div style="font-size:10.5px;color:#dfe9e7;margin-top:3px;">{{ card.speedLabel }}</div></div>
+            <div style="border:1px solid #16201f;padding:7px 8px;"><div style="font-size:8.5px;color:#5d6f6c;letter-spacing:.1em;">HPTL</div><div style="font-size:10.5px;color:#ffab38;margin-top:3px;">#{{ card.pri }}</div></div>
+          </div>
+        </sc-if>
+        <!-- INTELLIGENCE -->
+        <sc-if value="{{ card.isIntel }}">
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:8px;">COLLECTION SOURCES</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.sources }}" as="src" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:9px;border:1px solid #16221f;background:#0a1011;padding:6px 9px;">
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:10px;font-weight:700;letter-spacing:.08em;color:#3fd2e6;width:50px;">{{ src.int }}</span>
+                <span style="font-size:10px;color:#9fb2ae;flex:1;">{{ src.sensor }}</span>
+                <span style="font-size:8.5px;letter-spacing:.08em;padding:1px 6px;border:1px solid {{ src.relColor }};color:{{ src.relColor }};font-weight:600;">REL {{ src.rel }}</span>
+                <span style="font-size:9px;color:#6f8480;width:34px;text-align:right;">{{ src.recency }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:16px 0 8px;">OBSERVATION HISTORY</div>
+          <sc-for list="{{ card.obs }}" as="o" hint-placeholder-count="5">
+            <div style="display:flex;gap:10px;padding:6px 0;border-left:1px solid #1c2a28;margin-left:4px;padding-left:12px;position:relative;">
+              <span style="position:absolute;left:-4px;top:9px;width:7px;height:7px;border-radius:50%;background:#ffab38;"></span>
+              <span style="font-size:9px;color:#6f8480;width:54px;flex-shrink:0;">{{ o.time }}</span>
+              <div style="flex:1;">
+                <div style="font-size:9px;color:#3fd2e6;"><span style="color:#9fb2ae;">{{ o.sensor }}</span> · {{ o.int }}</div>
+                <div style="font-size:10px;color:#cdd9d7;margin-top:2px;line-height:1.4;">{{ o.note }}</div>
+              </div>
+            </div>
+          </sc-for>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:16px 0 6px;">ANALYST ASSESSMENT</div>
+          <div style="font-size:10.5px;color:#9fb2ae;line-height:1.55;border-left:2px solid #2a3d3a;padding-left:10px;">{{ card.rationale }}</div>
+        </sc-if>
+        <!-- ASSOCIATIONS -->
+        <sc-if value="{{ card.isAssoc }}">
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:8px;">LINKED ENTITIES · NETWORK</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.assoc }}" as="a" hint-placeholder-count="4">
+              <div onClick="{{ a.open }}" style="display:flex;align-items:center;gap:10px;border:1px solid {{ a.border }};background:#0a1011;padding:8px 9px;cursor:{{ a.cursor }};">
+                <span style="width:11px;height:11px;background:#0c1416;border:1.5px solid {{ a.affColor }};{{ a.affShape }}flex-shrink:0;"></span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;color:#e6efed;">{{ a.idShort }}</span>
+                <span style="font-size:10px;color:{{ a.affColor }};flex:1;">{{ a.name }}</span>
+                <span style="font-size:8.5px;letter-spacing:.08em;padding:1px 6px;border:1px solid {{ a.relColor }};color:{{ a.relColor }};font-weight:600;">{{ a.rel }}</span>
+                <span style="font-size:9px;color:#6f8480;width:54px;text-align:right;">{{ a.dist }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:9px;color:#5d6f6c;margin-top:12px;line-height:1.5;">▸ Click a linked track to open its object card. Relationships derived from geospatial proximity, order-of-battle, and IADS topology.</div>
+        </sc-if>
+        <!-- TARGETING -->
+        <sc-if value="{{ card.isTargeting }}">
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:6px;column-gap:14px;font-size:11px;">
+            <span style="color:#6f8480;">LIFECYCLE</span><span style="color:{{ card.stageColor }};text-align:right;font-weight:600;">{{ card.stageName }}</span>
+            <span style="color:#6f8480;">METHOD</span><span style="color:#dfe9e7;text-align:right;">{{ card.method }}</span>
+            <span style="color:#6f8480;">CDE LEVEL</span><span style="color:{{ card.cdeColor }};text-align:right;font-weight:600;">{{ card.cde }}</span>
+            <span style="color:#6f8480;">NO-STRIKE PROX</span><span style="color:{{ card.nslColor }};text-align:right;">{{ card.nslDist }}</span>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 8px;">EFFECTOR OPTIONS · AGM</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.effTop }}" as="e" hint-placeholder-count="3">
+              <div onClick="{{ e.assign }}" style="border:1px solid {{ e.border }};background:{{ e.bg }};padding:7px 9px;cursor:pointer;">
+                <div style="display:flex;align-items:center;gap:7px;">
+                  <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:600;color:#e6efed;">{{ e.callsign }}</span>
+                  <span style="font-size:9px;color:#8aa09c;">{{ e.platform }}</span>
+                  <span style="flex:1;"></span>
+                  <sc-if value="{{ e.recommended }}"><span style="font-size:7.5px;padding:1px 5px;background:#ffab38;color:#06090a;font-weight:700;">REC</span></sc-if>
+                  <sc-if value="{{ e.assigned }}"><span style="font-size:7.5px;padding:1px 5px;background:#5fe39a;color:#06090a;font-weight:700;">PAIRED</span></sc-if>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+                  <span style="font-size:9.5px;color:#9fb2ae;">{{ e.weapon }}</span>
+                  <span style="flex:1;"></span>
+                  <span style="font-size:8px;color:#5d6f6c;">PK</span>
+                  <div style="width:46px;height:4px;background:#16201f;"><div style="height:100%;width:{{ e.pkPct }}%;background:{{ e.pkColor }};"></div></div>
+                  <span style="font-size:9px;color:{{ e.pkColor }};font-weight:600;">{{ e.pkLabel }}</span>
+                  <span style="font-size:9px;color:#6f8480;">TOT {{ e.tot }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 8px;">AUTHORIZATION</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+            <sc-for list="{{ card.approvals }}" as="a" hint-placeholder-count="4">
+              <div onClick="{{ a.toggle }}" style="display:flex;align-items:center;gap:7px;border:1px solid {{ a.border }};background:{{ a.bg }};padding:5px 7px;cursor:pointer;">
+                <span style="width:13px;height:13px;border:1.5px solid {{ a.boxColor }};display:flex;align-items:center;justify-content:center;font-size:9px;color:{{ a.boxColor }};font-weight:700;flex-shrink:0;">{{ a.mark }}</span>
+                <span style="font-size:9px;color:#cdd9d7;flex:1;">{{ a.label }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 6px;">EFFECTS / BDA</div>
+          <div style="font-size:11px;color:{{ card.effectsColor }};border:1px solid #16221f;background:#0a1011;padding:8px 10px;">{{ card.effects }}</div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 6px;">RELATED FIRES</div>
+          <sc-for list="{{ card.fires }}" as="f" hint-placeholder-count="2">
+            <div style="display:flex;gap:9px;padding:3px 0;align-items:baseline;">
+              <span style="font-size:9px;color:#5d6f6c;flex-shrink:0;">{{ f.time }}</span>
+              <span style="font-size:8px;color:{{ f.tagColor }};font-weight:700;width:30px;flex-shrink:0;">{{ f.tag }}</span>
+              <span style="font-size:9.5px;color:#9fb2ae;line-height:1.4;">{{ f.text }}</span>
+            </div>
+          </sc-for>
+          <sc-if value="{{ card.firesEmpty }}"><div style="font-size:9.5px;color:#5d6f6c;">No fires logged against this track.</div></sc-if>
+        </sc-if>
+        <!-- SIGNATURES -->
+        <sc-if value="{{ card.isSig }}">
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:8px;">EMITTERS · ELINT</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:6px;column-gap:14px;font-size:11px;">
+            <span style="color:#6f8480;">EMCON</span><span style="color:{{ card.sigColor }};text-align:right;font-weight:600;">{{ card.emcon }}</span>
+            <span style="color:#6f8480;">BAND</span><span style="color:#dfe9e7;text-align:right;">{{ card.band }}</span>
+            <span style="color:#6f8480;">FREQUENCY</span><span style="color:#dfe9e7;text-align:right;">{{ card.freq }}</span>
+            <span style="color:#6f8480;">PRF</span><span style="color:#9fb2ae;text-align:right;">{{ card.prf }}</span>
+            <span style="color:#6f8480;">MODE</span><span style="color:#dfe9e7;text-align:right;">{{ card.mode }}</span>
+            <span style="color:#6f8480;">LAST INTERCEPT</span><span style="color:#9fb2ae;text-align:right;">{{ card.intercept }}</span>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 8px;">PHYSICAL SIGNATURE</div>
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:6px;column-gap:14px;font-size:11px;">
+            <span style="color:#6f8480;">RCS</span><span style="color:#dfe9e7;text-align:right;">{{ card.rcs }}</span>
+            <span style="color:#6f8480;">DIMENSIONS</span><span style="color:#dfe9e7;text-align:right;">{{ card.dims }}</span>
+            <span style="color:#6f8480;">MOBILITY</span><span style="color:#dfe9e7;text-align:right;">{{ card.mobility }}</span>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 8px;">SENSOR IMAGERY</div>
+          <div style="height:150px;border:1px solid #1c2a28;background:repeating-linear-gradient(45deg,#0a1011,#0a1011 9px,#0c1416 9px,#0c1416 18px);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;position:relative;">
+            <div style="position:absolute;top:6px;left:8px;font-size:8.5px;color:#5d6f6c;letter-spacing:.1em;">{{ card.imageryLabel }}</div>
+            <div style="position:absolute;top:6px;left:6px;width:14px;height:14px;border-top:1.5px solid #ffab38;border-left:1.5px solid #ffab38;"></div>
+            <div style="position:absolute;bottom:6px;right:6px;width:14px;height:14px;border-bottom:1.5px solid #ffab38;border-right:1.5px solid #ffab38;"></div>
+            <span style="font-size:10px;color:#6f8480;letter-spacing:.14em;">NO IMAGERY ON FILE</span>
+            <span style="font-size:8.5px;color:#46554f;">DROP EO/IR FRAME OR TASK SENSOR</span>
+          </div>
+        </sc-if>
+        <!-- ASSET · OVERVIEW -->
+        <sc-if value="{{ card.aOver }}">
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:7px;column-gap:14px;font-size:11px;">
+            <span style="color:#6f8480;">PLATFORM</span><span style="color:#dfe9e7;text-align:right;">{{ card.aPlatform }}</span>
+            <span style="color:#6f8480;">TYPE</span><span style="color:#dfe9e7;text-align:right;">{{ card.aType }}</span>
+            <span style="color:#6f8480;">ROLE</span><span style="color:#dfe9e7;text-align:right;">{{ card.aRole }}</span>
+            <span style="color:#6f8480;">STATUS</span><span style="color:{{ card.aStatusColor }};text-align:right;font-weight:600;">{{ card.aStatus }}</span>
+            <span style="color:#6f8480;">POSITION</span><span style="color:#9fb2ae;text-align:right;">{{ card.aMgrs }}</span>
+            <span style="color:#6f8480;">{{ card.aArmLabel }}</span><span style="color:#dfe9e7;text-align:right;">{{ card.aArm }}</span>
+          </div>
+          <div style="margin-top:12px;">
+            <div style="display:flex;justify-content:space-between;font-size:9px;color:#6f8480;margin-bottom:4px;"><span style="letter-spacing:.1em;">ENDURANCE / READINESS</span><span style="color:{{ card.aEndColor }};font-weight:600;">{{ card.aEndur }}%</span></div>
+            <div style="height:5px;background:#16201f;"><div style="height:100%;width:{{ card.aEndur }}%;background:{{ card.aEndColor }};"></div></div>
+          </div>
+        </sc-if>
+        <!-- ASSET · TASKING -->
+        <sc-if value="{{ card.aTask }}">
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:6px;column-gap:14px;font-size:11px;">
+            <span style="color:#6f8480;">CURRENT TASKING</span><span style="color:#ffab38;text-align:right;">{{ card.aTasking }}</span>
+            <span style="color:#6f8480;">COVERAGE</span><span style="color:#dfe9e7;text-align:right;">{{ card.aCov }}</span>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 8px;">{{ card.aCustodyLabel }}</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.aCustody }}" as="r" hint-placeholder-count="2">
+              <div onClick="{{ r.open }}" style="display:flex;align-items:center;gap:10px;border:1px solid #1c2a28;background:#0a1011;padding:7px 9px;cursor:pointer;">
+                <span style="width:11px;height:11px;background:#0c1416;border:1.5px solid {{ r.affColor }};{{ r.affShape }}flex-shrink:0;"></span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;color:#e6efed;">{{ r.idShort }}</span>
+                <span style="font-size:10px;color:{{ r.affColor }};flex:1;">{{ r.name }}</span>
+                <span style="font-size:8.5px;letter-spacing:.08em;padding:1px 6px;border:1px solid {{ r.relColor }};color:{{ r.relColor }};font-weight:600;">{{ r.rel }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ card.aCustodyEmpty }}"><div style="font-size:9.5px;color:#5d6f6c;">No tracks currently associated.</div></sc-if>
+          </div>
+        </sc-if>
+        <!-- ASSET · ASSOCIATIONS -->
+        <sc-if value="{{ card.aAssoc }}">
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:8px;">LINKED ENTITIES</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.aCustody }}" as="r" hint-placeholder-count="2">
+              <div onClick="{{ r.open }}" style="display:flex;align-items:center;gap:10px;border:1px solid #1c2a28;background:#0a1011;padding:7px 9px;cursor:pointer;">
+                <span style="width:11px;height:11px;background:#0c1416;border:1.5px solid {{ r.affColor }};{{ r.affShape }}flex-shrink:0;"></span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;color:#e6efed;">{{ r.idShort }}</span>
+                <span style="font-size:10px;color:{{ r.affColor }};flex:1;">{{ r.name }}</span>
+                <span style="font-size:8.5px;letter-spacing:.08em;padding:1px 6px;border:1px solid {{ r.relColor }};color:{{ r.relColor }};font-weight:600;">{{ r.rel }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ card.aCustodyEmpty }}"><div style="font-size:9.5px;color:#5d6f6c;">No linked tracks.</div></sc-if>
+          </div>
+          <div style="font-size:9px;color:#5d6f6c;margin-top:12px;line-height:1.5;">▸ Click a linked track to open its object card.</div>
+        </sc-if>
+        <!-- NAI · OVERVIEW -->
+        <sc-if value="{{ card.nOver }}">
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:7px;column-gap:14px;font-size:11px;">
+            <span style="color:#6f8480;">DESIGNATION</span><span style="color:#dfe9e7;text-align:right;">{{ card.idShort }}</span>
+            <span style="color:#6f8480;">DESCRIPTION</span><span style="color:#dfe9e7;text-align:right;">{{ card.nDesc }}</span>
+            <span style="color:#6f8480;">LINKED PIR</span><span style="color:#ffab38;text-align:right;">{{ card.nPir }}</span>
+            <span style="color:#6f8480;">AREA</span><span style="color:#dfe9e7;text-align:right;">{{ card.nArea }}</span>
+            <span style="color:#6f8480;">STATUS</span><span style="color:#5fe39a;text-align:right;font-weight:600;">{{ card.nStatus }}</span>
+          </div>
+          <div style="font-size:9.5px;color:#5d6f6c;margin-top:12px;line-height:1.5;">Named Area of Interest — a geospatial trigger where collection is focused to answer a Priority Intelligence Requirement. See COLLECTION for tasked sensors and TRACKS for entities inside.</div>
+        </sc-if>
+        <!-- NAI · COLLECTION -->
+        <sc-if value="{{ card.nColl }}">
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:8px;">SENSORS ON COLLECTION</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.nCover }}" as="s" hint-placeholder-count="2">
+              <div onClick="{{ s.open }}" style="display:flex;align-items:center;gap:9px;border:1px solid #1c2a28;background:#0a1011;padding:7px 9px;cursor:pointer;">
+                <span style="width:7px;height:7px;border-radius:50%;background:{{ s.statusColor }};flex-shrink:0;"></span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:600;color:#e6efed;">{{ s.callsign }}</span>
+                <span style="font-size:10px;color:#9fb2ae;flex:1;">{{ s.platform }}</span>
+                <span style="font-size:9px;color:#3fd2e6;">{{ s.intType }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ card.nCoverEmpty }}"><div style="font-size:9.5px;color:#5d6f6c;">No sensors currently tasked to this NAI.</div></sc-if>
+          </div>
+        </sc-if>
+        <!-- NAI · TRACKS -->
+        <sc-if value="{{ card.nTrk }}">
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:8px;">TRACKS INSIDE NAI</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.nInside }}" as="r" hint-placeholder-count="2">
+              <div onClick="{{ r.open }}" style="display:flex;align-items:center;gap:10px;border:1px solid #1c2a28;background:#0a1011;padding:7px 9px;cursor:pointer;">
+                <span style="width:11px;height:11px;background:#0c1416;border:1.5px solid {{ r.affColor }};{{ r.affShape }}flex-shrink:0;"></span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;color:#e6efed;">{{ r.idShort }}</span>
+                <span style="font-size:10px;color:{{ r.affColor }};flex:1;">{{ r.name }}</span>
+                <span style="font-size:8.5px;letter-spacing:.08em;padding:1px 6px;border:1px solid {{ r.threatColor }};color:{{ r.threatColor }};font-weight:600;">{{ r.threat }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ card.nInsideEmpty }}"><div style="font-size:9.5px;color:#5d6f6c;">No tracks currently inside this NAI.</div></sc-if>
+          </div>
+        </sc-if>
+        <!-- ZONE · OVERVIEW -->
+        <sc-if value="{{ card.zOver }}">
+          <div style="display:grid;grid-template-columns:auto 1fr;row-gap:7px;column-gap:14px;font-size:11px;">
+            <span style="color:#6f8480;">ZONE TYPE</span><span style="color:#dfe9e7;text-align:right;">{{ card.zType }}</span>
+            <span style="color:#6f8480;">PROTECTS</span><span style="color:#5fe39a;text-align:right;">{{ card.zProtects }}</span>
+            <span style="color:#6f8480;">RADIUS</span><span style="color:#dfe9e7;text-align:right;">{{ card.zRadius }}</span>
+            <span style="color:#6f8480;">AUTHORITY</span><span style="color:#dfe9e7;text-align:right;">{{ card.zAuth }}</span>
+            <span style="color:#6f8480;">STATUS</span><span style="color:#5fe39a;text-align:right;font-weight:600;">{{ card.zStatus }}</span>
+          </div>
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin:14px 0 6px;">RATIONALE</div>
+          <div style="font-size:10.5px;color:#9fb2ae;line-height:1.55;border-left:2px solid #244536;padding-left:10px;">{{ card.zRationale }}</div>
+        </sc-if>
+        <!-- ZONE · PROTECTED -->
+        <sc-if value="{{ card.zEnt }}">
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:8px;">PROTECTED / AFFECTED ENTITIES</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.zEntities }}" as="r" hint-placeholder-count="1">
+              <div onClick="{{ r.open }}" style="display:flex;align-items:center;gap:10px;border:1px solid #1c2a28;background:#0a1011;padding:7px 9px;cursor:pointer;">
+                <span style="width:11px;height:11px;background:#0c1416;border:1.5px solid {{ r.affColor }};{{ r.affShape }}flex-shrink:0;"></span>
+                <span style="font-family:'Chakra Petch',sans-serif;font-size:11px;font-weight:700;color:#e6efed;">{{ r.idShort }}</span>
+                <span style="font-size:10px;color:{{ r.affColor }};flex:1;">{{ r.name }}</span>
+                <span style="font-size:8.5px;letter-spacing:.08em;padding:1px 6px;border:1px solid {{ r.affColor }};color:{{ r.affColor }};font-weight:600;">{{ r.affFull }}</span>
+              </div>
+            </sc-for>
+            <sc-if value="{{ card.zEntEmpty }}"><div style="font-size:9.5px;color:#5d6f6c;">No entities currently inside the zone.</div></sc-if>
+          </div>
+        </sc-if>
+        <!-- ZONE · RESTRICTIONS -->
+        <sc-if value="{{ card.zRestr }}">
+          <div style="font-size:9px;letter-spacing:.18em;color:#5d6f6c;margin-bottom:8px;">ENGAGEMENT RESTRICTIONS</div>
+          <div style="display:flex;flex-direction:column;gap:6px;">
+            <sc-for list="{{ card.zRestrictions }}" as="x" hint-placeholder-count="3">
+              <div style="display:flex;align-items:flex-start;gap:9px;border:1px solid #1c2a28;background:#0a1011;padding:7px 9px;">
+                <span style="color:#ff5a47;font-size:11px;flex-shrink:0;">⊘</span>
+                <span style="font-size:10px;color:#cdd9d7;line-height:1.4;">{{ x }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  constructor(props){
+    super(props);
+    const C = this.C = {
+      amber:'#ffab38', red:'#ff5a47', redCrit:'#ff3b30', cyan:'#3fd2e6',
+      blue:'#5b9dff', yellow:'#ffd23f', green:'#5fe39a', ink:'#dfe9e7',
+      dim:'#7a8d8a', faint:'#46554f'
+    };
+    this.STAGES = [
+      {key:'IDENTIFIED',  name:'IDENT',  color:'#7a8d8a'},
+      {key:'PRIORITIZED', name:'PRIOR',  color:'#ffd23f'},
+      {key:'COORDINATION',name:'COORD',  color:'#ffab38'},
+      {key:'EXECUTION',   name:'EXEC',   color:'#ff5a47'},
+      {key:'COMPLETE',    name:'CMPLT',  color:'#5fe39a'}
+    ];
+    // ── sensors ──
+    this.sensorsData = [
+      {id:'HAWK01', callsign:'HAWK-01', platform:'MQ-9A REAPER', intType:'EO/IR · SAR', status:'ON STATION', tasking:'NAI-3 · VIPER', endur:78, x:30, y:24, cov:'cone', covDir:120},
+      {id:'GLOBE7', callsign:'GLOBE-7', platform:'RQ-4 GLOBAL HAWK', intType:'WAS · GMTI', status:'ON STATION', tasking:'NAI-1 · WIDE', endur:64, x:62, y:14, cov:'wide'},
+      {id:'SENTRY3',callsign:'SENTRY-3',platform:'E-3G SENTRY', intType:'AEW RADAR', status:'ON STATION', tasking:'AIR PICTURE', endur:52, x:78, y:62, cov:'area'},
+      {id:'ORACLE', callsign:'ORACLE', platform:'GEOINT SAT', intType:'EO / OVERHEAD', status:'TASKED', tasking:'NAI-2 · ANVIL', endur:90, x:46, y:50, cov:'none'},
+      {id:'PROWLER',callsign:'PROWLER-2',platform:'RC-135V RIVET', intType:'ELINT / SIGINT', status:'ON STATION', tasking:'EMITTER GEO', endur:71, x:18, y:70, cov:'none'},
+      {id:'GREY',   callsign:'GREYHOUND',platform:'AN/TPS-80 G/ATOR', intType:'GROUND MTI', status:'DEGRADED', tasking:'— FAULT —', endur:33, x:14, y:88, cov:'none'}
+    ];
+    this.units = [
+      {id:'CSG1', callsign:'CSG-1', platform:'CARRIER STRIKE GROUP', type:'NAVAL TASK FORCE', role:'SEA CONTROL / STRIKE', status:'ON STATION', x:12, y:86, weapon:'CVW · 44 AC · 3 ESCORTS', endur:88, effId:null},
+      {id:'ARLEIGHU', callsign:'ARLEIGH', platform:'DDG-113 ARLEIGH BURKE', type:'GUIDED-MISSILE DESTROYER', role:'STRIKE / AAW / BMD', status:'ON STATION', x:18, y:80, weapon:'TLAM Blk V ×8 · SM-6', endur:80, effId:'ARLEIGH'},
+      {id:'CAP3', callsign:'CAP-3', platform:'F-15EX ×2', type:'COMBAT AIR PATROL', role:'OCA / DCA', status:'AIRBORNE', x:70, y:88, weapon:'AIM-120D ×6 · AIM-9X', endur:55, effId:null}
+    ];
+    this.nais = [
+      {id:'NAI-1', desc:'Coastal AShM belt', pir:'PIR-1', color:'#ffab38', x:55,y:8,w:30,h:20},
+      {id:'NAI-2', desc:'TBM dispersal area', pir:'PIR-1', color:'#ff5a47', x:38,y:40,w:22,h:22},
+      {id:'NAI-3', desc:'IADS / SAM ring', pir:'PIR-2', color:'#ffd23f', x:20,y:18,w:24,h:20}
+    ];
+    // ── effectors ──
+    this.effData = [
+      {id:'HORNET21', callsign:'HORNET-21', platform:'F/A-18E', weapon:'AGM-88G HARM ×2', status:'AIRBORNE', tot:5,  rng:80,  suits:['SAM','RADAR','EW'], stealth:false, kinetic:true},
+      {id:'VENOM1',   callsign:'VENOM-1',   platform:'F-35A',   weapon:'AGM-158 JASSM-ER ×2', status:'AIRBORNE', tot:7, rng:500, suits:['SAM','C2','TEL','RADAR'], stealth:true, kinetic:true},
+      {id:'ARLEIGH',  callsign:'ARLEIGH',   platform:'DDG-113', weapon:'TLAM Blk V ×8', status:'ON STATION', tot:16, rng:900, suits:['C2','SAM','TEL','SHIP'], stealth:false, kinetic:true},
+      {id:'STEELRAIN',callsign:'STEEL-RAIN',platform:'M142 HIMARS', weapon:'PrSM ×2', status:'GROUND ALERT', tot:9, rng:270, suits:['SHIP','SAM','TEL','C2'], stealth:false, kinetic:true},
+      {id:'REAPER04', callsign:'REAPER-04', platform:'MQ-9A', weapon:'AGM-114R ×4', status:'AIRBORNE', tot:4, rng:8, suits:['BOAT','TROOP','UAS','RADAR'], stealth:false, kinetic:true},
+      {id:'WIDOW3',   callsign:'WIDOW-3',   platform:'EA-18G', weapon:'NON-KINETIC JAM', status:'AIRBORNE', tot:3, rng:60, suits:['RADAR','EW','UAS'], stealth:false, kinetic:false}
+    ];
+    // ── targets ──
+    const mk = (o)=>Object.assign({vx:0,vy:0,course:0,speed:0,effector:null,engagedAt:null,bda:null,nsl:false},o);
+    this.state = {
+      t:0, selectedId:'T2202', view:'MAP', roeIdx:1, cardId:null, cardKind:'target', cardTab:0, cardX:330, cardY:96,
+      sensors:this.sensorsData.map(s=>Object.assign({},s)),
+      effectors:this.effData,
+      targets:[
+        mk({id:'T2202',name:'ANVIL', type:'SS-26 ISKANDER TEL', cat:'TEL', aff:'HOS', threat:'CRIT', stage:3, pri:1, conf:91, trkQ:88, x:42,y:46, course:84,speed:18, elev:'+412 M', custody:'ORACLE', decay:9, sidc:'SHGPUCVRT-----', method:'STEALTH STANDOFF', cde:'CDE-2', appr:{tea:true,jag:true,pid:true,strike:true}, status:'CLEARED HOT'}),
+        mk({id:'T2201',name:'VIPER', type:'SA-21 GROWLER SAM', cat:'SAM', aff:'HOS', threat:'HIGH', stage:1, pri:2, conf:96, trkQ:94, x:26,y:22, custody:'HAWK01', decay:6, elev:'+88 M', sidc:'SHGPUCDAS-----', method:'HARM SUPPRESS', cde:'CDE-1', appr:{tea:false,jag:true,pid:true,strike:false}, status:'TRACKING'}),
+        mk({id:'T2205',name:'BASTION', type:'YJ-12 AShM BTY', cat:'SAM', aff:'HOS', threat:'HIGH', stage:1, pri:3, conf:84, trkQ:79, x:64,y:12, custody:'GLOBE7', decay:14, elev:'+24 M', sidc:'SHGPUCDM------', method:'STANDOFF', cde:'CDE-2', appr:{tea:false,jag:true,pid:false,strike:false}, status:'TRACKING'}),
+        mk({id:'T2208',name:'WARDEN', type:'IADS C2 BUNKER', cat:'C2', aff:'HOS', threat:'HIGH', stage:2, pri:4, conf:88, trkQ:90, x:34,y:64, custody:'PROWLER', decay:11, elev:'-6 M', sidc:'SHGPUUSC------', method:'PENETRATOR', cde:'CDE-3', appr:{tea:false,jag:true,pid:true,strike:true}, status:'IN COORD'}),
+        mk({id:'T2203',name:'REEF', type:'TYPE-052D DDG', cat:'SHIP', aff:'HOS', threat:'HIGH', stage:2, pri:5, conf:82, trkQ:76, x:80,y:40, course:215,speed:22, elev:'SURFACE', custody:'GLOBE7', decay:19, sidc:'SHSPCLDD------', method:'AShM SALVO', cde:'CDE-1', appr:{tea:false,jag:true,pid:true,strike:false}, status:'IN COORD'}),
+        mk({id:'T2209',name:'TANGENT', type:'SA-22 GREYHOUND', cat:'SAM', aff:'HOS', threat:'MED', stage:1, pri:6, conf:74, trkQ:68, x:48,y:30, course:300,speed:14, elev:'+102 M', custody:'HAWK01', decay:22, sidc:'SHGPUCDAS-----', method:'HARM SUPPRESS', cde:'CDE-1', appr:{tea:false,jag:false,pid:false,strike:false}, status:'TRACKING'}),
+        mk({id:'T2206',name:'EMBER', type:'YLC-8B EW RADAR', cat:'RADAR', aff:'HOS', threat:'MED', stage:0, pri:7, conf:71, trkQ:61, x:22,y:50, custody:'PROWLER', decay:28, elev:'+140 M', sidc:'SHGPUCRRD-----', method:'NON-KINETIC', cde:'CDE-1', appr:{tea:false,jag:false,pid:false,strike:false}, status:'IDENTIFIED'}),
+        mk({id:'T2207',name:'GHOST', type:'TYPE-022 FAC ×3', cat:'BOAT', aff:'HOS', threat:'MED', stage:0, pri:8, conf:69, trkQ:64, x:72,y:54, course:190,speed:34, elev:'SURFACE', custody:'GLOBE7', decay:17, sidc:'SHSPXM--------', method:'STRAFE / HELLFIRE', cde:'CDE-1', appr:{tea:false,jag:false,pid:false,strike:false}, status:'IDENTIFIED'}),
+        mk({id:'T2204',name:'KITE', type:'WJ-700 RECON UAS', cat:'UAS', aff:'UNK', threat:'MED', stage:0, pri:9, conf:58, trkQ:55, x:56,y:24, course:140,speed:96, elev:'+5,800 M', custody:'SENTRY3', decay:8, sidc:'SUAPMFQ-------', method:'—', cde:'—', appr:{tea:false,jag:false,pid:false,strike:false}, status:'IDENTIFIED'}),
+        mk({id:'T2211',name:'OUTPOST', type:'MECH INF COY', cat:'TROOP', aff:'HOS', threat:'LOW', stage:0, pri:10, conf:63, trkQ:58, x:30,y:78, elev:'+60 M', custody:'GREY', decay:41, sidc:'SHGPUCI-------', method:'AREA / GMLRS', cde:'CDE-3', appr:{tea:false,jag:false,pid:false,strike:false}, status:'IDENTIFIED'}),
+        mk({id:'T2212',name:'HALO', type:'UNK SIGINT EMITTER', cat:'EMIT', aff:'UNK', threat:'LOW', stage:0, pri:11, conf:44, trkQ:38, x:18,y:38, elev:'—', custody:'PROWLER', decay:52, sidc:'SUPP----------', method:'—', cde:'—', appr:{tea:false,jag:false,pid:false,strike:false}, status:'UNRESOLVED'}),
+        mk({id:'T2210',name:'DRIFT', type:'M/V CARGO (CIV)', cat:'SHIP', aff:'NEU', threat:'LOW', stage:0, pri:null, conf:97, trkQ:92, x:60,y:68, course:95,speed:12, elev:'SURFACE', custody:'GLOBE7', decay:7, nsl:true, sidc:'SNSPXMTU------', method:'NO-STRIKE', cde:'—', appr:{tea:false,jag:false,pid:false,strike:false}, status:'NO-STRIKE'}),
+        mk({id:'T2198',name:'FORGE', type:'HQ-9 SAM SITE', cat:'SAM', aff:'HOS', threat:'HIGH', stage:4, pri:null, conf:99, trkQ:0, x:38,y:14, elev:'+96 M', custody:'—', decay:120, sidc:'SHGPUCDAS-----', method:'JASSM ×2', cde:'CDE-2', effector:'VENOM1', bda:'DESTROYED · 2 SECONDARIES', appr:{tea:true,jag:true,pid:true,strike:true}, status:'NEUTRALIZED'})
+      ],
+      log:[
+        {t:0,tag:'BDA', text:'FORGE — strike assessed DESTROYED, 2 secondaries. Re-attack not required.', tag2:'bda'},
+        {t:0,tag:'PAIR',text:'ANVIL paired to VENOM-1 (F-35A) JASSM-ER. TOT 7 min.', tag2:'pair'},
+        {t:0,tag:'WARN',text:'DRIFT (M/V cargo) entered NSZ — no-strike flag asserted.', tag2:'warn'},
+        {t:0,tag:'TRK', text:'REEF custody handed GLOBE-7 → SENTRY-3 cross-cue.', tag2:'trk'},
+        {t:0,tag:'DET', text:'New track T2212 HALO — unresolved SIGINT emitter, PROWLER-2.', tag2:'det'},
+        {t:0,tag:'SYS', text:'ORACLE overhead pass window opens T-06:00 for NAI-2.', tag2:'sys'},
+        {t:0,tag:'TRK', text:'KITE (UAS) inbound 140°/96kt — SENTRY-3 maintains custody.', tag2:'trk'},
+        {t:0,tag:'DET', text:'VIPER classified SA-21 GROWLER, conf 96%, HAWK-01 EO/IR.', tag2:'det'}
+      ]
+    };
+    this.ROES = [
+      {label:'WEAPONS HOLD', color:'#ff5a47'},
+      {label:'WEAPONS TIGHT', color:'#ffab38'},
+      {label:'WEAPONS FREE', color:'#5fe39a'}
+    ];
+  }
+
+  componentDidMount(){ this._iv = setInterval(()=>this.tick(), 1000); }
+  componentWillUnmount(){ clearInterval(this._iv); }
+
+  tick(){
+    this.setState(s=>{
+      const nt = s.t+1;
+      let log = s.log;
+      const targets = s.targets.map(t=>{
+        const u = Object.assign({},t);
+        if(u.stage<4){
+          if(u.speed>0){
+            const rad = (u.course-90)*Math.PI/180;
+            u.x = Math.max(5, Math.min(95, u.x + Math.cos(rad)*0.10*(u.speed/30)));
+            u.y = Math.max(6, Math.min(94, u.y + Math.sin(rad)*0.10*(u.speed/30)));
+          }
+          u.decay = u.decay + 1;
+          if(u.custody && u.custody!=='—' && u.decay > (18 + (u.id.charCodeAt(4)%9))){ u.decay = 2 + (nt%4); }
+          u.trkQ = Math.max(20, Math.min(99, u.trkQ + (Math.sin(nt/3 + u.x)*1.4|0)));
+        }
+        if(u.engagedAt!=null && (nt - u.engagedAt) >= 6 && u.stage===3){
+          u.stage = 4; u.status='NEUTRALIZED'; u.engagedAt=null;
+          u.bda = 'DESTROYED · BDA PENDING CONFIRM'; u.trkQ=0;
+          log = [{t:nt,tag:'BDA',text:u.name+' — weapons impact, assessed DESTROYED. BDA pending.',tag2:'bda'}, ...log];
+        }
+        return u;
+      });
+      if(nt%8===0){
+        const tracked = targets.filter(x=>x.stage<4 && x.aff==='HOS');
+        if(tracked.length){
+          const r = tracked[nt % tracked.length];
+          log = [{t:nt,tag:'TRK',text:r.name+' track updated — '+(this.sensorName(r.custody))+', TQ '+r.trkQ+'.',tag2:'trk'}, ...log];
+        }
+      }
+      if(log.length>60) log = log.slice(0,60);
+      return {t:nt, targets, log};
+    });
+  }
+
+  // ── handlers ──
+  selectTarget(id){ this.setState({selectedId:id}); }
+  openEntity(kind,id){ this.setState({cardKind:kind, cardId:id, cardTab:0}); if(kind==='target') this.setState({selectedId:id}); }
+  openCard(id){ this.openEntity('target',id); }
+  closeCard(){ this.setState({cardId:null}); }
+  setCardTab(i){ this.setState({cardTab:i}); }
+  startCardDrag(e){ const sx=e.clientX, sy=e.clientY, ox=this.state.cardX, oy=this.state.cardY;
+    const move=(ev)=>this.setState({cardX:Math.max(0,ox+ev.clientX-sx), cardY:Math.max(0,oy+ev.clientY-sy)});
+    const up=()=>{ document.removeEventListener('pointermove',move); document.removeEventListener('pointerup',up); };
+    document.addEventListener('pointermove',move); document.addEventListener('pointerup',up); }
+  setView(v){ this.setState({view:v}); }
+  cycleRoe(){ this.setState(s=>({roeIdx:(s.roeIdx+1)%3})); }
+  advanceStage(){ this._shiftStage(1); }
+  retreatStage(){ this._shiftStage(-1); }
+  _shiftStage(d){
+    this.setState(s=>{
+      const targets = s.targets.map(t=>{
+        if(t.id!==s.selectedId) return t;
+        const ns = Math.max(0, Math.min(4, t.stage+d));
+        const u = Object.assign({},t,{stage:ns});
+        if(ns!==t.stage) this._pendLog = {t:s.t,tag:'SYS',text:u.name+' moved to '+this.STAGES[ns].key+'.',tag2:'sys'};
+        return u;
+      });
+      const log = this._pendLog ? [this._pendLog, ...s.log] : s.log; this._pendLog=null;
+      return {targets, log};
+    });
+  }
+  setStage(id, stageIdx){
+    if(id==null) return;
+    this.setState(s=>{
+      let nm='';
+      const targets = s.targets.map(t=>{ if(t.id!==id) return t; nm=t.name; return Object.assign({},t,{stage:stageIdx}); });
+      const log = [{t:s.t,tag:'SYS',text:nm+' → '+this.STAGES[stageIdx].key+' (board move).',tag2:'sys'}, ...s.log];
+      return {targets, log, selectedId:id};
+    });
+  }
+  assignEffector(effId){
+    this.setState(s=>{
+      const eff = this.effData.find(e=>e.id===effId);
+      let nm='';
+      const targets = s.targets.map(t=>{ if(t.id!==s.selectedId) return t; nm=t.name; return Object.assign({},t,{effector:effId}); });
+      const log = [{t:s.t,tag:'PAIR',text:nm+' paired → '+eff.callsign+' ('+eff.platform+') '+eff.weapon+'.',tag2:'pair'}, ...s.log];
+      return {targets, log};
+    });
+  }
+  toggleAppr(key){
+    this.setState(s=>{
+      const targets = s.targets.map(t=>{ if(t.id!==s.selectedId) return t; const appr=Object.assign({},t.appr); appr[key]=!appr[key]; return Object.assign({},t,{appr}); });
+      return {targets};
+    });
+  }
+  engage(){
+    const sel = this.state.targets.find(t=>t.id===this.state.selectedId);
+    if(!this.isEngageReady(sel)) return;
+    this.setState(s=>{
+      let nm='', eff='';
+      const targets = s.targets.map(t=>{ if(t.id!==s.selectedId) return t; nm=t.name; eff=this.effName(t.effector); return Object.assign({},t,{engagedAt:s.t, status:'ENGAGED — WPNS RELEASED'}); });
+      const log = [{t:s.t,tag:'FIRE',text:nm+' — WEAPONS RELEASED via '+eff+'. Time of flight running.',tag2:'fire'}, ...s.log];
+      return {targets, log};
+    });
+  }
+  retaskSensor(sid){
+    this.setState(s=>{
+      const sel = s.targets.find(t=>t.id===s.selectedId);
+      const sensors = s.sensors.map(x=> x.id===sid ? Object.assign({},x,{tasking: sel? (sel.idShort||sel.id)+' · '+sel.name : x.tasking, status: x.status==='DEGRADED'?x.status:'TASKED'}) : x);
+      const targets = s.targets.map(t=> t.id===s.selectedId ? Object.assign({},t,{custody:sid, decay:1}) : t);
+      const cs = this.sensorsData.find(x=>x.id===sid);
+      const log = [{t:s.t,tag:'SYS',text:(cs?cs.callsign:sid)+' retasked → '+(sel?sel.name:'AO')+'. Custody refreshed.',tag2:'sys'}, ...s.log];
+      return {sensors, targets, log};
+    });
+  }
+
+  // ── helpers ──
+  sensorName(id){ const s=this.sensorsData.find(x=>x.id===id); return s?s.callsign:'—'; }
+  effName(id){ const e=this.effData.find(x=>x.id===id); return e?e.callsign:'—'; }
+  affColor(a){ return a==='HOS'?this.C.red:a==='UNK'?this.C.yellow:a==='FRD'?this.C.cyan:this.C.green; }
+  affFull(a){ return a==='HOS'?'HOSTILE':a==='UNK'?'UNKNOWN':a==='FRD'?'FRIENDLY':'NEUTRAL'; }
+  affShape(a){ return a==='HOS'?'transform:rotate(45deg);':a==='FRD'?'border-radius:50%;':''; }
+  threatColor(x){ return x==='CRIT'?this.C.redCrit:x==='HIGH'?this.C.red:x==='MED'?this.C.amber:this.C.yellow; }
+  catFull(c){ return ({TEL:'BALLISTIC MISSILE / TEL',SAM:'SURFACE-AIR / AIR DEFENSE',C2:'COMMAND & CONTROL',SHIP:'SURFACE COMBATANT',BOAT:'FAST ATTACK CRAFT',RADAR:'EARLY-WARNING RADAR',UAS:'UNMANNED AIR SYSTEM',TROOP:'GROUND FORCES',EMIT:'UNRESOLVED EMITTER'})[c]||c; }
+  confColor(c){ return c>=85?this.C.green:c>=65?this.C.amber:this.C.red; }
+  decayInfo(d){ if(d<15) return {color:this.C.green, label:'FRESH '+d+'s'}; if(d<35) return {color:this.C.amber, label:'AGING '+d+'s'}; return {color:this.C.red, label:'STALE '+d+'s'}; }
+
+  effFor(sel){
+    if(!sel) return [];
+    return this.effData.map(e=>{
+      let pk = e.suits.includes(sel.cat)? 0.78 + ((e.id.length%5)*0.03) : 0.42 + ((e.id.length%4)*0.04);
+      if(!e.kinetic) pk = e.suits.includes(sel.cat)? 0.7 : 0.2;
+      if((sel.threat==='CRIT'||sel.threat==='HIGH') && !e.stealth && sel.cat==='SAM') pk -= 0.12;
+      pk = Math.max(0.12, Math.min(0.95, pk));
+      const inRange = e.rng >= 6;
+      const assigned = sel.effector===e.id;
+      return {data:e, pk, inRange, assigned, suited:e.suits.includes(sel.cat)};
+    }).sort((a,b)=> (b.suited-a.suited) || (b.pk-a.pk));
+  }
+  isEngageReady(sel){
+    if(!sel) return false;
+    if(sel.stage===4) return false;
+    return sel.stage===3 && sel.effector && sel.appr.tea && sel.appr.jag && sel.appr.pid && sel.appr.strike;
+  }
+
+  mgrs(t){ const e=(380+Math.round(t.x*43)); const n=(610+Math.round(t.y*37)); return '37T CK '+e+' '+n; }
+
+  // ── tactical map (SVG) ──
+  renderMap(){
+    const h = React.createElement, C = this.C;
+    const W=1000, H=620, kids=[]; let k=0;
+    const px=v=>v/100*W, py=v=>v/100*H;
+    const tColor = a=>this.affColor(a);
+    // graticule
+    for(let gx=0; gx<=W; gx+=125) kids.push(h('line',{key:k++,x1:gx,y1:0,x2:gx,y2:H,stroke:'rgba(90,120,116,.09)',strokeWidth:1}));
+    for(let gy=0; gy<=H; gy+=124) kids.push(h('line',{key:k++,x1:0,y1:gy,x2:W,y2:gy,stroke:'rgba(90,120,116,.09)',strokeWidth:1}));
+    // grid refs
+    for(let gx=125; gx<W; gx+=250) kids.push(h('text',{key:k++,x:gx+4,y:14,fill:'#33433f',fontSize:9,fontFamily:'IBM Plex Mono'}, 'CK'+(30+gx/25)));
+    // ownship range rings (friendly naval group bottom-left)
+    const ox=px(12), oy=py(86);
+    [120,230,340,460].forEach(r=> kids.push(h('circle',{key:k++,cx:ox,cy:oy,r,fill:'none',stroke:'rgba(63,210,230,.10)',strokeWidth:1,strokeDasharray:'2 7'})));
+    // bullseye
+    const bx=px(50), by=py(46);
+    [16,38,66].forEach(r=> kids.push(h('circle',{key:k++,cx:bx,cy:by,r,fill:'none',stroke:'rgba(255,171,56,.18)',strokeWidth:1})));
+    kids.push(h('line',{key:k++,x1:bx,y1:by-72,x2:bx,y2:by+72,stroke:'rgba(255,171,56,.16)',strokeWidth:1}));
+    kids.push(h('line',{key:k++,x1:bx-72,y1:by,x2:bx+72,y2:by,stroke:'rgba(255,171,56,.16)',strokeWidth:1}));
+    kids.push(h('text',{key:k++,x:bx+70,y:by-50,fill:'#7a5e24',fontSize:9,fontFamily:'IBM Plex Mono',letterSpacing:'1'}, 'BULLSEYE'));
+    // NAIs
+    this.nais.forEach(n=>{
+      const x=px(n.x), y=py(n.y), w=px(n.w), hh=py(n.h);
+      kids.push(h('rect',{key:k++,x,y,width:w,height:hh,fill:n.color==='#ff5a47'?'rgba(255,90,71,.04)':'rgba(255,171,56,.03)',stroke:n.color,strokeWidth:1,strokeDasharray:'5 4',opacity:.5,style:{pointerEvents:'none'}}));
+      kids.push(h('g',{key:k++,style:{cursor:'pointer'},onClick:()=>this.openEntity('nai',n.id),onDoubleClick:()=>this.openEntity('nai',n.id)},[
+        h('rect',{key:'b',x:x+2,y:y+5,width:50,height:15,fill:'rgba(7,11,12,.65)'}),
+        h('text',{key:'t',x:x+6,y:y+16,fill:n.color,fontSize:11,fontFamily:'Chakra Petch',fontWeight:600}, n.id)
+      ]));
+    });
+    // sensor coverage
+    this.state.sensors.forEach(s=>{
+      const sx=px(s.x), sy=py(s.y);
+      if(s.cov==='cone'){
+        const a=(s.covDir||120)*Math.PI/180, sp=0.5, len=240;
+        const x1=sx+Math.cos(a-sp)*len, y1=sy+Math.sin(a-sp)*len, x2=sx+Math.cos(a+sp)*len, y2=sy+Math.sin(a+sp)*len;
+        kids.push(h('polygon',{key:k++,points:`${sx},${sy} ${x1},${y1} ${x2},${y2}`,fill:'rgba(63,210,230,.045)',stroke:'rgba(63,210,230,.18)',strokeWidth:1,strokeDasharray:'4 4'}));
+      } else if(s.cov==='wide'){
+        kids.push(h('ellipse',{key:k++,cx:sx,cy:sy+30,rx:230,ry:120,fill:'rgba(63,210,230,.035)',stroke:'rgba(63,210,230,.14)',strokeWidth:1,strokeDasharray:'4 5'}));
+      } else if(s.cov==='area'){
+        kids.push(h('circle',{key:k++,cx:sx,cy:sy,r:200,fill:'rgba(91,157,255,.03)',stroke:'rgba(91,157,255,.12)',strokeWidth:1,strokeDasharray:'3 6'}));
+      }
+    });
+    // sensor markers
+    this.state.sensors.forEach(s=>{
+      const sx=px(s.x), sy=py(s.y), col = s.status==='DEGRADED'? C.red : C.cyan;
+      kids.push(h('g',{key:k++,style:{cursor:'pointer'},onClick:()=>this.openEntity('sensor',s.id),onDoubleClick:()=>this.openEntity('sensor',s.id)},[
+        h('rect',{key:'a',x:sx-6,y:sy-6,width:12,height:12,fill:'#0a1316',stroke:col,strokeWidth:1.5,transform:`rotate(45 ${sx} ${sy})`}),
+        h('circle',{key:'b',cx:sx,cy:sy,r:2,fill:col}),
+        h('text',{key:'c',x:sx+11,y:sy+3,fill:col,fontSize:9,fontFamily:'IBM Plex Mono',opacity:.85}, s.callsign)
+      ]));
+    });
+    // no-strike zone around DRIFT
+    const drift = this.state.targets.find(t=>t.id==='T2210');
+    if(drift){ const dx=px(drift.x), dy=py(drift.y);
+      kids.push(h('circle',{key:k++,cx:dx,cy:dy,r:62,fill:'rgba(95,227,154,.04)',stroke:'rgba(95,227,154,.45)',strokeWidth:1.5,strokeDasharray:'6 5',style:{pointerEvents:'none'}}));
+      kids.push(h('g',{key:k++,style:{cursor:'pointer'},onClick:()=>this.openEntity('zone','NSZ'),onDoubleClick:()=>this.openEntity('zone','NSZ')},[
+        h('rect',{key:'b',x:dx-47,y:dy-60,width:94,height:14,fill:'rgba(7,11,12,.65)'}),
+        h('text',{key:'t',x:dx-44,y:dy-50,fill:'#4fae7e',fontSize:9,fontFamily:'IBM Plex Mono',letterSpacing:'1'}, 'NO-STRIKE ZONE')
+      ]));
+    }
+    // friendly own units
+    this.units.forEach(u=>{ const fx=px(u.x), fy=py(u.y);
+      kids.push(h('g',{key:k++,style:{cursor:'pointer'},onClick:()=>this.openEntity('unit',u.id),onDoubleClick:()=>this.openEntity('unit',u.id)},[
+        h('circle',{key:'a',cx:fx,cy:fy,r:9,fill:'#0a1316',stroke:C.cyan,strokeWidth:1.5}),
+        h('circle',{key:'b',cx:fx,cy:fy,r:2.5,fill:C.cyan}),
+        h('text',{key:'c',x:fx+13,y:fy+3,fill:C.cyan,fontSize:9,fontFamily:'IBM Plex Mono',opacity:.8}, u.callsign)
+      ]));
+    });
+    // tracks
+    const sel = this.state.selectedId;
+    this.state.targets.forEach(t=>{
+      if(t.stage===4 && t.id!=='T2198') return;
+      const x=px(t.x), y=py(t.y), col=tColor(t.aff), isSel=t.id===sel, stale=t.decay>=35 && t.stage<4;
+      const grpKids=[];
+      // leader line
+      if(t.speed>0 && t.stage<4){ const a=(t.course-90)*Math.PI/180, len=Math.min(46,14+t.speed*0.28);
+        grpKids.push(h('line',{key:'L',x1:x,y1:y,x2:x+Math.cos(a)*len,y2:y+Math.sin(a)*len,stroke:col,strokeWidth:1.5,opacity:.7}));
+      }
+      // frame
+      let frame;
+      if(t.aff==='HOS') frame=h('polygon',{key:'f',points:`${x},${y-12} ${x+12},${y} ${x},${y+12} ${x-12},${y}`,fill:isSel?'#16100e':'#0c1416',stroke:col,strokeWidth:2});
+      else if(t.aff==='FRD') frame=h('circle',{key:'f',cx:x,cy:y,r:11,fill:'#0c1416',stroke:col,strokeWidth:2});
+      else frame=h('rect',{key:'f',x:x-11,y:y-11,width:22,height:22,fill:'#0c1416',stroke:col,strokeWidth:2});
+      grpKids.push(frame);
+      if(t.stage===4) grpKids.push(h('text',{key:'x',x:x,y:y+5,fill:col,fontSize:15,fontWeight:700,textAnchor:'middle',fontFamily:'Chakra Petch'}, '╳'));
+      else grpKids.push(h('circle',{key:'c',cx:x,cy:y,r:2,fill:col}));
+      // label
+      const lx=x+17;
+      grpKids.push(h('rect',{key:'lb',x:lx-2,y:y-12,width:isSel?112:62,height:isSel?26:13,fill:'rgba(7,11,12,.72)'}));
+      grpKids.push(h('text',{key:'l1',x:lx,y:y-2,fill:col,fontSize:10,fontWeight:700,fontFamily:'Chakra Petch',letterSpacing:'.5'}, t.id.slice(1)+' '+t.name));
+      if(isSel) grpKids.push(h('text',{key:'l2',x:lx,y:y+9,fill:'#8aa09c',fontSize:8.5,fontFamily:'IBM Plex Mono'}, t.type));
+      if(stale) grpKids.push(h('text',{key:'st',x:x-12,y:y+24,fill:C.red,fontSize:8,fontFamily:'IBM Plex Mono',fontWeight:600}, '◬ STALE'));
+      // reticle
+      if(isSel){
+        const lock = t.stage===3 || t.engagedAt!=null;
+        grpKids.push(h('g',{key:'ret',style:{transformOrigin:`${x}px ${y}px`,animation:'twbspin 7s linear infinite'}},[
+          h('circle',{key:'r',cx:x,cy:y,r:24,fill:'none',stroke:lock?C.red:C.amber,strokeWidth:1.4,strokeDasharray:'4 6'}),
+          h('line',{key:'t1',x1:x,y1:y-30,x2:x,y2:y-20,stroke:lock?C.red:C.amber,strokeWidth:1.6}),
+          h('line',{key:'t2',x1:x,y1:y+20,x2:x,y2:y+30,stroke:lock?C.red:C.amber,strokeWidth:1.6}),
+          h('line',{key:'t3',x1:x-30,y1:y,x2:x-20,y2:y,stroke:lock?C.red:C.amber,strokeWidth:1.6}),
+          h('line',{key:'t4',x1:x+20,y1:y,x2:x+30,y2:y,stroke:lock?C.red:C.amber,strokeWidth:1.6})
+        ]));
+        if(lock) grpKids.push(h('text',{key:'lk',x:x,y:y-34,fill:C.red,fontSize:9,fontWeight:700,textAnchor:'middle',fontFamily:'Chakra Petch',letterSpacing:'1'}, t.engagedAt!=null?'ENGAGED':'LOCKED'));
+      }
+      kids.push(h('g',{key:k++,style:{cursor:'pointer'},onClick:()=>this.selectTarget(t.id),onDoubleClick:()=>this.openCard(t.id)}, grpKids));
+    });
+    return h('svg',{viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:'none',style:{position:'absolute',inset:0,width:'100%',height:'100%'}}, kids);
+  }
+
+  fmtDTG(){
+    const base = Date.UTC(2026,5,28,3,14,0);
+    const d = new Date(base + this.state.t*1000);
+    const p=n=>String(n).padStart(2,'0');
+    return p(d.getUTCDate())+p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds())+'Z';
+  }
+
+  unitFor(t){ const m={TEL:'7th Rocket Bde · 2 Bn',SAM:'112th ADA Regiment',C2:'Sector Air Ops Centre',SHIP:'Eastern Surface Action Grp',BOAT:'18th FAC Squadron',RADAR:'IADS EW Company',UAS:'UAV Detachment (unk)',TROOP:'Mech Inf Brigade',EMIT:'Unattributed network'}; return m[t.cat]||'Unknown formation'; }
+  sigFor(t){ const C=this.C;
+    if(t.cat==='SAM'){ if(t.name==='VIPER') return {emcon:'ACTIVE',band:'S / X-BAND',freq:'3.2 GHz acq · 9.1 GHz track',prf:'staggered',mode:'TARGET TRACK',intercept:'T-00:14',sigColor:C.red};
+      return {emcon:'INTERMITTENT',band:'C / X-BAND',freq:'5.6 GHz',prf:'fixed',mode:'SEARCH',intercept:'T-02:40',sigColor:C.amber}; }
+    if(t.cat==='RADAR') return {emcon:'ACTIVE',band:'VHF',freq:'~220 MHz',prf:'low',mode:'EW SEARCH (C-VLO)',intercept:'T-00:51',sigColor:C.red};
+    if(t.cat==='EMIT') return {emcon:'BURST',band:'UHF',freq:'unresolved',prf:'—',mode:'COMINT',intercept:'T-00:30',sigColor:C.yellow};
+    if(t.cat==='SHIP'||t.cat==='BOAT') return {emcon:'NAV ONLY',band:'X-BAND',freq:'9.4 GHz',prf:'nav',mode:'SURFACE SEARCH',intercept:'T-01:10',sigColor:C.amber};
+    if(t.cat==='C2') return {emcon:'EMCON-A',band:'HF / SATCOM',freq:'masked',prf:'—',mode:'C2 LINKS',intercept:'T-12:00',sigColor:C.green};
+    if(t.cat==='UAS') return {emcon:'DATALINK',band:'Ku-BAND',freq:'14.2 GHz',prf:'—',mode:'CMD / CTRL UPLINK',intercept:'T-00:06',sigColor:C.amber};
+    return {emcon:'EMCON / SILENT',band:'—',freq:'—',prf:'—',mode:'—',intercept:'—',sigColor:C.dim}; }
+  physFor(t){ const m={
+    TEL:{rcs:'LARGE (vehicle)',dims:'~13 m TEL',mob:'WHEELED 8×8 · SHOOT-&-SCOOT'},
+    SAM:{rcs:'MED (radar + TELs)',dims:'battery dispersed',mob:'TRACKED · RELOCATABLE'},
+    C2:{rcs:'FIXED structure',dims:'hardened bunker',mob:'STATIC'},
+    SHIP:{rcs:'VERY LARGE',dims:'~157 m DDG',mob:'22 KT · MANEUVERING'},
+    BOAT:{rcs:'SMALL (stealth hull)',dims:'~43 m · ×3',mob:'36 KT · HIGH SPEED'},
+    RADAR:{rcs:'LARGE array',dims:'mast-mounted',mob:'TOWED · SLOW'},
+    UAS:{rcs:'LOW OBSERVABLE',dims:'~10 m span',mob:'AIR · 96 KT'},
+    TROOP:{rcs:'DISPERSED',dims:'coy (+80 pax)',mob:'DISMOUNTED / MTZD'},
+    EMIT:{rcs:'POINT',dims:'unknown',mob:'UNKNOWN'} }; return m[t.cat]||{rcs:'—',dims:'—',mob:'—'}; }
+  sourcesFor(t){ const C=this.C; const rc=(c)=>({'A-1':C.green,'B-2':C.amber,'C-3':C.yellow,'F-6':C.red})[c]||C.dim; let a;
+    if(t.cat==='SAM'||t.cat==='RADAR'||t.cat==='EMIT') a=[['ELINT','PROWLER-2','A-1','live'],['IMINT',this.sensorName(t.custody),'B-2','2m'],['SIGINT','PROWLER-2','B-2','6m']];
+    else if(t.cat==='SHIP'||t.cat==='BOAT') a=[['GMTI','GLOBE-7','A-1','live'],['IMINT','GLOBE-7','B-2','3m'],['ELINT','PROWLER-2','C-3','9m']];
+    else if(t.cat==='TEL') a=[['IMINT','ORACLE','A-1','2m'],['ELINT','PROWLER-2','B-2','4m'],['GMTI','GLOBE-7','B-2','7m']];
+    else if(t.cat==='UAS') a=[['RADAR','SENTRY-3','A-1','live'],['ELINT','PROWLER-2','B-2','1m']];
+    else a=[['GMTI','GREYHOUND','C-3','live'],['IMINT',this.sensorName(t.custody),'C-3','5m']];
+    return a.map(x=>({int:x[0],sensor:x[1],rel:x[2],relColor:rc(x[2]),recency:x[3]})); }
+  obsFor(t){ const offs=[0.5,4,12,33,72];
+    const notes=['Position update — track custody maintained.','Classification refined to '+t.type+'.','Cross-cue confirmation, multi-INT correlation.','Pattern-of-life consistent with '+this.catFull(t.cat)+'.','Initial detection — nominated to collection.'];
+    const sensors=[this.sensorName(t.custody),'PROWLER-2',this.sensorName(t.custody),'GLOBE-7','SENTRY-3'];
+    const ints=['IMINT','ELINT','MULTI-INT','GMTI','RADAR'];
+    const base=Date.UTC(2026,5,28,3,14,0)+this.state.t*1000, p=n=>String(n).padStart(2,'0');
+    return offs.map((o,i)=>{ const d=new Date(base-o*60000); return {time:p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds()),sensor:sensors[i],int:ints[i],note:notes[i]}; }); }
+  rationaleFor(t){ return 'Track '+t.id.slice(1)+' ('+t.name+') assessed '+this.affFull(t.aff)+' '+this.catFull(t.cat)+' at '+t.conf+'% confidence. Correlation across '+(t.cat==='SAM'||t.cat==='RADAR'||t.cat==='EMIT'?'ELINT emitter geolocation and EO/IR imagery':'GMTI, imagery, and pattern-of-life')+' supports the classification. '+(t.nsl?'NSL proximity flag asserted — engagement restricted pending de-confliction.':(t.aff==='HOS'?'Eligible for prosecution per HPTL guidance.':'Retained for situational awareness; not target-eligible.')); }
+  computeAssoc(sel){ const C=this.C, res=[];
+    res.push({kind:'unit',aff:sel.aff,id:'UNIT',name:this.unitFor(sel),rel:'PARENT',dist:'',clickable:false});
+    if(sel.custody&&sel.custody!=='—') res.push({kind:'sensor',aff:'FRD',id:'SNSR',name:this.sensorName(sel.custody),rel:'CUSTODY',dist:'',clickable:false});
+    if(sel.effector) res.push({kind:'effector',aff:'FRD',id:'EFF',name:this.effName(sel.effector),rel:'PAIRED',dist:'',clickable:false});
+    const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+    const others=this.state.targets.filter(o=>o.id!==sel.id).map(o=>({o,d:dist(sel,o)})).sort((a,b)=>a.d-b.d); let added=0;
+    others.forEach(({o,d})=>{ if(added>=5) return; let rel=null;
+      if(d<13) rel='CO-LOCATED';
+      else if(sel.cat!=='SAM'&&o.cat==='SAM'&&o.aff==='HOS'&&d<28) rel='AD COVER';
+      else if(sel.cat==='SAM'&&o.aff==='HOS'&&o.cat!=='SAM'&&d<28&&(o.threat==='CRIT'||o.threat==='HIGH')) rel='DEFENDS';
+      else if(sel.cat==='C2'&&o.aff==='HOS'&&d<42) rel='SUBORDINATE';
+      if(rel){ res.push({kind:'target',aff:o.aff,id:o.id,name:o.name,rel,dist:(d*0.62).toFixed(1)+' KM',clickable:true,oid:o.id}); added++; } });
+    return res.map(a=>({affColor:this.affColor(a.aff),affShape:this.affShape(a.aff),idShort:a.kind==='target'?a.id.slice(1):a.id,name:a.name,rel:a.rel,dist:a.dist,relColor:(a.rel==='DEFENDS'||a.rel==='AD COVER')?C.red:a.rel==='PAIRED'?C.amber:a.kind==='sensor'?C.cyan:'#9fb2ae',open:a.clickable?(()=>this.openCard(a.oid)):(()=>{}),cursor:a.clickable?'pointer':'default',border:a.clickable?'#1c2a28':'#131e1d'})); }
+
+  renderVals(){
+    const C=this.C, S=this.state;
+    const sel = S.targets.find(t=>t.id===S.selectedId) || S.targets[0];
+    const roe = this.ROES[S.roeIdx];
+    const isMap = S.view==='MAP', isBoard = S.view==='BOARD';
+
+    // F2T2EA phases from selected stage
+    const phaseLetters=['F','F','T','T','E','A'];
+    const phaseNames=['FIND','FIX','TRACK','TARGET','ENGAGE','ASSESS'];
+    const stageToPhase = [1,2,3,3,5][sel?sel.stage:0];
+    const phases = phaseLetters.map((ltr,i)=>{
+      const done=i<stageToPhase, active=i===stageToPhase;
+      return {letter:ltr, label:phaseNames[i],
+        border: active?C.amber:done?'#3a5a4a':'#22302d',
+        bg: active?'rgba(255,171,56,.16)':done?'rgba(58,90,74,.18)':'transparent',
+        fg: active?C.amber:done?C.green:'#3a4a47',
+        lblColor: active?C.amber:done?'#6f8480':'#3a4a47',
+        connector: i<stageToPhase?'#3a5a4a':'#1c2a28'};
+    });
+
+    // sensors
+    const sensors = S.sensors.map(s=>{
+      const sc = s.status==='ON STATION'?C.green:s.status==='TASKED'?C.amber:s.status==='DEGRADED'?C.red:C.dim;
+      return {callsign:s.callsign, platform:s.platform, intType:s.intType, status:s.status, statusColor:sc,
+        tasking:s.tasking, taskColor: s.status==='DEGRADED'?C.red:'#9fb2ae',
+        endur:s.endur, endColor: s.endur>60?C.green:s.endur>35?C.amber:C.red, endurLabel:s.endur+'%',
+        border: s.status==='DEGRADED'?'#3a2422':'#16221f', bg:'#0a1011',
+        retask:()=>this.retaskSensor(s.id)};
+    });
+    const sensorsOn = S.sensors.filter(s=>s.status==='ON STATION'||s.status==='TASKED').length;
+
+    // target derived
+    const deriveT = (t)=>{
+      const di=this.decayInfo(t.decay);
+      const st=this.STAGES[t.stage];
+      const statusColor = t.status==='NEUTRALIZED'?C.green:t.status.indexOf('ENGAGED')>=0?C.red:t.status==='CLEARED HOT'?C.red:t.status==='NO-STRIKE'?C.green:t.aff==='UNK'?C.yellow:'#9fb2ae';
+      return {
+        id:t.id, idShort:t.id.slice(1), name:t.name, type:t.type, conf:t.conf, confColor:this.confColor(t.conf),
+        aff:t.aff, affColor:this.affColor(t.aff), affFull:this.affFull(t.aff), affShape:this.affShape(t.aff),
+        threat:t.threat, threatLabel:t.threat||'—', threatColor:this.threatColor(t.threat), threatBorder:this.threatColor(t.threat),
+        stage:t.stage, stageName:st.name, stageColor:st.color,
+        priLabel: t.pri?('#'+t.pri):'—', priColor: t.pri&&t.pri<=3?C.amber:'#7a8d8a',
+        custodyShort:this.sensorName(t.custody), effLabel: t.effector?this.effName(t.effector):'— UNPAIRED', effColor: t.effector?C.amber:'#5d6f6c',
+        statusShort:t.status, statusColor,
+        decayLabel:di.label, decayColor:di.color,
+        rowBg: t.id===S.selectedId?'rgba(255,171,56,.07)':'transparent',
+        rowAccent: t.id===S.selectedId?C.amber:'transparent',
+        cardBorder: t.id===S.selectedId?C.amber:'#16221f', cardBg: t.id===S.selectedId?'rgba(255,171,56,.06)':'#0a1011',
+        select:()=>this.selectTarget(t.id),
+        openCard:()=>this.openCard(t.id),
+        onDragStart:(e)=>{ this._drag=t.id; if(e&&e.dataTransfer){ e.dataTransfer.setData('text/plain',t.id); e.dataTransfer.effectAllowed='move'; } }
+      };
+    };
+    const targets = S.targets.map(deriveT);
+
+    // board columns
+    const boardCols = this.STAGES.map((st,idx)=>{
+      const cards = S.targets.filter(t=>t.stage===idx).map(t=>{
+        const d=deriveT(t);
+        return Object.assign(d,{cardBorder:d.cardBorder, cardBg:d.cardBg, threatBorder:this.threatColor(t.threat), threatColor:this.threatColor(t.threat), threatLabel:t.threat||'—', priColor:d.priColor, priLabel:d.priLabel, effLabel: t.effector?('▣ '+this.effName(t.effector)):'unpaired'});
+      });
+      return {name:st.name+' · '+st.key, color:st.color, count:cards.length, cards,
+        colBg: idx===3?'rgba(255,90,71,.025)':'transparent',
+        onDrop:(e)=>{ if(e&&e.preventDefault) e.preventDefault(); this.setStage(this._drag, idx); }};
+    });
+
+    // selected workup
+    const di=this.decayInfo(sel.decay);
+    const effList = this.effFor(sel).map(x=>{
+      const e=x.data;
+      return {callsign:e.callsign, platform:e.platform, weapon:e.weapon, tot:e.tot+'m',
+        pkPct:Math.round(x.pk*100), pkLabel:x.pk.toFixed(2), pkColor: x.pk>=0.7?C.green:x.pk>=0.5?C.amber:C.red,
+        rangeLabel: x.inRange?('IN RANGE · '+e.rng+'NM'):'OUT OF RANGE', rangeColor: x.inRange?C.green:C.red,
+        recommended: !x.assigned && x===this.effFor(sel)[0] && x.suited,
+        assigned:x.assigned,
+        dot: e.kinetic? (e.status==='AIRBORNE'?C.green:e.status==='ON STATION'?C.cyan:C.amber) : C.blue,
+        dotShape: e.stealth?'transform:rotate(45deg);':'',
+        border: x.assigned?C.green:x.recommended?'#5a4420':'#16221f',
+        bg: x.assigned?'rgba(95,227,154,.07)':'#0a1011',
+        assign:()=>this.assignEffector(e.id)};
+    });
+    const stageSteps = this.STAGES.map((st,idx)=>({
+      label:st.name, color: idx<=sel.stage?st.color:'#16201f',
+      labelColor: idx===sel.stage?st.color:idx<sel.stage?'#9fb2ae':'#46554f',
+      weight: idx===sel.stage?'700':'400'}));
+    const apprDefs=[{k:'pid',l:'POSITIVE ID (PID)'},{k:'jag',l:'ROE / JAG REVIEW'},{k:'strike',l:'STRIKE CELL CONCUR'},{k:'tea',l:'TARGET ENGAGEMENT AUTH'}];
+    const approvals = apprDefs.map(a=>{ const on=sel.appr[a.k];
+      return {label:a.l, mark:on?'✓':'', stat:on?'MET':'PENDING', statColor:on?C.green:C.amber,
+        boxColor:on?C.green:'#5d6f6c', border:on?'#244536':'#1c2a28', bg:on?'rgba(95,227,154,.05)':'#0a1011',
+        toggle:()=>this.toggleAppr(a.k)};
+    });
+    const ready=this.isEngageReady(sel), engaged=sel.engagedAt!=null, done=sel.stage===4;
+    let engageLabel,engageSub,engageColor,engageBg,engageBorder,engageSubColor,engageCursor;
+    if(done){ engageLabel='TARGET COMPLETE'; engageSub=sel.bda||'BDA LOGGED'; engageColor=C.green; engageBg='rgba(95,227,154,.08)'; engageBorder='#244536'; engageSubColor='#6f8480'; engageCursor='default'; }
+    else if(engaged){ engageLabel='⊕ WEAPONS IN FLIGHT'; engageSub='TIME OF FLIGHT RUNNING'; engageColor=C.red; engageBg='rgba(255,90,71,.12)'; engageBorder=C.red; engageSubColor='#c98a82'; engageCursor='default'; }
+    else if(ready){ engageLabel='◉ ENGAGE — CLEARED HOT'; engageSub='AUTH COMPLETE · '+this.effName(sel.effector); engageColor='#06090a'; engageBg=C.red; engageBorder=C.red; engageSubColor='rgba(6,9,10,.7)'; engageCursor='pointer'; }
+    else { const miss=[]; if(sel.stage<3)miss.push('REACH EXECUTION'); if(!sel.effector)miss.push('PAIR EFFECTOR'); if(!(sel.appr.tea&&sel.appr.jag&&sel.appr.pid&&sel.appr.strike))miss.push('CLEAR APPROVALS');
+      engageLabel='ENGAGE — INHIBITED'; engageSub=miss.join(' · '); engageColor='#5d6f6c'; engageBg='rgba(255,255,255,.015)'; engageBorder='#2a3d3a'; engageSubColor='#6f8480'; engageCursor='default'; }
+
+    // log
+    const tagColors={det:C.cyan,trk:'#9fb2ae',pair:C.amber,fire:C.red,bda:C.green,warn:C.yellow,sys:'#6f8480'};
+    const log = S.log.map(l=>{ const base=Date.UTC(2026,5,28,3,14,0); const d=new Date(base+l.t*1000); const p=n=>String(n).padStart(2,'0');
+      return {time:p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds()), tag:l.tag, tagColor:tagColors[l.tag2]||C.dim, text:l.text, textColor: l.tag2==='fire'||l.tag2==='warn'?'#cdd9d7':'#9fb2ae'};
+    });
+
+    // ── object card (multi-kind) ──
+    const CK = S.cardKind || 'target';
+    const FALSE_FLAGS = {isOverview:false,isIntel:false,isAssoc:false,isTargeting:false,isSig:false,aOver:false,aTask:false,aAssoc:false,nOver:false,nColl:false,nTrk:false,zOver:false,zEnt:false,zRestr:false};
+    let card, cardTabNames;
+    if(CK==='sensor' || CK==='unit'){
+      const ae = (CK==='sensor'? S.sensors.find(x=>x.id===S.cardId) : this.units.find(x=>x.id===S.cardId)) || {};
+      const stc = ae.status==='DEGRADED'?C.red:ae.status==='TASKED'?C.amber:C.cyan;
+      const linked = S.targets.filter(t=> CK==='sensor'? t.custody===ae.id : (ae.effId && t.effector===ae.effId)).map(t=>({idShort:t.id.slice(1),name:t.name,affColor:this.affColor(t.aff),affShape:this.affShape(t.aff),rel:CK==='sensor'?'CUSTODY':'PAIRED',relColor:CK==='sensor'?C.cyan:C.amber,open:()=>this.openCard(t.id)}));
+      const naiM = (ae.tasking||'').match(/NAI-\d/);
+      card = Object.assign({}, FALSE_FLAGS, {
+        x:S.cardX, y:S.cardY,
+        idShort:ae.callsign||'—', name:ae.platform||'',
+        affColor:C.cyan, affShape:'border-radius:50%;', affFull:'FRIENDLY', affGlow:C.cyan, affWash:'rgba(63,210,230,.08)',
+        typePillLabel: CK==='sensor'?'ISR ASSET':'FIRES / MANEUVER', typePillColor:C.cyan, typePillBorder:C.cyan,
+        aPlatform:ae.platform||'—', aType: CK==='sensor'?(ae.intType||'—'):(ae.type||'—'), aRole: CK==='sensor'?'ISR / COLLECTION':(ae.role||'—'),
+        aStatus:ae.status||'—', aStatusColor:stc, aMgrs:this.mgrs(ae),
+        aArmLabel: CK==='sensor'?'SENSOR PKG':'ARMAMENT', aArm: CK==='sensor'?(ae.intType||'—'):(ae.weapon||'—'),
+        aEndur:ae.endur||0, aEndColor:(ae.endur||0)>60?C.green:(ae.endur||0)>35?C.amber:C.red,
+        aTasking:ae.tasking||'—', aCov: CK==='sensor'?(ae.cov==='cone'?'DIRECTIONAL EO/IR CONE':ae.cov==='wide'?'WIDE-AREA SAR / GMTI':ae.cov==='area'?'AREA AEW RADAR':'POINT / NON-IMAGING'):'WEAPONS ENGAGEMENT ZONE',
+        aCustody:linked, aCustodyEmpty:linked.length===0, aCustodyLabel: CK==='sensor'?'TRACKS UNDER CUSTODY':'PAIRED TARGETS',
+        aOver:S.cardTab===0, aTask:S.cardTab===1, aAssoc:S.cardTab===2
+      });
+      cardTabNames=['OVERVIEW','TASKING','ASSOCIATIONS'];
+    } else if(CK==='nai'){
+      const n = this.nais.find(x=>x.id===S.cardId) || this.nais[0];
+      const cover = S.sensors.filter(s=>(s.tasking||'').indexOf(n.id)>=0).map(s=>({callsign:s.callsign,platform:s.platform,intType:s.intType,statusColor:s.status==='DEGRADED'?C.red:s.status==='TASKED'?C.amber:C.cyan,open:()=>this.openEntity('sensor',s.id)}));
+      const inside = S.targets.filter(t=> t.x>=n.x && t.x<=n.x+n.w && t.y>=n.y && t.y<=n.y+n.h).map(t=>({idShort:t.id.slice(1),name:t.name,affColor:this.affColor(t.aff),affShape:this.affShape(t.aff),threat:t.threat||'—',threatColor:this.threatColor(t.threat),open:()=>this.openCard(t.id)}));
+      card = Object.assign({}, FALSE_FLAGS, {
+        x:S.cardX, y:S.cardY,
+        idShort:n.id, name:n.desc,
+        affColor:n.color, affShape:'', affFull:'NAI', affGlow:n.color, affWash:'rgba(255,171,56,.07)',
+        typePillLabel:n.pir, typePillColor:n.color, typePillBorder:n.color,
+        nDesc:n.desc, nPir:n.pir, nArea:'~'+Math.round(n.w*0.6)+' × '+Math.round(n.h*0.6)+' NM', nStatus:'ACTIVE COLLECTION',
+        nCover:cover, nCoverEmpty:cover.length===0, nInside:inside, nInsideEmpty:inside.length===0,
+        nOver:S.cardTab===0, nColl:S.cardTab===1, nTrk:S.cardTab===2
+      });
+      cardTabNames=['OVERVIEW','COLLECTION','TRACKS'];
+    } else if(CK==='zone'){
+      const drift = S.targets.find(t=>t.id==='T2210');
+      const inside = drift? S.targets.filter(t=>Math.hypot(t.x-drift.x,t.y-drift.y)<11).map(t=>({idShort:t.id.slice(1),name:t.name,affColor:this.affColor(t.aff),affShape:this.affShape(t.aff),affFull:this.affFull(t.aff),open:()=>this.openCard(t.id)})) : [];
+      card = Object.assign({}, FALSE_FLAGS, {
+        x:S.cardX, y:S.cardY,
+        idShort:'NSZ-01', name:'NO-STRIKE ZONE',
+        affColor:C.green, affShape:'', affFull:'NO-STRIKE', affGlow:C.green, affWash:'rgba(95,227,154,.07)',
+        typePillLabel:'ROE / NSL', typePillColor:C.green, typePillBorder:C.green,
+        zType:'NO-STRIKE / NSL ENTITY', zProtects:'M/V DRIFT — civilian cargo', zRadius:'~6 NM', zAuth:'CJTF SJA · ROE ANNEX C', zStatus:'ENFORCED',
+        zRationale:'Protected civilian maritime traffic transiting the strait. Kinetic fires are prohibited inside the zone; adjacent engagements require positive ID and CDE-1 weaponeering with collateral mitigation.',
+        zEntities:inside, zEntEmpty:inside.length===0,
+        zRestrictions:['No kinetic fires within NSZ boundary','PID required for any adjacent engagement','CDE-1 maximum · collateral mitigation mandatory','De-conflict with maritime ROE Annex C','Civilian fishing fleet active vicinity — heightened scrutiny'],
+        zOver:S.cardTab===0, zEnt:S.cardTab===1, zRestr:S.cardTab===2
+      });
+      cardTabNames=['OVERVIEW','PROTECTED','RESTRICTIONS'];
+    } else {
+      const ct = S.targets.find(t=>t.id===S.cardId) || sel;
+      const cdi=this.decayInfo(ct.decay), cSt=this.STAGES[ct.stage], sig=this.sigFor(ct), phys=this.physFor(ct);
+      const ctStatusColor = ct.status==='NEUTRALIZED'?C.green:ct.status.indexOf('ENGAGED')>=0?C.red:ct.status==='CLEARED HOT'?C.red:ct.status==='NO-STRIKE'?C.green:ct.aff==='UNK'?C.yellow:'#9fb2ae';
+      const cEff = this.effFor(ct).map((x,idx)=>({callsign:x.data.callsign,platform:x.data.platform,weapon:x.data.weapon,pkPct:Math.round(x.pk*100),pkLabel:x.pk.toFixed(2),pkColor:x.pk>=0.7?C.green:x.pk>=0.5?C.amber:C.red,tot:x.data.tot+'m',assigned:x.assigned,recommended:idx===0&&x.suited&&!x.assigned,border:x.assigned?C.green:(idx===0&&x.suited?'#5a4420':'#16221f'),bg:x.assigned?'rgba(95,227,154,.07)':'#0a1011',assign:()=>this.assignEffector(x.data.id)})).slice(0,4);
+      const cAppr = apprDefs.map(a=>{const on=ct.appr[a.k];return {label:a.l,mark:on?'✓':'',boxColor:on?C.green:'#5d6f6c',border:on?'#244536':'#1c2a28',bg:on?'rgba(95,227,154,.05)':'#0a1011',toggle:()=>this.toggleAppr(a.k)};});
+      const ctc={det:C.cyan,trk:'#9fb2ae',pair:C.amber,fire:C.red,bda:C.green,warn:C.yellow,sys:'#6f8480'};
+      const cFires = S.log.filter(l=>l.text.indexOf(ct.name)>=0).slice(0,7).map(l=>{const b=Date.UTC(2026,5,28,3,14,0);const d=new Date(b+l.t*1000);const p=n=>String(n).padStart(2,'0');return {time:p(d.getUTCHours())+p(d.getUTCMinutes())+p(d.getUTCSeconds()),tag:l.tag,tagColor:ctc[l.tag2]||C.dim,text:l.text};});
+      card = Object.assign({}, FALSE_FLAGS, {
+        x:S.cardX, y:S.cardY,
+        idShort:ct.id.slice(1), name:ct.name, type:ct.type, catFull:this.catFull(ct.cat), sidc:ct.sidc,
+        affColor:this.affColor(ct.aff), affShape:this.affShape(ct.aff), affFull:this.affFull(ct.aff), affGlow:this.affColor(ct.aff),
+        affWash: ct.aff==='HOS'?'rgba(255,90,71,.10)':ct.aff==='UNK'?'rgba(255,210,63,.08)':ct.aff==='FRD'?'rgba(63,210,230,.08)':'rgba(95,227,154,.07)',
+        typePillLabel:ct.threat||'—', typePillColor:this.threatColor(ct.threat), typePillBorder:this.threatColor(ct.threat),
+        threatLabel:ct.threat||'—', threatColor:this.threatColor(ct.threat), pri:ct.pri||'—',
+        status:ct.status, statusColor:ctStatusColor, stageName:cSt.name, stageColor:cSt.color,
+        unit:this.unitFor(ct), firstDet:'D-1 · 280214Z', custodyName:this.sensorName(ct.custody),
+        conf:ct.conf, confColor:this.confColor(ct.conf), trkQ:ct.trkQ, trkColor: ct.trkQ>=80?C.green:ct.trkQ>=55?C.amber:C.red,
+        mgrs:this.mgrs(ct), elev:ct.elev, courseLabel: ct.speed>0?String(ct.course).padStart(3,'0')+'°':'STATIC', speedLabel: ct.speed>0?ct.speed+' KT':'0 KT',
+        decayLabel:cdi.label, decayColor:cdi.color,
+        sources:this.sourcesFor(ct), obs:this.obsFor(ct), rationale:this.rationaleFor(ct), assoc:this.computeAssoc(ct),
+        method:ct.method, cde:ct.cde, cdeColor: ct.cde==='CDE-3'?C.red:ct.cde==='CDE-2'?C.amber:C.green,
+        nslDist: ct.nsl?'0.4 KM — IN NSZ':(ct.cat==='SHIP'||ct.cat==='BOAT'?'2.1 KM':'> 5 KM CLR'), nslColor: ct.nsl?C.red:'#9fb2ae',
+        effTop:cEff, approvals:cAppr, effects: ct.bda?ct.bda:(ct.engagedAt!=null?'WEAPONS IN FLIGHT — TOF RUNNING':'NO EFFECTS EXECUTED'), effectsColor: ct.bda?C.green:(ct.engagedAt!=null?C.red:'#6f8480'),
+        fires:cFires, firesEmpty:cFires.length===0,
+        emcon:sig.emcon, band:sig.band, freq:sig.freq, prf:sig.prf, mode:sig.mode, intercept:sig.intercept, sigColor:sig.sigColor,
+        rcs:phys.rcs, dims:phys.dims, mobility:phys.mob, imageryLabel:this.sensorName(ct.custody)+' · EO/IR FRAME',
+        isOverview:S.cardTab===0, isIntel:S.cardTab===1, isAssoc:S.cardTab===2, isTargeting:S.cardTab===3, isSig:S.cardTab===4
+      });
+      cardTabNames=['OVERVIEW','INTELLIGENCE','ASSOCIATIONS','TARGETING','SIGNATURES'];
+    }
+    const cardTabs = cardTabNames.map((nm,i)=>({name:nm, fg:S.cardTab===i?'#06090a':'#9fb2ae', bg:S.cardTab===i?'#ffab38':'transparent', onClick:()=>this.setCardTab(i)}));
+
+    return {
+      missionName:'IRON MERIDIAN', ao:'AZ STRAIT', dtg:this.fmtDTG(), dateStr:'28 JUN 26',
+      cardOpen:!!S.cardId, card, cardTabs, closeCard:()=>this.closeCard(), startCardDrag:(e)=>this.startCardDrag(e), stopProp:(e)=>e.stopPropagation(),
+      roe:roe.label, roeColor:roe.color, cycleRoe:()=>this.cycleRoe(),
+      phases,
+      sensors, sensorsOn, sensorsTotal:S.sensors.length, nais:this.nais,
+      isMap, isBoard,
+      centerTitle: isMap?'COMMON OPERATING PICTURE':'TARGET WORKBENCH',
+      centerSub: isMap?'GEO · MULTI-INT FUSION · DBL-CLICK TRACK → OBJECT CARD':'KANBAN · DRAG CARDS TO ADVANCE LIFECYCLE',
+      viewMap:()=>this.setView('MAP'), viewBoard:()=>this.setView('BOARD'),
+      mapTabBg: isMap?C.amber:'transparent', mapTabFg: isMap?'#06090a':'#7a8d8a',
+      boardTabBg: isBoard?C.amber:'transparent', boardTabFg: isBoard?'#06090a':'#7a8d8a',
+      mapSymbols:this.renderMap(),
+      allowDrop:(e)=>{ if(e&&e.preventDefault){e.preventDefault(); if(e.dataTransfer)e.dataTransfer.dropEffect='move';} },
+      boardCols,
+      targets, tracksTotal:S.targets.filter(t=>t.stage<4).length, hostileCount:S.targets.filter(t=>t.aff==='HOS'&&t.stage<4).length, execCount:S.targets.filter(t=>t.stage===3).length,
+      log,
+      opStatus: roe.label,
+      // selected
+      sel:{
+        id:sel.id, idShort:sel.id.slice(1), name:sel.name, type:sel.type, catFull:this.catFull(sel.cat), sidc:sel.sidc,
+        aff:sel.aff, affColor:this.affColor(sel.aff), affFull:this.affFull(sel.aff), affShape:this.affShape(sel.aff),
+        affGlow:this.affColor(sel.aff), affWash: sel.aff==='HOS'?'rgba(255,90,71,.07)':sel.aff==='UNK'?'rgba(255,210,63,.06)':'rgba(95,227,154,.05)',
+        threatLabel:sel.threat||'—', threatColor:this.threatColor(sel.threat), threatBorder:this.threatColor(sel.threat),
+        pri:sel.pri||'—', nsl:sel.nsl,
+        conf:sel.conf, confColor:this.confColor(sel.conf),
+        custodyName:this.sensorName(sel.custody),
+        mgrs:this.mgrs(sel), elev:sel.elev,
+        courseLabel: sel.speed>0?(String(sel.course).padStart(3,'0')+'°'):'STATIC',
+        speedLabel: sel.speed>0?(sel.speed+' KT'):'0 KT',
+        trkQ:sel.trkQ, trkColor: sel.trkQ>=80?C.green:sel.trkQ>=55?C.amber:C.red,
+        decayLabel:di.label, decayColor:di.color,
+        stageSteps,
+        effectors:effList,
+        method:sel.method, cde:sel.cde, cdeColor: sel.cde==='CDE-3'?C.red:sel.cde==='CDE-2'?C.amber:C.green,
+        nslDist: sel.nsl?'0.4 KM — IN NSZ':sel.cat==='SHIP'||sel.cat==='BOAT'?'2.1 KM':'> 5 KM CLR',
+        nslColor: sel.nsl?C.red:'#9fb2ae',
+        approvals
+      },
+      advanceStage:()=>this.advanceStage(), retreatStage:()=>this.retreatStage(),
+      engage:()=>this.engage(), engageLabel, engageSub, engageColor, engageBg, engageBorder, engageSubColor, engageCursor
+    };
+  }
+}
+</script>
+</body>
+</html>
