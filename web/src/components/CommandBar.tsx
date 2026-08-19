@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store';
+import type { LegendMode } from '../store';
 import { fmtRealDateLine, fmtRealDTG, stageForF2T2EA } from '../selectors';
 import { ROES } from '../types';
+import { RIGHT_RAIL_WIDTH } from '../layout';
 
 const PHASE_LETTERS = ['F', 'F', 'T', 'T', 'E', 'A'];
 const PHASE_NAMES = ['FIND', 'FIX', 'TRACK', 'TARGET', 'ENGAGE', 'ASSESS'];
@@ -11,6 +13,8 @@ export default function CommandBar() {
   const cycleRoe = useStore((s) => s.cycleRoe);
   const targets = useStore((s) => s.targets);
   const selectedId = useStore((s) => s.selectedId);
+  const legendMode = useStore((s) => s.legendMode);
+  const setLegendMode = useStore((s) => s.setLegendMode);
 
   const sel = targets.find((x) => x.id === selectedId) ?? targets[0];
   const roe = ROES[roeIdx];
@@ -101,10 +105,40 @@ export default function CommandBar() {
             {i < phases.length - 1 && <div className="command-bar-phase-connector" style={{ width: 14, height: 1.5, background: ph.connector }} />}
           </div>
         ))}
+
+        <div className="command-bar-legend-picker" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end', marginLeft: 'auto', flexShrink: 0 }}>
+          <label className="command-bar-legend-picker-label" htmlFor="command-bar-legend-select" style={{ fontSize: 8, letterSpacing: '.18em', color: 'var(--ink-faint)', marginBottom: 3 }}>
+            LEGEND
+          </label>
+          <select
+            id="command-bar-legend-select"
+            className="command-bar-legend-select"
+            value={legendMode}
+            onChange={(e) => setLegendMode(e.target.value as LegendMode)}
+            style={{
+              background: 'rgba(8,13,14,.82)',
+              border: '1px solid var(--hairline-mid)',
+              color: 'var(--ink-mute)',
+              fontFamily: 'var(--font-display)',
+              fontSize: 9.5,
+              fontWeight: 600,
+              letterSpacing: '.08em',
+              padding: '3px 6px',
+              cursor: 'pointer',
+            }}
+          >
+            <option className="command-bar-legend-option" value="AFFILIATION">
+              TRACK AFFILIATION
+            </option>
+            <option className="command-bar-legend-option" value="OOB">
+              OOB SYMBOLOGY
+            </option>
+          </select>
+        </div>
       </div>
 
       {/* ROE + clock */}
-      <div className="command-bar-roe-clock" style={{ display: 'flex', alignItems: 'center', gap: 0, borderLeft: '1px solid var(--hairline)' }}>
+      <div className="command-bar-roe-clock" style={{ display: 'flex', alignItems: 'center', gap: 0, width: RIGHT_RAIL_WIDTH, flexShrink: 0, borderLeft: '1px solid var(--hairline)' }}>
         <div className="command-bar-roe" onClick={cycleRoe} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 16px', cursor: 'pointer', borderRight: '1px solid var(--hairline)', height: '100%' }}>
           <div className="command-bar-roe-label" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)' }}>
             RULES OF ENGAGEMENT
@@ -116,7 +150,7 @@ export default function CommandBar() {
             </span>
           </div>
         </div>
-        <div className="command-bar-clock" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 18px', textAlign: 'right' }}>
+        <div className="command-bar-clock" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 18px', textAlign: 'right' }}>
           <div className="command-bar-clock-dtg" style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, letterSpacing: '.08em', color: 'var(--amber)', lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
             {dtg.split('').map((ch, i) => (
               <span key={i} className="command-bar-clock-dtg-char" style={{ display: 'inline-block', width: '1ch', textAlign: 'center' }}>

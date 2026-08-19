@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { AttributionControl, Map as MaplibreMap } from 'maplibre-gl';
+import { AttributionControl, Map as MaplibreMap, type RasterTileSource } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { useStore } from '../store';
 import { affColor } from '../selectors';
+import { statusMeta } from '../oobSelectors';
+import type { ObjectStatus } from '../assets/oob';
 import { AO_BOUNDS, AO_CENTER, BASEMAP_STYLES, toLngLat } from '../mapProjection';
 import type { Sensor, Target } from '../types';
 import OobMapLayer from './OobMapLayer';
@@ -11,8 +13,18 @@ import type { ContextLayer } from '../assets/contextLayers';
 import { loadContextLayerData } from '../contextLayerData';
 import { portFeatureFromGeoJSON } from '../portFeature';
 import { airfieldFeatureFromGeoJSON } from '../airfieldFeature';
+import { fetchLatestRadarTileUrl } from '../rainviewer';
 
 type ProjectFn = (x: number, y: number) => { x: number; y: number };
+
+const OOB_LEGEND_ROWS: { status: ObjectStatus; glyph?: string }[] = [
+  { status: 'VISIBLE' },
+  { status: 'UNIDENTIFIED', glyph: '?' },
+  { status: 'MISIDENTIFIED', glyph: '?' },
+  { status: 'OBSCURED' },
+  { status: 'UNKNOWN' },
+  { status: 'DESTROYED', glyph: '╳' },
+];
 
 function outlineLayerId(layerId: string): string {
   return `${layerId}-outline`;
@@ -39,12 +51,62 @@ function identifyLayerId(layer: ContextLayer): string {
 // toggle changes. Adding is async (data must be fetched/cached first), so
 // re-check desired visibility once the fetch resolves in case the user
 // toggled it back off in the meantime.
+// Builds line paint for a 'line' geometry context layer: a per-feature
+// MapLibre `match` expression keyed on layer.lineColorProperty when the
+// layer defines one (e.g. shipping lanes' Major/Middle/Minor `lane_type`),
+// falling back to the layer's flat line* fields otherwise.
+function buildLinePaint(layer: ContextLayer): Record<string, unknown> {
+  const { lineColorProperty, lineColorMap, lineWidthMap, lineOpacityMap } = layer;
+  if (lineColorProperty && lineColorMap) {
+    const toMatch = (map: Record<string, number> | undefined, fallback: number) => {
+      if (!map) return fallback;
+      const expr: unknown[] = ['match', ['get', lineColorProperty]];
+      for (const [k, v] of Object.entries(map)) expr.push(k, v);
+      expr.push(fallback);
+      return expr;
+    };
+    const colorExpr: unknown[] = ['match', ['get', lineColorProperty]];
+    for (const [k, v] of Object.entries(lineColorMap)) colorExpr.push(k, v);
+    colorExpr.push(layer.lineColor ?? '#ffffff');
+    return {
+      'line-color': colorExpr,
+      'line-width': toMatch(lineWidthMap, layer.lineWidth ?? 1),
+      'line-opacity': toMatch(lineOpacityMap, layer.lineOpacity ?? 0.6),
+    };
+  }
+  return {
+    'line-color': layer.lineColor ?? '#ffffff',
+    'line-width': layer.lineWidth ?? 1,
+    'line-opacity': layer.lineOpacity ?? 0.6,
+  };
+}
+
 function syncContextLayers(map: MaplibreMap, visibility: Record<string, boolean>) {
   for (const layer of CONTEXT_LAYERS) {
     const srcId = `ctx-src-${layer.id}`;
     const layerId = `ctx-layer-${layer.id}`;
     const shouldShow = !!visibility[layer.id];
     const hasLayer = !!map.getLayer(layerId);
+
+    if (layer.geometryType === 'raster') {
+      if (shouldShow && !hasLayer) {
+        fetchLatestRadarTileUrl()
+          .then((url) => {
+            if (!useStore.getState().contextLayerVisibility[layer.id] || map.getLayer(layerId)) return;
+            // RainViewer's tile server tops out at zoom 7 (returns a "Zoom
+            // Level Not Supported" placeholder image beyond that) — maxzoom
+            // tells MapLibre to keep requesting z7 tiles and upsample them
+            // for closer views instead of requesting nonexistent z8+ tiles.
+            if (!map.getSource(srcId)) map.addSource(srcId, { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 7 });
+            map.addLayer({ id: layerId, type: 'raster', source: srcId, paint: { 'raster-opacity': layer.rasterOpacity ?? 0.6 } });
+          })
+          .catch((err) => console.error(`Failed to load context layer "${layer.id}"`, err));
+      } else if (!shouldShow && hasLayer) {
+        map.removeLayer(layerId);
+        if (map.getSource(srcId)) map.removeSource(srcId);
+      }
+      continue;
+    }
 
     if (shouldShow && !hasLayer) {
       loadContextLayerData(layer)
@@ -58,24 +120,48 @@ function syncContextLayers(map: MaplibreMap, visibility: Record<string, boolean>
             // GeoServer-side SLD used for non-MapLibre WMS consumers
             // (geoserver-init/airfields_style.sld). Fill/line layers only
             // ever draw polygon geometry, so the centerpoint features are
-            // naturally ignored here.
+            // naturally ignored here. Other polygon layers (e.g. EEZ) have
+            // no `kind` property and use their own flat paint overrides
+            // instead (see ContextLayer.polygon* fields).
             map.addLayer({
               id: layerId,
               type: 'fill',
               source: srcId,
-              paint: {
-                'fill-color': ['match', ['get', 'kind'], 'boundary', '#ffab38', 'runway', '#cdd9d7', 'taxiway', '#9fb2ae', '#5fe39a'],
-                'fill-opacity': ['match', ['get', 'kind'], 'boundary', 0.06, 'runway', 0.85, 'taxiway', 0.7, 0.5],
-              },
+              paint:
+                layer.id === 'airfields'
+                  ? {
+                      'fill-color': ['match', ['get', 'kind'], 'boundary', '#ffab38', 'runway', '#cdd9d7', 'taxiway', '#9fb2ae', '#5fe39a'],
+                      'fill-opacity': ['match', ['get', 'kind'], 'boundary', 0.06, 'runway', 0.85, 'taxiway', 0.7, 0.5],
+                    }
+                  : {
+                      'fill-color': layer.polygonFillColor ?? '#5fe39a',
+                      'fill-opacity': layer.polygonFillOpacity ?? 0.5,
+                    },
             });
             map.addLayer({
               id: outlineLayerId(layerId),
               type: 'line',
               source: srcId,
-              paint: {
-                'line-color': ['match', ['get', 'kind'], 'boundary', '#ffab38', '#06090a'],
-                'line-width': ['match', ['get', 'kind'], 'boundary', 1.2, 0.4],
-              },
+              paint:
+                layer.id === 'airfields'
+                  ? {
+                      'line-color': ['match', ['get', 'kind'], 'boundary', '#ffab38', '#06090a'],
+                      'line-width': ['match', ['get', 'kind'], 'boundary', 1.2, 0.4],
+                    }
+                  : {
+                      'line-color': layer.polygonLineColor ?? '#06090a',
+                      'line-width': layer.polygonLineWidth ?? 0.4,
+                      ...(layer.polygonLineDasharray ? { 'line-dasharray': layer.polygonLineDasharray } : {}),
+                    },
+            });
+          }
+          if (layer.geometryType === 'line') {
+            map.addLayer({
+              id: layerId,
+              type: 'line',
+              source: srcId,
+              layout: { 'line-cap': 'round', 'line-join': 'round' },
+              paint: buildLinePaint(layer),
             });
           }
           if (layer.geometryType === 'point' || layer.geometryType === 'mixed') {
@@ -89,7 +175,7 @@ function syncContextLayers(map: MaplibreMap, visibility: Record<string, boolean>
               filter: layer.geometryType === 'mixed' ? ['==', ['get', 'kind'], 'centerpoint'] : undefined,
               paint: {
                 'circle-radius': layer.geometryType === 'mixed' ? 5 : 3,
-                'circle-color': '#3fd2e6',
+                'circle-color': layer.pointColor ?? '#3fd2e6',
                 'circle-opacity': 0.85,
                 'circle-stroke-color': '#06090a',
                 'circle-stroke-width': 0.6,
@@ -342,6 +428,7 @@ export default function TacticalMap() {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
   const basemapId = useStore((s) => s.basemapId);
+  const legendMode = useStore((s) => s.legendMode);
   // Tracks which basemap style is actually applied to the current map
   // instance, so this effect is a no-op when basemapId hasn't really
   // changed (covers React StrictMode's dev-mode double-invoke of mount
@@ -391,6 +478,7 @@ export default function TacticalMap() {
         const feature = e.features?.[0];
         if (!feature) return;
         if (layer.id === 'airfields') useStore.getState().openAirfield(airfieldFeatureFromGeoJSON(feature));
+        else if (layer.id === 'tenth-fleet') useStore.getState().openOob(feature.properties!.oobId as string);
         else useStore.getState().openPort(portFeatureFromGeoJSON(feature));
       });
       map.on('mouseenter', targetLayerId, () => {
@@ -433,6 +521,31 @@ export default function TacticalMap() {
     whenStyleReady(map, () => syncContextLayers(map, contextLayerVisibility));
   }, [contextLayerVisibility]);
 
+  // RainViewer's mosaic advances roughly every 10 minutes — re-poll on that
+  // cadence and swap the live tile URL in place (no source/layer teardown)
+  // so the radar layer stays current while toggled on.
+  const radarVisible = contextLayerVisibility['weather-radar'];
+  useEffect(() => {
+    if (!radarVisible) return;
+    const id = setInterval(() => {
+      const map = mapRef.current;
+      if (!map) return;
+      const src = map.getSource('ctx-src-weather-radar');
+      if (!src) return;
+      fetchLatestRadarTileUrl()
+        .then((url) => (src as RasterTileSource).setTiles([url]))
+        .catch((err) => console.error('Failed to refresh weather-radar tiles', err));
+    }, 5 * 60 * 1000);
+    return () => clearInterval(id);
+  }, [radarVisible]);
+
+  const flyToRequest = useStore((s) => s.flyToRequest);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !flyToRequest) return;
+    map.flyTo({ center: [flyToRequest.lng, flyToRequest.lat], zoom: flyToRequest.zoom, duration: 1200 });
+  }, [flyToRequest]);
+
   const project: ProjectFn = (x, y) => {
     const map = mapRef.current;
     if (!map) return { x: -9999, y: -9999 };
@@ -467,23 +580,59 @@ export default function TacticalMap() {
       <div className="tactical-map-corner-bracket-br" style={{ position: 'absolute', bottom: 8, right: 8, width: 22, height: 22, borderBottom: '2px solid var(--amber)', borderRight: '2px solid var(--amber)', opacity: 0.7, pointerEvents: 'none' }} />
 
       <div className="tactical-map-legend" style={{ position: 'absolute', left: 14, bottom: 14, background: 'rgba(8,13,14,.82)', border: '1px solid var(--hairline-mid)', padding: '8px 10px', display: 'flex', flexDirection: 'column', gap: 5, pointerEvents: 'none' }}>
-        <div className="tactical-map-legend-title" style={{ fontSize: 8.5, letterSpacing: '.18em', color: 'var(--ink-faint)', marginBottom: 1 }}>TRACK AFFILIATION</div>
-        <div className="tactical-map-legend-row-hostile" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span className="tactical-map-legend-swatch-hostile" style={{ width: 10, height: 10, background: '#0c1416', border: '1.5px solid var(--red)', transform: 'rotate(45deg)' }} />
-          <span className="tactical-map-legend-label-hostile" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>HOSTILE</span>
-        </div>
-        <div className="tactical-map-legend-row-unknown" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span className="tactical-map-legend-swatch-unknown" style={{ width: 10, height: 10, background: '#0c1416', border: '1.5px solid var(--yellow)' }} />
-          <span className="tactical-map-legend-label-unknown" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>UNKNOWN</span>
-        </div>
-        <div className="tactical-map-legend-row-friendly" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span className="tactical-map-legend-swatch-friendly" style={{ width: 10, height: 10, background: '#0c1416', border: '1.5px solid var(--cyan)', borderRadius: '50%' }} />
-          <span className="tactical-map-legend-label-friendly" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>FRIENDLY</span>
-        </div>
-        <div className="tactical-map-legend-row-neutral" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <span className="tactical-map-legend-swatch-neutral" style={{ width: 10, height: 10, background: '#0c1416', border: '1.5px solid var(--green)' }} />
-          <span className="tactical-map-legend-label-neutral" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>NEUTRAL / NSL</span>
-        </div>
+        {legendMode === 'AFFILIATION' ? (
+          <>
+            <div className="tactical-map-legend-title" style={{ fontSize: 8.5, letterSpacing: '.18em', color: 'var(--ink-faint)', marginBottom: 1 }}>TRACK AFFILIATION</div>
+            <div className="tactical-map-legend-row-hostile" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span className="tactical-map-legend-swatch-hostile" style={{ width: 10, height: 10, background: '#0c1416', border: '1.5px solid var(--red)', transform: 'rotate(45deg)' }} />
+              <span className="tactical-map-legend-label-hostile" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>HOSTILE</span>
+            </div>
+            <div className="tactical-map-legend-row-unknown" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span className="tactical-map-legend-swatch-unknown" style={{ width: 10, height: 10, background: '#0c1416', border: '1.5px solid var(--yellow)' }} />
+              <span className="tactical-map-legend-label-unknown" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>UNKNOWN</span>
+            </div>
+            <div className="tactical-map-legend-row-friendly" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span className="tactical-map-legend-swatch-friendly" style={{ width: 10, height: 10, background: '#0c1416', border: '1.5px solid var(--cyan)', borderRadius: '50%' }} />
+              <span className="tactical-map-legend-label-friendly" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>FRIENDLY</span>
+            </div>
+            <div className="tactical-map-legend-row-neutral" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span className="tactical-map-legend-swatch-neutral" style={{ width: 10, height: 10, background: '#0c1416', border: '1.5px solid var(--green)' }} />
+              <span className="tactical-map-legend-label-neutral" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>NEUTRAL / NSL</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="tactical-map-legend-title" style={{ fontSize: 8.5, letterSpacing: '.18em', color: 'var(--ink-faint)', marginBottom: 1 }}>OOB SYMBOLOGY</div>
+            {OOB_LEGEND_ROWS.map((row) => {
+              const meta = statusMeta(row.status);
+              return (
+                <div key={row.status} className="tactical-map-legend-row-oob" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span
+                    className="tactical-map-legend-swatch-oob"
+                    style={{
+                      width: 10,
+                      height: 10,
+                      background: '#0c1416',
+                      border: `1.5px ${meta.dash ? 'dashed' : 'solid'} ${meta.color}`,
+                      transform: 'rotate(45deg)',
+                      opacity: meta.opacity,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {row.glyph ? (
+                      <span className="tactical-map-legend-swatch-oob-glyph" style={{ transform: 'rotate(-45deg)', fontSize: 7, lineHeight: 1, color: meta.color, fontWeight: 700 }}>{row.glyph}</span>
+                    ) : (
+                      <span className="tactical-map-legend-swatch-oob-dot" style={{ width: 2, height: 2, borderRadius: '50%', background: meta.color }} />
+                    )}
+                  </span>
+                  <span className="tactical-map-legend-label-oob" style={{ fontSize: 9, color: 'var(--ink-mute)' }}>{meta.label}</span>
+                </div>
+              );
+            })}
+          </>
+        )}
       </div>
 
       <StylePicker />

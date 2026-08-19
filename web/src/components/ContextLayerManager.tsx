@@ -16,7 +16,7 @@ export default function ContextLayerManager() {
 
       <div className="context-layer-manager-list" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div className="context-layer-manager-intro" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', padding: '0 2px', lineHeight: 1.5 }}>
-          FIXED / EXTERNALLY-SERVED REFERENCE DATA — hosted in GeoServer, rendered as WFS vector overlays.
+          REFERENCE &amp; LIVE OVERLAYS — GeoServer WFS vector data, small bundled datasets, and externally-hosted live feeds.
         </div>
 
         {CONTEXT_LAYERS.map((layer) => {
@@ -50,8 +50,8 @@ export default function ContextLayerManager() {
                   {layer.name}
                 </span>
                 <span className="context-layer-row-spacer" style={{ flex: 1 }} />
-                <span className="context-layer-row-source-badge" style={{ fontSize: 8, letterSpacing: '.1em', color: 'var(--ink-faint)' }}>
-                  WFS
+                <span className="context-layer-row-source-badge" style={{ fontSize: 8, letterSpacing: '.1em', color: layer.sourceType === 'live-raster' ? 'var(--amber)' : 'var(--ink-faint)' }}>
+                  {layer.sourceType === 'wfs' ? 'WFS' : layer.sourceType === 'static' ? 'STATIC' : 'LIVE'}
                 </span>
               </div>
               <div className="context-layer-row-description" style={{ fontSize: 9.5, color: 'var(--ink-mute2)', marginTop: 6, lineHeight: 1.4 }}>

@@ -2,19 +2,7 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { OOB_TREE } from '../assets/oob';
 import type { OobNode } from '../assets/oob';
-import { ancestorIds, findOobNode, statusMeta } from '../oobSelectors';
-
-const KIND_LABEL: Record<OobNode['kind'], string> = {
-  country: 'NATION',
-  branch: 'BRANCH',
-  fleet: 'FLEET',
-  command: 'TASK FORCE',
-  group: 'GROUP',
-  squadron: 'SQUADRON',
-  base: 'BASE',
-  ship: 'SHIP',
-  unit: 'UNIT',
-};
+import { ancestorIds, effectiveStatus, findOobNode, kindLabel, statusMeta } from '../oobSelectors';
 
 function rootAccent(rootId: string): string {
   return rootId === 'ru' ? 'var(--red)' : rootId === 'us' ? 'var(--cyan)' : 'var(--amber)';
@@ -28,6 +16,8 @@ function OobRow({
   toggle,
   selectedId,
   onSelect,
+  onOpen,
+  contactIdentityAssignments,
 }: {
   node: OobNode;
   depth: number;
@@ -36,13 +26,16 @@ function OobRow({
   toggle: (id: string) => void;
   selectedId: string | null;
   onSelect: (n: OobNode) => void;
+  onOpen: (n: OobNode) => void;
+  contactIdentityAssignments: Record<string, string>;
 }) {
   const hasChildren = !!node.children?.length;
   const isOpen = expanded.has(node.id);
   const isSelected = selectedId === node.id;
   const isCountry = node.kind === 'country';
   const isObject = node.entityType === 'object';
-  const meta = isObject ? statusMeta(node.status) : null;
+  const status = isObject ? effectiveStatus(node, contactIdentityAssignments) : undefined;
+  const meta = isObject ? statusMeta(status) : null;
 
   return (
     <div className="oob-row-wrap">
@@ -52,6 +45,7 @@ function OobRow({
           if (hasChildren) toggle(node.id);
           onSelect(node);
         }}
+        onDoubleClick={() => onOpen(node)}
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -71,7 +65,7 @@ function OobRow({
           className="oob-row-name"
           style={{
             fontSize: isCountry ? 11.5 : 10,
-            fontWeight: isCountry || node.kind === 'fleet' ? 700 : 500,
+            fontWeight: isCountry || node.kind === 'fleet' || node.kind === 'numberedAF' ? 700 : 500,
             fontFamily: isCountry ? 'var(--font-display)' : 'var(--font-mono)',
             letterSpacing: isCountry ? '.08em' : undefined,
             color: isSelected ? 'var(--ink-brighter)' : node.kind === 'country' ? 'var(--ink-bright)' : 'var(--ink-mute)',
@@ -82,13 +76,17 @@ function OobRow({
         >
           {node.name}
         </span>
-        {isObject && node.status !== 'VISIBLE' && (
+        {isObject && status !== 'VISIBLE' && (
           <span className="oob-row-status-label" style={{ fontSize: 7.5, letterSpacing: '.08em', color: meta!.color, flexShrink: 0 }}>
             {meta!.label}
           </span>
         )}
       </div>
-      {hasChildren && isOpen && node.children!.map((c) => <OobRow key={c.id} node={c} depth={depth + 1} accent={accent} expanded={expanded} toggle={toggle} selectedId={selectedId} onSelect={onSelect} />)}
+      {hasChildren &&
+        isOpen &&
+        node.children!.map((c) => (
+          <OobRow key={c.id} node={c} depth={depth + 1} accent={accent} expanded={expanded} toggle={toggle} selectedId={selectedId} onSelect={onSelect} onOpen={onOpen} contactIdentityAssignments={contactIdentityAssignments} />
+        ))}
     </div>
   );
 }
@@ -97,6 +95,8 @@ export default function OobManager() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const oobSelectedId = useStore((s) => s.oobSelectedId);
   const selectOob = useStore((s) => s.selectOob);
+  const openOob = useStore((s) => s.openOob);
+  const contactIdentityAssignments = useStore((s) => s.contactIdentityAssignments);
   const selected = oobSelectedId ? findOobNode(oobSelectedId) : null;
 
   useEffect(() => {
@@ -125,7 +125,7 @@ export default function OobManager() {
     });
   };
 
-  const selectedMeta = selected?.entityType === 'object' ? statusMeta(selected.status) : null;
+  const selectedMeta = selected?.entityType === 'object' ? statusMeta(effectiveStatus(selected, contactIdentityAssignments)) : null;
 
   return (
     <div className="oob-manager" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -138,14 +138,25 @@ export default function OobManager() {
 
       <div className="oob-manager-tree" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
         {OOB_TREE.map((root) => (
-          <OobRow key={root.id} node={root} depth={0} accent={rootAccent(root.id)} expanded={expanded} toggle={toggle} selectedId={oobSelectedId} onSelect={(n) => selectOob(n.id)} />
+          <OobRow
+            key={root.id}
+            node={root}
+            depth={0}
+            accent={rootAccent(root.id)}
+            expanded={expanded}
+            toggle={toggle}
+            selectedId={oobSelectedId}
+            onSelect={(n) => selectOob(n.id)}
+            onOpen={(n) => openOob(n.id)}
+            contactIdentityAssignments={contactIdentityAssignments}
+          />
         ))}
       </div>
 
       {selected && (
         <div className="oob-manager-detail" style={{ borderTop: '1px solid var(--hairline)', padding: '9px 12px', background: 'var(--panel-3)' }}>
           <div className="oob-manager-detail-kind" style={{ fontSize: 8.5, letterSpacing: '.18em', color: 'var(--ink-faint)' }}>
-            {KIND_LABEL[selected.kind]}
+            {kindLabel(selected.kind)}
           </div>
           <div className="oob-manager-detail-name" style={{ fontFamily: 'var(--font-display)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-bright)', marginTop: 3 }}>
             {selected.name}

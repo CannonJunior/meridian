@@ -15,6 +15,8 @@ services:
       # extension) isn't shadowed. Ours is named to sort after it.
       - ./postgis-init/20-ports.sql:/docker-entrypoint-initdb.d/20-ports.sql:ro
       - ./postgis-init/30-airfields.sql:/docker-entrypoint-initdb.d/30-airfields.sql:ro
+      - ./postgis-init/40-eez.sql:/docker-entrypoint-initdb.d/40-eez.sql:ro
+      - ./postgis-init/50-shipping-lanes.sql:/docker-entrypoint-initdb.d/50-shipping-lanes.sql:ro
     ports:
       - "${POSTGIS_PORT:-5555}:5432"
     healthcheck:

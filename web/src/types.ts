@@ -4,6 +4,9 @@ export type Category = 'TEL' | 'SAM' | 'C2' | 'SHIP' | 'BOAT' | 'RADAR' | 'UAS' 
 export type SensorCoverage = 'cone' | 'wide' | 'area' | 'none';
 export type View = 'MAP' | 'BOARD';
 export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone' | 'oobObject' | 'port' | 'airfield';
+// Which target list is currently driving the collection-table's contents —
+// see assets/targetLists.ts for each list's definition and membership rule.
+export type TargetListId = 'hptl' | 'jtl' | 'jiptl' | 'rtl' | 'nsl';
 
 export interface Approvals {
   pid: boolean;

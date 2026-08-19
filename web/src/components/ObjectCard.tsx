@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { affColor, affFull, affShapeStyle, threatColor } from '../selectors';
-import { findOobNode, statusMeta } from '../oobSelectors';
+import { effectiveStatus, findOobNode, kindLabel, oobTabNames, statusMeta } from '../oobSelectors';
+import { toLngLat } from '../mapProjection';
+import { VESSEL_PROFILES } from '../assets/vesselProfiles';
 import TargetCardBody from './cards/TargetCardBody';
 import SensorUnitCardBody from './cards/SensorUnitCardBody';
 import NaiCardBody from './cards/NaiCardBody';
@@ -10,6 +12,70 @@ import OobObjectCardBody from './cards/OobObjectCardBody';
 import PortCardBody from './cards/PortCardBody';
 import AirfieldCardBody from './cards/AirfieldCardBody';
 import type { CardKind } from '../types';
+
+function CrosshairsIcon({ color }: { color: string }) {
+  return (
+    <svg className="object-card-crosshairs-glyph" width="13" height="13" viewBox="0 0 20 20" fill="none">
+      <circle className="object-card-crosshairs-glyph-ring" cx="10" cy="10" r="6" stroke={color} strokeWidth="1.6" />
+      <circle className="object-card-crosshairs-glyph-dot" cx="10" cy="10" r="1.1" fill={color} />
+      <line className="object-card-crosshairs-glyph-tick-top" x1="10" y1="0" x2="10" y2="2.5" stroke={color} strokeWidth="1.6" />
+      <line className="object-card-crosshairs-glyph-tick-bottom" x1="10" y1="17.5" x2="10" y2="20" stroke={color} strokeWidth="1.6" />
+      <line className="object-card-crosshairs-glyph-tick-left" x1="0" y1="10" x2="2.5" y2="10" stroke={color} strokeWidth="1.6" />
+      <line className="object-card-crosshairs-glyph-tick-right" x1="17.5" y1="10" x2="20" y2="10" stroke={color} strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function useCardLocation(kind: CardKind, id: string | null): { lng: number; lat: number } | null {
+  const targets = useStore((s) => s.targets);
+  const sensors = useStore((s) => s.sensors);
+  const units = useStore((s) => s.units);
+  const nais = useStore((s) => s.nais);
+  const ports = useStore((s) => s.ports);
+  const airfields = useStore((s) => s.airfields);
+
+  function fromXY(x: number, y: number) {
+    const [lng, lat] = toLngLat(x, y);
+    return { lng, lat };
+  }
+
+  if (kind === 'zone') {
+    const drift = targets.find((t) => t.id === 'T2210');
+    return drift ? fromXY(drift.x, drift.y) : null;
+  }
+
+  if (id == null) return null;
+
+  if (kind === 'target') {
+    const t = targets.find((x) => x.id === id);
+    return t ? fromXY(t.x, t.y) : null;
+  }
+  if (kind === 'sensor') {
+    const s = sensors.find((x) => x.id === id);
+    return s ? fromXY(s.x, s.y) : null;
+  }
+  if (kind === 'unit') {
+    const u = units.find((x) => x.id === id);
+    return u ? fromXY(u.x, u.y) : null;
+  }
+  if (kind === 'nai') {
+    const n = nais.find((x) => x.id === id) ?? nais[0];
+    return n ? fromXY(n.x + n.w / 2, n.y + n.h / 2) : null;
+  }
+  if (kind === 'oobObject') {
+    const n = findOobNode(id);
+    return n?.lng != null && n.lat != null ? { lng: n.lng, lat: n.lat } : null;
+  }
+  if (kind === 'port') {
+    const p = ports[id];
+    return p ? { lng: p.lng, lat: p.lat } : null;
+  }
+  if (kind === 'airfield') {
+    const a = airfields[id];
+    return a ? { lng: a.lng, lat: a.lat } : null;
+  }
+  return null;
+}
 
 interface HeaderInfo {
   idShort: string;
@@ -32,6 +98,7 @@ function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
   const nais = useStore((s) => s.nais);
   const ports = useStore((s) => s.ports);
   const airfields = useStore((s) => s.airfields);
+  const contactIdentityAssignments = useStore((s) => s.contactIdentityAssignments);
 
   if (id == null) return null;
 
@@ -93,20 +160,58 @@ function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
   if (kind === 'oobObject') {
     const n = findOobNode(id);
     if (!n) return null;
-    const meta = statusMeta(n.status);
-    const hullMatch = n.name.match(/\(([^)]+)\)/);
+    const tabNames = oobTabNames(n);
+    if (n.kind === 'contact') {
+      const assignedId = contactIdentityAssignments[n.id];
+      const assigned = assignedId ? VESSEL_PROFILES.find((p) => p.id === assignedId) : null;
+      const status = effectiveStatus(n, contactIdentityAssignments);
+      const meta = statusMeta(status);
+      return {
+        idShort: n.name,
+        name: assigned ? assigned.className : 'UNIDENTIFIED CONTACT',
+        affColor: 'var(--yellow)',
+        affShapeStyle: {},
+        affFull: 'UNKNOWN',
+        affGlow: 'var(--yellow)',
+        affWash: 'rgba(255,210,63,.08)',
+        typePillLabel: meta.label,
+        typePillColor: meta.color,
+        typePillBorder: meta.color,
+        tabNames,
+      };
+    }
+    if (n.entityType === 'object') {
+      const meta = statusMeta(n.status);
+      const hullMatch = n.name.match(/\(([^)]+)\)/);
+      return {
+        idShort: hullMatch ? hullMatch[1] : n.name,
+        name: hullMatch ? n.name.slice(0, hullMatch.index).trim() : n.name,
+        affColor: 'var(--cyan)',
+        affShapeStyle: { borderRadius: '50%' },
+        affFull: 'FRIENDLY',
+        affGlow: 'var(--cyan)',
+        affWash: 'rgba(63,210,230,.08)',
+        typePillLabel: meta.label,
+        typePillColor: meta.color,
+        typePillBorder: meta.color,
+        tabNames,
+      };
+    }
+    // Organizational node (command / division / wing / squadron, etc.) — no
+    // hull number, status, or position to show; a lighter header + no
+    // SENSORS & ARMAMENT tab, since it isn't a single physical platform.
     return {
-      idShort: hullMatch ? hullMatch[1] : n.name,
-      name: hullMatch ? n.name.slice(0, hullMatch.index).trim() : n.name,
+      idShort: kindLabel(n.kind),
+      name: n.name,
       affColor: 'var(--cyan)',
-      affShapeStyle: { borderRadius: '50%' },
+      affShapeStyle: {},
       affFull: 'FRIENDLY',
       affGlow: 'var(--cyan)',
       affWash: 'rgba(63,210,230,.08)',
-      typePillLabel: meta.label,
-      typePillColor: meta.color,
-      typePillBorder: meta.color,
-      tabNames: ['OVERVIEW', 'HIERARCHY', 'ASSOCIATIONS'],
+      typePillLabel: n.role || kindLabel(n.kind),
+      typePillColor: 'var(--cyan)',
+      typePillBorder: 'var(--cyan)',
+      tabNames,
     };
   }
 
@@ -171,10 +276,12 @@ export default function ObjectCard() {
   const setCardTab = useStore((s) => s.setCardTab);
   const closeCard = useStore((s) => s.closeCard);
   const moveCardTo = useStore((s) => s.moveCardTo);
+  const flyTo = useStore((s) => s.flyTo);
 
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
 
   const info = useHeaderInfo(cardKind, cardId);
+  const location = useCardLocation(cardKind, cardId);
 
   useEffect(() => {
     function onMove(e: PointerEvent) {
@@ -234,9 +341,19 @@ export default function ObjectCard() {
           {info.typePillLabel}
         </span>
         <span className="object-card-spacer" style={{ flex: 1 }} />
-        <span className="object-card-kicker" style={{ fontSize: 8.5, letterSpacing: '.16em', color: 'var(--ink-faint)' }}>
-          OBJECT CARD
-        </span>
+        <div className="object-card-capabilities" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {location && (
+            <div
+              className="object-card-capability-button object-card-capability-crosshairs"
+              onClick={() => flyTo(location.lng, location.lat)}
+              onPointerDown={(e) => e.stopPropagation()}
+              title="Center map on this object"
+              style={{ width: 22, height: 22, border: '1px solid #2a3d3a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+            >
+              <CrosshairsIcon color="var(--ink-mute)" />
+            </div>
+          )}
+        </div>
         <div
           className="object-card-close-button"
           onClick={closeCard}

@@ -33,10 +33,36 @@ function OobIcon({ color }: { color: string }) {
   );
 }
 
+function ListsIcon({ color }: { color: string }) {
+  return (
+    <svg className="icon-sidebar-glyph icon-sidebar-glyph-lists" width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle className="icon-sidebar-lists-glyph-dot-1" cx="3" cy="4.5" r="1.3" fill={color} />
+      <line className="icon-sidebar-lists-glyph-line-1" x1="7" y1="4.5" x2="18" y2="4.5" stroke={color} strokeWidth="1.4" />
+      <circle className="icon-sidebar-lists-glyph-dot-2" cx="3" cy="10" r="1.3" fill={color} opacity="0.75" />
+      <line className="icon-sidebar-lists-glyph-line-2" x1="7" y1="10" x2="18" y2="10" stroke={color} strokeWidth="1.4" opacity="0.75" />
+      <circle className="icon-sidebar-lists-glyph-dot-3" cx="3" cy="15.5" r="1.3" fill={color} opacity="0.5" />
+      <line className="icon-sidebar-lists-glyph-line-3" x1="7" y1="15.5" x2="14" y2="15.5" stroke={color} strokeWidth="1.4" opacity="0.5" />
+    </svg>
+  );
+}
+
+function StyleIcon({ color }: { color: string }) {
+  return (
+    <svg className="icon-sidebar-glyph icon-sidebar-glyph-style" width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <rect className="icon-sidebar-style-glyph-swatch-tl" x="2" y="2" width="7" height="7" fill={color} opacity="0.9" />
+      <rect className="icon-sidebar-style-glyph-swatch-tr" x="11" y="2" width="7" height="7" stroke={color} strokeWidth="1.4" />
+      <rect className="icon-sidebar-style-glyph-swatch-bl" x="2" y="11" width="7" height="7" stroke={color} strokeWidth="1.4" />
+      <rect className="icon-sidebar-style-glyph-swatch-br" x="11" y="11" width="7" height="7" fill={color} opacity="0.5" />
+    </svg>
+  );
+}
+
 const MANAGERS: { id: Manager; label: string; accent: string; icon: (c: string) => ReactNode }[] = [
   { id: 'context', label: 'CONTEXT LAYERS', accent: 'var(--green)', icon: (c) => <ContextIcon color={c} /> },
   { id: 'isr', label: 'ISR COLLECTION', accent: 'var(--cyan)', icon: (c) => <IsrIcon color={c} /> },
   { id: 'oob', label: 'ORDER OF BATTLE', accent: 'var(--blue)', icon: (c) => <OobIcon color={c} /> },
+  { id: 'lists', label: 'TARGET LISTS', accent: 'var(--yellow)', icon: (c) => <ListsIcon color={c} /> },
+  { id: 'style', label: 'STYLE MANAGER', accent: 'var(--amber)', icon: (c) => <StyleIcon color={c} /> },
 ];
 
 export default function IconSidebar() {

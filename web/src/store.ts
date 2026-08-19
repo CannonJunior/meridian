@@ -1,13 +1,19 @@
 import { create } from 'zustand';
 import { sendAction } from './wsClient';
-import type { Approvals, CardKind, State, View } from './types';
+import type { Approvals, CardKind, State, TargetListId, View } from './types';
 import { findOobNode } from './oobSelectors';
 import { deepEqual } from './deepEqual';
 import { CONTEXT_LAYERS } from './assets/contextLayers';
 import type { PortFeature } from './portFeature';
 import type { AirfieldFeature } from './airfieldFeature';
 
-export type Manager = 'context' | 'isr' | 'oob';
+export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists';
+export type LegendMode = 'AFFILIATION' | 'OOB';
+
+export interface OobStyle {
+  radarColor: string;
+  weaponColor: string;
+}
 
 interface UiState {
   connected: boolean;
@@ -18,10 +24,19 @@ interface UiState {
   cardY: number;
   basemapId: string;
   activeManager: Manager;
+  legendMode: LegendMode;
+  activeListId: TargetListId;
   oobSelectedId: string | null;
   contextLayerVisibility: Record<string, boolean>;
   ports: Record<string, PortFeature>;
   airfields: Record<string, AirfieldFeature>;
+  flyToRequest: { lng: number; lat: number; zoom: number } | null;
+  oobStyle: OobStyle;
+  // OOB contact id -> assigned VesselProfile id (assets/vesselProfiles.ts).
+  // A client-side overlay on top of the static OOB tree — assigning an
+  // identity doesn't mutate assets/oob.ts data, it just records the
+  // analyst's tentative call, which components read alongside the node.
+  contactIdentityAssignments: Record<string, string>;
 }
 
 interface Actions {
@@ -46,10 +61,17 @@ interface Actions {
   moveCardTo: (x: number, y: number) => void;
   setBasemap: (id: string) => void;
   setActiveManager: (m: Manager) => void;
+  setLegendMode: (m: LegendMode) => void;
+  setActiveListId: (id: TargetListId) => void;
   selectOob: (id: string) => void;
+  openOob: (id: string) => void;
   toggleContextLayer: (id: string) => void;
   openPort: (feature: PortFeature) => void;
   openAirfield: (feature: AirfieldFeature) => void;
+  flyTo: (lng: number, lat: number, zoom?: number) => void;
+  setOobStyleColor: (key: keyof OobStyle, hex: string) => void;
+  assignContactIdentity: (contactId: string, profileId: string) => void;
+  clearContactIdentity: (contactId: string) => void;
 }
 
 type Store = State & UiState & Actions;
@@ -77,10 +99,15 @@ export const useStore = create<Store>((set, get) => ({
   cardY: 96,
   basemapId: 'tactical',
   activeManager: 'isr',
+  legendMode: 'AFFILIATION',
+  activeListId: 'hptl',
   oobSelectedId: null,
   contextLayerVisibility: Object.fromEntries(CONTEXT_LAYERS.map((l) => [l.id, l.defaultVisible])),
   ports: {},
   airfields: {},
+  flyToRequest: null,
+  oobStyle: { radarColor: '#3fd2e6', weaponColor: '#ffab38' },
+  contactIdentityAssignments: {},
 
   setFromServer: (s) =>
     set((prev) => {
@@ -124,6 +151,8 @@ export const useStore = create<Store>((set, get) => ({
   moveCardTo: (x, y) => set({ cardX: Math.max(0, x), cardY: Math.max(0, y) }),
   setBasemap: (id) => set({ basemapId: id }),
   setActiveManager: (m) => set({ activeManager: m }),
+  setLegendMode: (m) => set({ legendMode: m }),
+  setActiveListId: (id) => set({ activeListId: id }),
   selectOob: (id) => {
     const node = findOobNode(id);
     set({
@@ -132,7 +161,20 @@ export const useStore = create<Store>((set, get) => ({
       ...(node?.entityType === 'object' ? { cardKind: 'oobObject' as const, cardId: id, cardTab: 0 } : {}),
     });
   },
+  openOob: (id) => set({ oobSelectedId: id, activeManager: 'oob', cardKind: 'oobObject', cardId: id, cardTab: 0 }),
   toggleContextLayer: (id) => set((prev) => ({ contextLayerVisibility: { ...prev.contextLayerVisibility, [id]: !prev.contextLayerVisibility[id] } })),
   openPort: (feature) => set((prev) => ({ ports: { ...prev.ports, [feature.id]: feature }, cardKind: 'port', cardId: feature.id, cardTab: 0 })),
   openAirfield: (feature) => set((prev) => ({ airfields: { ...prev.airfields, [feature.id]: feature }, cardKind: 'airfield', cardId: feature.id, cardTab: 0 })),
+  flyTo: (lng, lat, zoom = 13) => {
+    set({ flyToRequest: { lng, lat, zoom } });
+    if (get().view !== 'MAP') get().setView('MAP');
+  },
+  setOobStyleColor: (key, hex) => set((prev) => ({ oobStyle: { ...prev.oobStyle, [key]: hex } })),
+  assignContactIdentity: (contactId, profileId) => set((prev) => ({ contactIdentityAssignments: { ...prev.contactIdentityAssignments, [contactId]: profileId } })),
+  clearContactIdentity: (contactId) =>
+    set((prev) => {
+      const next = { ...prev.contactIdentityAssignments };
+      delete next[contactId];
+      return { contactIdentityAssignments: next };
+    }),
 }));

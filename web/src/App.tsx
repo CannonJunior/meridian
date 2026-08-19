@@ -4,11 +4,14 @@ import IconSidebar from './components/IconSidebar';
 import ContextLayerManager from './components/ContextLayerManager';
 import LeftRail from './components/LeftRail';
 import OobManager from './components/OobManager';
+import ListsManager from './components/ListsManager';
+import StyleManager from './components/StyleManager';
 import CenterPanel from './components/CenterPanel';
 import TargetWorkup from './components/TargetWorkup';
 import BottomPanel from './components/BottomPanel';
 import ObjectCard from './components/ObjectCard';
 import { useStore } from './store';
+import { RIGHT_RAIL_WIDTH } from './layout';
 
 export default function App() {
   const cardId = useStore((s) => s.cardId);
@@ -34,7 +37,7 @@ export default function App() {
       <TopClassificationBanner />
       <CommandBar />
 
-      <div className="app-main-row" style={{ display: 'grid', gridTemplateColumns: '48px 308px 1fr 372px', minHeight: 0, overflow: 'hidden' }}>
+      <div className="app-main-row" style={{ display: 'grid', gridTemplateColumns: `48px 308px 1fr ${RIGHT_RAIL_WIDTH}px`, minHeight: 0, overflow: 'hidden' }}>
         <IconSidebar />
         <div className="app-manager-slot app-manager-slot-context" style={{ display: activeManager === 'context' ? 'contents' : 'none' }}>
           <ContextLayerManager />
@@ -44,6 +47,12 @@ export default function App() {
         </div>
         <div className="app-manager-slot app-manager-slot-oob" style={{ display: activeManager === 'oob' ? 'contents' : 'none' }}>
           <OobManager />
+        </div>
+        <div className="app-manager-slot app-manager-slot-lists" style={{ display: activeManager === 'lists' ? 'contents' : 'none' }}>
+          <ListsManager />
+        </div>
+        <div className="app-manager-slot app-manager-slot-style" style={{ display: activeManager === 'style' ? 'contents' : 'none' }}>
+          <StyleManager />
         </div>
         <CenterPanel />
         <TargetWorkup />

@@ -1,6 +1,7 @@
 import { useStore } from '../store';
 import { affColor, affShapeStyle, C, effName, sensorName, statusColorFor, STAGES, confColor } from '../selectors';
 import type { Target } from '../types';
+import { TARGET_LISTS, targetsForList } from '../assets/targetLists';
 
 const GRID_COLS = '34px 96px 1fr 64px 96px 52px 70px 100px 58px';
 const AFF_FULL: Record<Target['aff'], string> = { HOS: 'HOSTILE', UNK: 'UNKNOWN', FRD: 'FRIENDLY', NEU: 'NEUTRAL' };
@@ -12,22 +13,30 @@ export default function CollectionTable() {
   const selectedId = useStore((s) => s.selectedId);
   const selectTarget = useStore((s) => s.selectTarget);
   const openCard = useStore((s) => s.openCard);
+  const activeListId = useStore((s) => s.activeListId);
 
-  const tracksTotal = targets.filter((t) => t.stage < 4).length;
-  const hostileCount = targets.filter((t) => t.aff === 'HOS' && t.stage < 4).length;
-  const execCount = targets.filter((t) => t.stage === 3).length;
+  const activeList = TARGET_LISTS.find((l) => l.id === activeListId) ?? TARGET_LISTS[0];
+  const listTargets = targetsForList(targets, activeListId);
+
+  const tracksTotal = listTargets.filter((t) => t.stage < 4).length;
+  const hostileCount = listTargets.filter((t) => t.aff === 'HOS' && t.stage < 4).length;
+  const execCount = listTargets.filter((t) => t.stage === 3).length;
 
   return (
     <div className="collection-table" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, borderRight: '1px solid var(--hairline)', overflow: 'hidden' }}>
       <div className="collection-table-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: '1px solid var(--hairline)', background: 'var(--panel-2)' }}>
-        <span className="collection-table-header-accent" style={{ width: 5, height: 13, background: 'var(--amber)' }} />
-        <span className="collection-table-title" style={{ fontFamily: 'var(--font-display)', fontSize: 10.5, letterSpacing: '.2em', color: 'var(--amber)', fontWeight: 600 }}>
-          TARGET COLLECTION · HPTL
+        <span className="collection-table-header-accent" style={{ width: 5, height: 13, background: activeList.accent }} />
+        <span className="collection-table-title" style={{ fontFamily: 'var(--font-display)', fontSize: 10.5, letterSpacing: '.2em', color: activeList.accent, fontWeight: 600 }}>
+          TARGET COLLECTION · {activeList.acronym}
         </span>
         <span className="collection-table-spacer" style={{ flex: 1 }} />
         <span className="collection-table-summary" style={{ fontSize: 9, color: 'var(--ink-dim2)', letterSpacing: '.08em' }}>
           {tracksTotal} TRACKS · {hostileCount} HOSTILE · {execCount} IN EXECUTION
         </span>
+      </div>
+
+      <div className="collection-table-list-subtitle" style={{ fontSize: 9, color: 'var(--ink-faint)', padding: '5px 12px', borderBottom: '1px solid #131e1d', lineHeight: 1.4 }}>
+        {activeList.name} — {activeList.description}
       </div>
 
       <div className="collection-table-column-headers" style={{ display: 'grid', gridTemplateColumns: GRID_COLS, gap: 6, padding: '6px 12px', borderBottom: '1px solid #131e1d', fontSize: 8, letterSpacing: '.1em', color: 'var(--ink-faint)' }}>
@@ -43,7 +52,12 @@ export default function CollectionTable() {
       </div>
 
       <div className="collection-table-rows" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
-        {targets.map((t) => {
+        {listTargets.length === 0 && (
+          <div className="collection-table-empty" style={{ padding: '18px 12px', fontSize: 9.5, color: 'var(--ink-faint)', letterSpacing: '.08em', textAlign: 'center' }}>
+            NO TARGETS ON THIS LIST
+          </div>
+        )}
+        {listTargets.map((t) => {
           const selected = t.id === selectedId;
           const priColor = t.pri && t.pri <= 3 ? C.amber : '#7a8d8a';
           const stage = STAGES[t.stage];
