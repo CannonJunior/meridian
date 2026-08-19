@@ -195,18 +195,33 @@ const updateSensor = db.prepare(`UPDATE sensors SET status=@status, tasking=@tas
 const trimLog = db.prepare(`DELETE FROM log WHERE seq NOT IN (SELECT seq FROM log ORDER BY seq DESC LIMIT 60)`);
 const updateMeta = db.prepare(`UPDATE meta SET t=@t, selectedId=@selectedId, view=@view, roeIdx=@roeIdx WHERE id=1`);
 
-export const persistTick = db.transaction((state: State) => {
+// Log entries are only ever prepended (never mutated), so the entries added
+// since the last persist are exactly the leading run of `next` that doesn't
+// reach back into `prev` — no need to round-trip the DB to find them.
+function newLogEntries(next: LogEntry[], prev: LogEntry[]): LogEntry[] {
+  if (next === prev) return [];
+  const boundary = prev[0];
+  const out: LogEntry[] = [];
+  for (const l of next) {
+    if (l === boundary) break;
+    out.push(l);
+  }
+  return out;
+}
+
+export const persistTick = db.transaction((state: State, prev: State) => {
   for (const t of state.targets) {
     updateTarget.run({ ...t, effector: t.effector ?? null, bda: t.bda ?? null, engagedAt: t.engagedAt ?? null, nsl: t.nsl ? 1 : 0, appr_pid: t.appr.pid ? 1 : 0, appr_jag: t.appr.jag ? 1 : 0, appr_strike: t.appr.strike ? 1 : 0, appr_tea: t.appr.tea ? 1 : 0 });
   }
-  for (const s of state.sensors) updateSensor.run({ id: s.id, status: s.status, tasking: s.tasking });
-  if (state.log.length) {
-    // only the newest entries can have been added since last persist; insert any not yet stored
-    const known = new Set((db.prepare('SELECT t, text FROM log ORDER BY seq DESC LIMIT 60').all() as any[]).map((r) => r.t + '|' + r.text));
-    for (const l of state.log.slice().reverse()) {
-      if (!known.has(l.t + '|' + l.text)) insertLog.run(l);
-    }
-    trimLog.run();
+  // Sensors only change on a retask action (sim ticks never touch them) —
+  // skip the write entirely when the array is untouched.
+  if (state.sensors !== prev.sensors) {
+    for (const s of state.sensors) updateSensor.run({ id: s.id, status: s.status, tasking: s.tasking });
+  }
+  if (state.log !== prev.log) {
+    const fresh = newLogEntries(state.log, prev.log);
+    for (const l of fresh.slice().reverse()) insertLog.run(l); // reverse so autoincrement seq matches chronological order
+    if (fresh.length) trimLog.run();
   }
   updateMeta.run(state);
 });

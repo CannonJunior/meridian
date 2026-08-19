@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<StyledLayerDescriptor version="1.0.0"
+  xmlns="http://www.opengis.net/sld" xmlns:ogc="http://www.opengis.net/ogc"
+  xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.0.0/StyledLayerDescriptor.xsd">
+  <NamedLayer>
+    <Name>airfields</Name>
+    <UserStyle>
+      <Title>Airfields</Title>
+      <FeatureTypeStyle>
+        <Rule>
+          <Name>boundary</Name>
+          <ogc:Filter><ogc:PropertyIsEqualTo><ogc:PropertyName>kind</ogc:PropertyName><ogc:Literal>boundary</ogc:Literal></ogc:PropertyIsEqualTo></ogc:Filter>
+          <PolygonSymbolizer>
+            <Fill><CssParameter name="fill">#ffab38</CssParameter><CssParameter name="fill-opacity">0.06</CssParameter></Fill>
+            <Stroke><CssParameter name="stroke">#ffab38</CssParameter><CssParameter name="stroke-width">1.2</CssParameter></Stroke>
+          </PolygonSymbolizer>
+        </Rule>
+        <Rule>
+          <Name>runway</Name>
+          <ogc:Filter><ogc:PropertyIsEqualTo><ogc:PropertyName>kind</ogc:PropertyName><ogc:Literal>runway</ogc:Literal></ogc:PropertyIsEqualTo></ogc:Filter>
+          <PolygonSymbolizer>
+            <Fill><CssParameter name="fill">#cdd9d7</CssParameter><CssParameter name="fill-opacity">0.85</CssParameter></Fill>
+            <Stroke><CssParameter name="stroke">#06090a</CssParameter><CssParameter name="stroke-width">0.5</CssParameter></Stroke>
+          </PolygonSymbolizer>
+        </Rule>
+        <Rule>
+          <Name>taxiway</Name>
+          <ogc:Filter><ogc:PropertyIsEqualTo><ogc:PropertyName>kind</ogc:PropertyName><ogc:Literal>taxiway</ogc:Literal></ogc:PropertyIsEqualTo></ogc:Filter>
+          <PolygonSymbolizer>
+            <Fill><CssParameter name="fill">#9fb2ae</CssParameter><CssParameter name="fill-opacity">0.7</CssParameter></Fill>
+            <Stroke><CssParameter name="stroke">#06090a</CssParameter><CssParameter name="stroke-width">0.3</CssParameter></Stroke>
+          </PolygonSymbolizer>
+        </Rule>
+      </FeatureTypeStyle>
+    </UserStyle>
+  </NamedLayer>
+</StyledLayerDescriptor>

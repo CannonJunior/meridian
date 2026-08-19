@@ -10,9 +10,15 @@
   "scripts": {
     "dev": "concurrently -k -n server,web -c yellow,cyan \"npm run dev -w server\" \"npm run dev -w web\"",
     "build": "npm run build -w server && npm run build -w web",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w web"
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
+    "geo:up": "docker compose -f geoserver/docker-compose.yml up -d",
+    "geo:down": "docker compose -f geoserver/docker-compose.yml down",
+    "geo:logs": "docker compose -f geoserver/docker-compose.yml logs -f"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
+  },
+  "dependencies": {
+    "@esbuild/linux-x64": "^0.28.2"
   }
 }

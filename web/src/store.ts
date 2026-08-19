@@ -1,6 +1,13 @@
 import { create } from 'zustand';
 import { sendAction } from './wsClient';
 import type { Approvals, CardKind, State, View } from './types';
+import { findOobNode } from './oobSelectors';
+import { deepEqual } from './deepEqual';
+import { CONTEXT_LAYERS } from './assets/contextLayers';
+import type { PortFeature } from './portFeature';
+import type { AirfieldFeature } from './airfieldFeature';
+
+export type Manager = 'context' | 'isr' | 'oob';
 
 interface UiState {
   connected: boolean;
@@ -10,6 +17,11 @@ interface UiState {
   cardX: number;
   cardY: number;
   basemapId: string;
+  activeManager: Manager;
+  oobSelectedId: string | null;
+  contextLayerVisibility: Record<string, boolean>;
+  ports: Record<string, PortFeature>;
+  airfields: Record<string, AirfieldFeature>;
 }
 
 interface Actions {
@@ -32,6 +44,12 @@ interface Actions {
   closeCard: () => void;
   setCardTab: (i: number) => void;
   moveCardTo: (x: number, y: number) => void;
+  setBasemap: (id: string) => void;
+  setActiveManager: (m: Manager) => void;
+  selectOob: (id: string) => void;
+  toggleContextLayer: (id: string) => void;
+  openPort: (feature: PortFeature) => void;
+  openAirfield: (feature: AirfieldFeature) => void;
 }
 
 type Store = State & UiState & Actions;
@@ -57,12 +75,27 @@ export const useStore = create<Store>((set, get) => ({
   cardTab: 0,
   cardX: 330,
   cardY: 96,
+  basemapId: 'tactical',
+  activeManager: 'isr',
+  oobSelectedId: null,
+  contextLayerVisibility: Object.fromEntries(CONTEXT_LAYERS.map((l) => [l.id, l.defaultVisible])),
+  ports: {},
+  airfields: {},
 
-  setFromServer: (s) => set(s),
+  setFromServer: (s) =>
+    set((prev) => {
+      const patch: Partial<State> = {};
+      for (const key of Object.keys(s) as (keyof State)[]) {
+        if (!deepEqual(prev[key], s[key])) {
+          (patch as Record<string, unknown>)[key] = s[key];
+        }
+      }
+      return patch;
+    }),
   setConnected: (v) => set({ connected: v }),
 
   selectTarget: (id) => {
-    set({ selectedId: id });
+    set({ selectedId: id, cardKind: 'target', cardId: id, cardTab: 0 });
     sendAction('selectTarget', { id });
   },
   setView: (view) => {
@@ -89,4 +122,17 @@ export const useStore = create<Store>((set, get) => ({
   closeCard: () => set({ cardId: null }),
   setCardTab: (i) => set({ cardTab: i }),
   moveCardTo: (x, y) => set({ cardX: Math.max(0, x), cardY: Math.max(0, y) }),
+  setBasemap: (id) => set({ basemapId: id }),
+  setActiveManager: (m) => set({ activeManager: m }),
+  selectOob: (id) => {
+    const node = findOobNode(id);
+    set({
+      oobSelectedId: id,
+      activeManager: 'oob',
+      ...(node?.entityType === 'object' ? { cardKind: 'oobObject' as const, cardId: id, cardTab: 0 } : {}),
+    });
+  },
+  toggleContextLayer: (id) => set((prev) => ({ contextLayerVisibility: { ...prev.contextLayerVisibility, [id]: !prev.contextLayerVisibility[id] } })),
+  openPort: (feature) => set((prev) => ({ ports: { ...prev.ports, [feature.id]: feature }, cardKind: 'port', cardId: feature.id, cardTab: 0 })),
+  openAirfield: (feature) => set((prev) => ({ airfields: { ...prev.airfields, [feature.id]: feature }, cardKind: 'airfield', cardId: feature.id, cardTab: 0 })),
 }));

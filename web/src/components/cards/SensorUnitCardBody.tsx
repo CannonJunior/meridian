@@ -11,15 +11,17 @@ const COV_LABEL: Record<string, string> = {
 };
 
 export default function SensorUnitCardBody({ kind, id, tab }: { kind: CardKind; id: string; tab: number }) {
-  const state = useStore((s) => s);
+  const sensors = useStore((s) => s.sensors);
+  const units = useStore((s) => s.units);
+  const targets = useStore((s) => s.targets);
   const openCard = useStore((s) => s.openCard);
 
-  const ae = kind === 'sensor' ? state.sensors.find((x) => x.id === id) : state.units.find((x) => x.id === id);
+  const ae = kind === 'sensor' ? sensors.find((x) => x.id === id) : units.find((x) => x.id === id);
   if (!ae) return null;
 
   const isSensor = kind === 'sensor';
   const stc = ae.status === 'DEGRADED' ? C.red : ae.status === 'TASKED' ? C.amber : C.cyan;
-  const linked = state.targets
+  const linked = targets
     .filter((t) => (isSensor ? t.custody === ae.id : 'effId' in ae && ae.effId && t.effector === ae.effId))
     .map((t) => ({ idShort: t.id.slice(1), name: t.name, affColor: affColor(t.aff), affShape: affShapeStyle(t.aff), rel: isSensor ? 'CUSTODY' : 'PAIRED', relColor: isSensor ? C.cyan : C.amber, id: t.id }));
 
@@ -55,7 +57,7 @@ export default function SensorUnitCardBody({ kind, id, tab }: { kind: CardKind; 
           <KV label="COVERAGE" value={cov} />
         </KVGrid>
         <SectionLabel top={14}>{isSensor ? 'TRACKS UNDER CUSTODY' : 'PAIRED TARGETS'}</SectionLabel>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="sensor-unit-card-linked-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {linked.map((r) => (
             <LinkRow key={r.id} affColor={r.affColor} affShape={r.affShape} idShort={r.idShort} name={r.name} pillLabel={r.rel} pillColor={r.relColor} onClick={() => openCard(r.id)} />
           ))}
@@ -68,13 +70,15 @@ export default function SensorUnitCardBody({ kind, id, tab }: { kind: CardKind; 
   return (
     <>
       <SectionLabel>LINKED ENTITIES</SectionLabel>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="sensor-unit-card-linked-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {linked.map((r) => (
           <LinkRow key={r.id} affColor={r.affColor} affShape={r.affShape} idShort={r.idShort} name={r.name} pillLabel={r.rel} pillColor={r.relColor} onClick={() => openCard(r.id)} />
         ))}
         {linked.length === 0 && <EmptyNote>No linked tracks.</EmptyNote>}
       </div>
-      <div style={{ fontSize: 9, color: 'var(--ink-faint)', marginTop: 12, lineHeight: 1.5 }}>▸ Click a linked track to open its object card.</div>
+      <div className="sensor-unit-card-hint" style={{ fontSize: 9, color: 'var(--ink-faint)', marginTop: 12, lineHeight: 1.5 }}>
+        ▸ Click a linked track to open its object card.
+      </div>
     </>
   );
 }

@@ -3,7 +3,7 @@ export type Threat = 'CRIT' | 'HIGH' | 'MED' | 'LOW' | null;
 export type Category = 'TEL' | 'SAM' | 'C2' | 'SHIP' | 'BOAT' | 'RADAR' | 'UAS' | 'TROOP' | 'EMIT';
 export type SensorCoverage = 'cone' | 'wide' | 'area' | 'none';
 export type View = 'MAP' | 'BOARD';
-export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone';
+export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone' | 'oobObject' | 'port' | 'airfield';
 
 export interface Approvals {
   pid: boolean;

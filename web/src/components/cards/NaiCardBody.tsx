@@ -3,17 +3,19 @@ import { affColor, affShapeStyle, C, threatColor } from '../../selectors';
 import { EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
 
 export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
-  const state = useStore((s) => s);
+  const nais = useStore((s) => s.nais);
+  const sensors = useStore((s) => s.sensors);
+  const targets = useStore((s) => s.targets);
   const openEntity = useStore((s) => s.openEntity);
 
-  const n = state.nais.find((x) => x.id === id) ?? state.nais[0];
+  const n = nais.find((x) => x.id === id) ?? nais[0];
   if (!n) return null;
 
-  const cover = state.sensors
+  const cover = sensors
     .filter((s) => (s.tasking || '').indexOf(n.id) >= 0)
     .map((s) => ({ callsign: s.callsign, platform: s.platform, intType: s.intType, statusColor: s.status === 'DEGRADED' ? C.red : s.status === 'TASKED' ? C.amber : C.cyan, id: s.id }));
 
-  const inside = state.targets
+  const inside = targets
     .filter((t) => t.x >= n.x && t.x <= n.x + n.w && t.y >= n.y && t.y <= n.y + n.h)
     .map((t) => ({ idShort: t.id.slice(1), name: t.name, affColor: affColor(t.aff), affShape: affShapeStyle(t.aff), threat: t.threat || '—', threatColor: threatColor(t.threat), id: t.id }));
 
@@ -27,7 +29,7 @@ export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
           <KV label="AREA" value={`~${Math.round(n.w * 0.6)} × ${Math.round(n.h * 0.6)} NM`} />
           <KV label="STATUS" value="ACTIVE COLLECTION" color="var(--green)" />
         </KVGrid>
-        <div style={{ fontSize: 9.5, color: 'var(--ink-faint)', marginTop: 12, lineHeight: 1.5 }}>
+        <div className="nai-card-overview-note" style={{ fontSize: 9.5, color: 'var(--ink-faint)', marginTop: 12, lineHeight: 1.5 }}>
           Named Area of Interest — a geospatial trigger where collection is focused to answer a Priority Intelligence Requirement. See COLLECTION for tasked sensors and TRACKS for entities inside.
         </div>
       </>
@@ -38,13 +40,19 @@ export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
     return (
       <>
         <SectionLabel>SENSORS ON COLLECTION</SectionLabel>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div className="nai-card-sensor-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {cover.map((s) => (
-            <div key={s.id} onClick={() => openEntity('sensor', s.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.statusColor, flexShrink: 0 }} />
-              <span style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--ink-brighter)' }}>{s.callsign}</span>
-              <span style={{ fontSize: 10, color: 'var(--ink-mute)', flex: 1 }}>{s.platform}</span>
-              <span style={{ fontSize: 9, color: 'var(--cyan)' }}>{s.intType}</span>
+            <div key={s.id} className="nai-card-sensor-row" onClick={() => openEntity('sensor', s.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
+              <span className="nai-card-sensor-status-dot" style={{ width: 7, height: 7, borderRadius: '50%', background: s.statusColor, flexShrink: 0 }} />
+              <span className="nai-card-sensor-callsign" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--ink-brighter)' }}>
+                {s.callsign}
+              </span>
+              <span className="nai-card-sensor-platform" style={{ fontSize: 10, color: 'var(--ink-mute)', flex: 1 }}>
+                {s.platform}
+              </span>
+              <span className="nai-card-sensor-int-type" style={{ fontSize: 9, color: 'var(--cyan)' }}>
+                {s.intType}
+              </span>
             </div>
           ))}
           {cover.length === 0 && <EmptyNote>No sensors currently tasked to this NAI.</EmptyNote>}
@@ -56,7 +64,7 @@ export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
   return (
     <>
       <SectionLabel>TRACKS INSIDE NAI</SectionLabel>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="nai-card-tracks-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {inside.map((r) => (
           <LinkRow key={r.id} affColor={r.affColor} affShape={r.affShape} idShort={r.idShort} name={r.name} pillLabel={r.threat} pillColor={r.threatColor} onClick={() => openEntity('target', r.id)} />
         ))}

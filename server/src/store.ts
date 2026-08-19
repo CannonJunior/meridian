@@ -16,10 +16,11 @@ export function subscribe(listener: Listener): () => void {
 }
 
 export function update(fn: (s: State) => State): State {
-  const next = fn(state);
+  const prev = state;
+  const next = fn(prev);
   if (next !== state) {
     state = next;
-    persistTick(state);
+    persistTick(next, prev);
     for (const l of listeners) l(state);
   }
   return state;

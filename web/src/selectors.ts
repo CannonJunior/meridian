@@ -93,6 +93,17 @@ export function fmtDTG(tick: number): string {
   const d = new Date(DTG_BASE + tick * 1000);
   return `${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`;
 }
+
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+// The command-bar clock reflects the real wall-clock time (Zulu), unlike
+// fmtDTG/fmtLogTime above which run on the simulation's own tick-based clock.
+export function fmtRealDTG(d: Date): string {
+  return `${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}Z`;
+}
+export function fmtRealDateLine(d: Date): string {
+  return `${pad2(d.getUTCDate())} ${MONTHS[d.getUTCMonth()]} ${pad2(d.getUTCFullYear() % 100)} · ZULU`;
+}
 export function fmtLogTime(t: number): string {
   const d = new Date(DTG_BASE + t * 1000);
   return `${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}${pad2(d.getUTCSeconds())}`;
@@ -207,7 +218,7 @@ export interface AssocRow {
   oid?: string;
   border: string;
 }
-export function computeAssoc(sel: Target, state: State): AssocRow[] {
+export function computeAssoc(sel: Target, state: Pick<State, 'targets' | 'sensors' | 'effectors'>): AssocRow[] {
   type Raw = { kind: 'unit' | 'sensor' | 'effector' | 'target'; aff: Affiliation; id: string; name: string; rel: string; dist: string; clickable: boolean; oid?: string };
   const res: Raw[] = [];
   res.push({ kind: 'unit', aff: sel.aff, id: 'UNIT', name: unitFor(sel), rel: 'PARENT', dist: '', clickable: false });

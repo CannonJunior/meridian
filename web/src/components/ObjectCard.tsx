@@ -1,10 +1,14 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from '../store';
 import { affColor, affFull, affShapeStyle, threatColor } from '../selectors';
+import { findOobNode, statusMeta } from '../oobSelectors';
 import TargetCardBody from './cards/TargetCardBody';
 import SensorUnitCardBody from './cards/SensorUnitCardBody';
 import NaiCardBody from './cards/NaiCardBody';
 import ZoneCardBody from './cards/ZoneCardBody';
+import OobObjectCardBody from './cards/OobObjectCardBody';
+import PortCardBody from './cards/PortCardBody';
+import AirfieldCardBody from './cards/AirfieldCardBody';
 import type { CardKind } from '../types';
 
 interface HeaderInfo {
@@ -26,6 +30,8 @@ function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
   const sensors = useStore((s) => s.sensors);
   const units = useStore((s) => s.units);
   const nais = useStore((s) => s.nais);
+  const ports = useStore((s) => s.ports);
+  const airfields = useStore((s) => s.airfields);
 
   if (id == null) return null;
 
@@ -44,7 +50,7 @@ function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
       typePillLabel: t.threat || '—',
       typePillColor: threatColor(t.threat),
       typePillBorder: threatColor(t.threat),
-      tabNames: ['OVERVIEW', 'INTELLIGENCE', 'ASSOCIATIONS', 'TARGETING', 'SIGNATURES'],
+      tabNames: ['OVERVIEW', 'INTELLIGENCE', 'ASSOCIATIONS', 'SIGNATURES', 'TARGET WORKUP'],
     };
   }
 
@@ -81,6 +87,62 @@ function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
       typePillColor: n.color,
       typePillBorder: n.color,
       tabNames: ['OVERVIEW', 'COLLECTION', 'TRACKS'],
+    };
+  }
+
+  if (kind === 'oobObject') {
+    const n = findOobNode(id);
+    if (!n) return null;
+    const meta = statusMeta(n.status);
+    const hullMatch = n.name.match(/\(([^)]+)\)/);
+    return {
+      idShort: hullMatch ? hullMatch[1] : n.name,
+      name: hullMatch ? n.name.slice(0, hullMatch.index).trim() : n.name,
+      affColor: 'var(--cyan)',
+      affShapeStyle: { borderRadius: '50%' },
+      affFull: 'FRIENDLY',
+      affGlow: 'var(--cyan)',
+      affWash: 'rgba(63,210,230,.08)',
+      typePillLabel: meta.label,
+      typePillColor: meta.color,
+      typePillBorder: meta.color,
+      tabNames: ['OVERVIEW', 'HIERARCHY', 'ASSOCIATIONS'],
+    };
+  }
+
+  if (kind === 'port') {
+    const p = ports[id];
+    if (!p) return null;
+    return {
+      idShort: p.wpiPortId != null ? `WPI ${p.wpiPortId}` : 'PORT',
+      name: p.name,
+      affColor: 'var(--green)',
+      affShapeStyle: {},
+      affFull: 'INFRASTRUCTURE',
+      affGlow: 'var(--green)',
+      affWash: 'rgba(95,227,154,.07)',
+      typePillLabel: p.portSize ? `${p.portSize.toUpperCase()} PORT` : 'PORT',
+      typePillColor: 'var(--green)',
+      typePillBorder: 'var(--green)',
+      tabNames: ['OVERVIEW'],
+    };
+  }
+
+  if (kind === 'airfield') {
+    const a = airfields[id];
+    if (!a) return null;
+    return {
+      idShort: a.icao || 'AIRFIELD',
+      name: a.name,
+      affColor: 'var(--green)',
+      affShapeStyle: {},
+      affFull: 'INFRASTRUCTURE',
+      affGlow: 'var(--green)',
+      affWash: 'rgba(95,227,154,.07)',
+      typePillLabel: 'AIRFIELD',
+      typePillColor: 'var(--green)',
+      typePillBorder: 'var(--green)',
+      tabNames: ['OVERVIEW'],
     };
   }
 
@@ -135,6 +197,7 @@ export default function ObjectCard() {
 
   return (
     <div
+      className="object-card"
       style={{
         position: 'fixed',
         left: cardX,
@@ -151,19 +214,31 @@ export default function ObjectCard() {
       }}
     >
       <div
+        className="object-card-header"
         onPointerDown={(e) => {
           dragRef.current = { sx: e.clientX, sy: e.clientY, ox: cardX, oy: cardY };
         }}
         style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', borderBottom: '1px solid var(--hairline)', background: `linear-gradient(180deg,${info.affWash},#0c1315)`, cursor: 'move', position: 'relative' }}
       >
-        <span style={{ width: 16, height: 16, background: '#0c1416', border: `2px solid ${info.affColor}`, flexShrink: 0, boxShadow: `0 0 8px ${info.affGlow}`, ...info.affShapeStyle }} />
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 700, color: 'var(--ink-warm)', letterSpacing: '.04em' }}>{info.idShort}</span>
-        <span style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: info.affColor }}>{info.name}</span>
-        <span style={{ fontSize: 8.5, letterSpacing: '.1em', padding: '2px 6px', background: info.affColor, color: '#06090a', fontWeight: 700 }}>{info.affFull}</span>
-        <span style={{ fontSize: 8.5, letterSpacing: '.1em', padding: '2px 6px', border: `1px solid ${info.typePillBorder}`, color: info.typePillColor, fontWeight: 700 }}>{info.typePillLabel}</span>
-        <span style={{ flex: 1 }} />
-        <span style={{ fontSize: 8.5, letterSpacing: '.16em', color: 'var(--ink-faint)' }}>OBJECT CARD</span>
+        <span className="object-card-aff-shape" style={{ width: 16, height: 16, background: '#0c1416', border: `2px solid ${info.affColor}`, flexShrink: 0, boxShadow: `0 0 8px ${info.affGlow}`, ...info.affShapeStyle }} />
+        <span className="object-card-id-short" style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 700, color: 'var(--ink-warm)', letterSpacing: '.04em' }}>
+          {info.idShort}
+        </span>
+        <span className="object-card-name" style={{ fontFamily: 'var(--font-display)', fontSize: 15, fontWeight: 600, color: info.affColor }}>
+          {info.name}
+        </span>
+        <span className="object-card-aff-pill" style={{ fontSize: 8.5, letterSpacing: '.1em', padding: '2px 6px', background: info.affColor, color: '#06090a', fontWeight: 700 }}>
+          {info.affFull}
+        </span>
+        <span className="object-card-type-pill" style={{ fontSize: 8.5, letterSpacing: '.1em', padding: '2px 6px', border: `1px solid ${info.typePillBorder}`, color: info.typePillColor, fontWeight: 700 }}>
+          {info.typePillLabel}
+        </span>
+        <span className="object-card-spacer" style={{ flex: 1 }} />
+        <span className="object-card-kicker" style={{ fontSize: 8.5, letterSpacing: '.16em', color: 'var(--ink-faint)' }}>
+          OBJECT CARD
+        </span>
         <div
+          className="object-card-close-button"
           onClick={closeCard}
           onPointerDown={(e) => e.stopPropagation()}
           style={{ width: 22, height: 22, border: '1px solid #2a3d3a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--ink-mute)', cursor: 'pointer' }}
@@ -172,10 +247,11 @@ export default function ObjectCard() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--hairline)', background: 'var(--panel-1)' }}>
+      <div className="object-card-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--hairline)', background: 'var(--panel-1)' }}>
         {info.tabNames.map((name, i) => (
           <div
             key={name}
+            className="object-card-tab"
             onClick={() => setCardTab(i)}
             style={{ padding: '8px 13px', fontFamily: 'var(--font-display)', fontSize: 10, letterSpacing: '.1em', fontWeight: 600, cursor: 'pointer', color: cardTab === i ? '#06090a' : 'var(--ink-mute)', background: cardTab === i ? 'var(--amber)' : 'transparent', borderRight: '1px solid #131e1d' }}
           >
@@ -184,11 +260,14 @@ export default function ObjectCard() {
         ))}
       </div>
 
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 14 }}>
+      <div className="object-card-body" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 14 }}>
         {cardKind === 'target' && cardId && <TargetCardBody id={cardId} tab={cardTab} />}
         {(cardKind === 'sensor' || cardKind === 'unit') && cardId && <SensorUnitCardBody kind={cardKind} id={cardId} tab={cardTab} />}
         {cardKind === 'nai' && cardId && <NaiCardBody id={cardId} tab={cardTab} />}
         {cardKind === 'zone' && <ZoneCardBody tab={cardTab} />}
+        {cardKind === 'oobObject' && cardId && <OobObjectCardBody id={cardId} tab={cardTab} />}
+        {cardKind === 'port' && cardId && <PortCardBody id={cardId} />}
+        {cardKind === 'airfield' && cardId && <AirfieldCardBody id={cardId} />}
       </div>
     </div>
   );
