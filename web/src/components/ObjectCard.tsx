@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import { useStore } from '../store';
 import { affColor, affFull, affShapeStyle, threatColor } from '../selectors';
 import { effectiveStatus, findOobNode, kindLabel, oobTabNames, statusMeta } from '../oobSelectors';
@@ -283,22 +283,26 @@ export default function ObjectCard() {
   const info = useHeaderInfo(cardKind, cardId);
   const location = useCardLocation(cardKind, cardId);
 
-  useEffect(() => {
-    function onMove(e: PointerEvent) {
+  // Listeners live only for the duration of an actual drag (attached on
+  // pointer down, removed on pointer up) rather than for the component's
+  // whole mount lifetime — a card can stay open a long time, and there's
+  // no reason to run a document-wide pointermove handler except while
+  // something is actually being dragged.
+  function startDrag(e: React.PointerEvent) {
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: cardX, oy: cardY };
+    const onMove = (ev: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      moveCardTo(d.ox + e.clientX - d.sx, d.oy + e.clientY - d.sy);
-    }
-    function onUp() {
+      moveCardTo(d.ox + ev.clientX - d.sx, d.oy + ev.clientY - d.sy);
+    };
+    const onUp = () => {
       dragRef.current = null;
-    }
-    document.addEventListener('pointermove', onMove);
-    document.addEventListener('pointerup', onUp);
-    return () => {
       document.removeEventListener('pointermove', onMove);
       document.removeEventListener('pointerup', onUp);
     };
-  }, [moveCardTo]);
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  }
 
   if (!info || cardId == null) return null;
 
@@ -322,9 +326,7 @@ export default function ObjectCard() {
     >
       <div
         className="object-card-header"
-        onPointerDown={(e) => {
-          dragRef.current = { sx: e.clientX, sy: e.clientY, ox: cardX, oy: cardY };
-        }}
+        onPointerDown={startDrag}
         style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', borderBottom: '1px solid var(--hairline)', background: `linear-gradient(180deg,${info.affWash},#0c1315)`, cursor: 'move', position: 'relative' }}
       >
         <span className="object-card-aff-shape" style={{ width: 16, height: 16, background: '#0c1416', border: `2px solid ${info.affColor}`, flexShrink: 0, boxShadow: `0 0 8px ${info.affGlow}`, ...info.affShapeStyle }} />

@@ -46,10 +46,31 @@ export function assignEffector(effectorId: string): void {
   });
 }
 
-export function toggleAppr(key: keyof Approvals): void {
+const APPR_LABEL: Record<keyof Approvals, string> = {
+  pid: 'Positive ID',
+  jag: 'ROE/JAG review',
+  strike: 'Strike Cell concur',
+  tea: 'Target Engagement Authority',
+};
+
+// `id` lets a caller target a specific track explicitly rather than
+// whatever's currently selected — needed once an approval can be granted
+// well after submission (see the pending-action/JTCB adjudication flow),
+// by which time the user may have moved on to a different track.
+export function toggleAppr(key: keyof Approvals, id?: string): void {
   update((s: State): State => {
-    const targets = s.targets.map((t) => (t.id === s.selectedId ? { ...t, appr: { ...t.appr, [key]: !t.appr[key] } } : t));
-    return { ...s, targets };
+    const targetId = id ?? s.selectedId;
+    let nm = '';
+    let nowOn = false;
+    const targets = s.targets.map((t) => {
+      if (t.id !== targetId) return t;
+      nm = t.name;
+      nowOn = !t.appr[key];
+      return { ...t, appr: { ...t.appr, [key]: nowOn } };
+    });
+    if (!nm) return s;
+    const entry: LogEntry = { t: s.t, tag: 'SYS', text: `${nm} — ${APPR_LABEL[key]} ${nowOn ? 'granted' : 'withdrawn'}.`, tag2: 'sys' };
+    return { ...s, targets, log: [entry, ...s.log] };
   });
 }
 
@@ -66,6 +87,25 @@ export function engage(): void {
       return { ...t, engagedAt: s.t, status: 'ENGAGED — WPNS RELEASED' };
     });
     const entry: LogEntry = { t: s.t, tag: 'FIRE', text: `${nm} — WEAPONS RELEASED via ${eff}. Time of flight running.`, tag2: 'fire' };
+    return { ...s, targets, log: [entry, ...s.log] };
+  });
+}
+
+// Assigns (or clears, with pri=null) a target's HPTL priority rank —
+// currently only reachable via an approved target nomination (see the
+// pending-action/JTWG flow client-side); there's no direct UI control for
+// it, matching how targeting doctrine treats prioritization as an outcome
+// of vetting, not a value someone just types in.
+export function setPriority(id: string, pri: number | null): void {
+  update((s: State): State => {
+    let nm = '';
+    const targets = s.targets.map((t) => {
+      if (t.id !== id) return t;
+      nm = t.name;
+      return { ...t, pri };
+    });
+    if (!nm) return s;
+    const entry: LogEntry = { t: s.t, tag: 'SYS', text: pri != null ? `${nm} — prioritized #${pri} (JTWG nomination approved).` : `${nm} — priority rank cleared.`, tag2: 'sys' };
     return { ...s, targets, log: [entry, ...s.log] };
   });
 }

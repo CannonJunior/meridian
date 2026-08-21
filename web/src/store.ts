@@ -1,18 +1,174 @@
 import { create } from 'zustand';
 import { sendAction } from './wsClient';
-import type { Approvals, CardKind, State, TargetListId, View } from './types';
+import type { Approvals, CardKind, State, Target, TargetListId, View } from './types';
 import { findOobNode } from './oobSelectors';
 import { deepEqual } from './deepEqual';
 import { CONTEXT_LAYERS } from './assets/contextLayers';
+import { RIGHT_RAIL_MAX_WIDTH, RIGHT_RAIL_MIN_WIDTH } from './layout';
+import { listsForTarget, TARGET_LISTS } from './assets/targetLists';
+import type { TargetListTransition } from './assets/targetLists';
+import { ACTION_ROUTING, entityForRole, ORGANIZATIONS, orgById, roleLabel } from './assets/staff';
+import { fmtLogTime } from './selectors';
+import { TUTORIALS } from './assets/tutorials';
 import type { PortFeature } from './portFeature';
 import type { AirfieldFeature } from './airfieldFeature';
 
-export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists';
+export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat';
 export type LegendMode = 'AFFILIATION' | 'OOB';
 
 export interface OobStyle {
   radarColor: string;
   weaponColor: string;
+}
+
+// Click-to-dismiss notifications, stacked bottom-right in the center panel.
+// Currently only produced by target-list transitions (see setFromServer),
+// one per list a target newly joins.
+export interface Toast {
+  id: string;
+  text: string;
+  accent: string;
+}
+
+// Gaps 1/3/4/6, generalized: an action a user takes is no longer applied
+// instantly — it's submitted to an organization (assets/staff.ts), sits
+// pending until that org's cadence elapses, and only then is it adjudicated
+// (by a computer-controlled seat-holder for now, structured so a real
+// second user could occupy that seat instead) and applied — or rejected,
+// with a stated rationale so the "why" is never a black box. Every
+// ACTION_ROUTING entry marked `wired: true` goes through this pipeline;
+// see ADJUDICATORS below for what each one actually checks.
+export type PendingActionStatus = 'pending' | 'approved' | 'rejected';
+
+export interface PendingAction {
+  id: string;
+  kind: string; // e.g. 'toggleAppr:strike', 'nominateTarget'
+  targetId: string;
+  orgId: string;
+  submittedBy: string; // StaffEntity id
+  submittedAt: number; // DTG — simulation tick (State.t) at submission
+  adjudicationDueAt: number; // DTG — simulation tick the org is expected to rule by
+  status: PendingActionStatus;
+  resolvedAt?: number;
+  resolvedBy?: string; // StaffEntity id
+  rationale?: string;
+}
+
+interface AdjudicationResult {
+  approve: boolean;
+  reasons: string[];
+}
+
+// Gap 4: a message thread with an organization — optionally tagged to a
+// specific target's pending action, since "discuss this request" and
+// "ask the board something general" are both real needs. The NPC side of
+// every reply is a pure lookup over pendingActions/rationale that's already
+// shown elsewhere in the UI (adjudication history, the toast stack) — never
+// free-form generation — so a reply is always traceable back to real state,
+// the same "not a black box" rule the adjudicators follow.
+export interface ChatMessage {
+  id: string;
+  orgId: string;
+  targetId: string | null;
+  from: 'user' | 'npc';
+  authorName: string;
+  authorRoleLabel: string;
+  text: string;
+  t: number;
+}
+
+function craftNpcReply(orgId: string, targetId: string | null, targets: Target[], pendingActions: PendingAction[]): { authorName: string; authorRoleLabel: string; text: string } {
+  const org = orgById(orgId);
+  if (!org) return { authorName: 'System', authorRoleLabel: '', text: 'No such organization on file.' };
+  const chairRole = org.requiredRoles[0];
+  const spokesperson = entityForRole(chairRole, org);
+  const authorName = spokesperson?.name ?? org.acronym;
+  const authorRoleLabel = spokesperson ? roleLabel(chairRole) : org.kind;
+
+  if (targetId) {
+    const target = targets.find((x) => x.id === targetId);
+    const name = target?.name ?? targetId.slice(1);
+    const relevant = pendingActions.filter((a) => a.orgId === orgId && a.targetId === targetId).sort((a, b) => b.submittedAt - a.submittedAt)[0];
+    if (!relevant) return { authorName, authorRoleLabel, text: `Nothing from ${name} in our queue right now.` };
+    if (relevant.status === 'pending') {
+      return { authorName, authorRoleLabel, text: `${name} is still on our board — due ${fmtLogTime(relevant.adjudicationDueAt)}. Nothing more to say before we rule.` };
+    }
+    const verdict = relevant.status === 'approved' ? 'APPROVED' : 'HELD';
+    return { authorName, authorRoleLabel, text: `${name} — we ruled ${verdict}: ${relevant.rationale}` };
+  }
+
+  const pendingHere = pendingActions.filter((a) => a.orgId === orgId && a.status === 'pending');
+  if (pendingHere.length === 0) return { authorName, authorRoleLabel, text: 'Nothing in our queue right now.' };
+  const list = pendingHere
+    .map((a) => {
+      const target = targets.find((x) => x.id === a.targetId);
+      return `${target?.name ?? a.targetId} (${a.kind.replace('toggleAppr:', '').toUpperCase()})`;
+    })
+    .join(', ');
+  return { authorName, authorRoleLabel, text: `Currently sitting on ${pendingHere.length}: ${list}.` };
+}
+
+// One entry per PendingAction `kind` — the actual judgment an adjudicating
+// role-holder applies, checking the same conditions the UI already shows
+// the user so the "why" is never a black box.
+const ADJUDICATORS: Record<string, (target: Target) => AdjudicationResult> = {
+  'toggleAppr:pid': (target) => {
+    const reasons: string[] = [];
+    if (target.conf < 70) reasons.push(`classification confidence too low for positive ID (${target.conf}%)`);
+    return { approve: reasons.length === 0, reasons };
+  },
+  'toggleAppr:jag': (target) => {
+    const reasons: string[] = [];
+    if (target.cde === 'CDE-5') reasons.push(`collateral damage estimate (${target.cde}) requires elevated legal review`);
+    return { approve: reasons.length === 0, reasons };
+  },
+  'toggleAppr:strike': (target) => {
+    const reasons: string[] = [];
+    if (!target.appr.pid) reasons.push('PID not established');
+    if (!target.appr.jag) reasons.push('ROE/JAG review not complete');
+    if (target.cde === 'CDE-4' || target.cde === 'CDE-5') reasons.push(`collateral damage estimate too high (${target.cde})`);
+    return { approve: reasons.length === 0, reasons };
+  },
+  'toggleAppr:tea': (target) => {
+    // TEA is the last, highest gate — doctrinally it presumes the other
+    // three are already in hand, not a fresh independent check.
+    const reasons: string[] = [];
+    if (!target.appr.pid) reasons.push('PID not yet established');
+    if (!target.appr.jag) reasons.push('ROE/JAG review not yet complete');
+    if (!target.appr.strike) reasons.push('Strike Cell has not yet concurred');
+    return { approve: reasons.length === 0, reasons };
+  },
+  nominateTarget: (target) => {
+    const reasons: string[] = [];
+    if (target.aff === 'NEU') reasons.push('neutral affiliation — does not meet high-payoff target criteria');
+    if (!target.threat) reasons.push('no threat assessment on file yet');
+    if (target.pri != null) reasons.push('already carries a priority rank');
+    return { approve: reasons.length === 0, reasons };
+  },
+};
+
+// A snapshot of everything a tutorial's generic navigation/notification
+// effects can touch, captured at startTutorial and restored at
+// exitTutorial. Anything a tutorial changes that round-trips through the
+// server (a target's approvals, etc.) can't be restored this way — those
+// fields are reverted by the tutorial's own `cleanup()` issuing real
+// inverse actions instead. See assets/tutorials.ts.
+interface TutorialSnapshot {
+  activeManager: Manager;
+  cardKind: CardKind;
+  cardId: string | null;
+  cardTab: number;
+  cardX: number;
+  cardY: number;
+  view: View;
+  activeListId: TargetListId;
+  oobSelectedId: string | null;
+  toasts: Toast[];
+  pendingActions: PendingAction[];
+  targetListTransitions: TargetListTransition[];
+  chatMessages: ChatMessage[];
+  activeChatOrgId: string | null;
+  activeChatTargetId: string | null;
 }
 
 interface UiState {
@@ -26,6 +182,21 @@ interface UiState {
   activeManager: Manager;
   legendMode: LegendMode;
   activeListId: TargetListId;
+  // Last-observed list membership per target id, and the append-only log of
+  // moments a target first qualified for a list — see targetLists.ts for why
+  // this exists (it's what makes "state transitions" real, not just the
+  // named taxonomy). Both are derived client-side in setFromServer; neither
+  // is sent by the server.
+  targetListMembership: Record<string, TargetListId[]>;
+  targetListTransitions: TargetListTransition[];
+  toasts: Toast[];
+  pendingActions: PendingAction[];
+  // Gap 4: org-scoped chat threads (optionally tagged to a target's pending
+  // action). Purely client-side, same as pendingActions — nothing here
+  // round-trips through the server.
+  chatMessages: ChatMessage[];
+  activeChatOrgId: string | null;
+  activeChatTargetId: string | null;
   oobSelectedId: string | null;
   contextLayerVisibility: Record<string, boolean>;
   ports: Record<string, PortFeature>;
@@ -37,6 +208,17 @@ interface UiState {
   // identity doesn't mutate assets/oob.ts data, it just records the
   // analyst's tentative call, which components read alongside the node.
   contactIdentityAssignments: Record<string, string>;
+  // Shared width for the right rail (target workup, event log, command
+  // bar ROE/clock) — see layout.ts for why these three stay in sync.
+  rightRailWidth: number;
+  // The running tutorial (assets/tutorials.ts), if any — null when none is
+  // active. tutorialScratch is a free-form bag a tutorial's own steps use
+  // to remember things across steps (e.g. a target's pre-tutorial approval
+  // state, so cleanup can restore exactly that rather than guessing).
+  activeTutorialId: string | null;
+  tutorialStepIndex: number;
+  tutorialSnapshot: TutorialSnapshot | null;
+  tutorialScratch: Record<string, unknown>;
 }
 
 interface Actions {
@@ -48,7 +230,18 @@ interface Actions {
   cycleRoe: () => void;
   retaskSensor: (sensorId: string) => void;
   assignEffector: (effectorId: string) => void;
-  toggleAppr: (key: keyof Approvals) => void;
+  toggleAppr: (key: keyof Approvals, targetId?: string) => void;
+  submitApproval: (key: keyof Approvals, targetId: string) => void;
+  submitTargetNomination: (targetId: string) => void;
+  submitPendingAction: (kind: string, targetId: string, orgId: string) => void;
+  assignPriority: (targetId: string) => void;
+  clearPriority: (targetId: string) => void;
+  openChat: (orgId: string, targetId?: string) => void;
+  setChatTargetScope: (targetId: string | null) => void;
+  sendChatMessage: (text: string) => void;
+  resolveDuePendingActions: () => void;
+  forceResolvePendingAction: (id: string) => void;
+  resolvePendingActionsByIds: (ids: string[]) => void;
   engage: () => void;
   setStage: (id: string, stageIdx: number) => void;
   advanceStage: () => void;
@@ -72,6 +265,12 @@ interface Actions {
   setOobStyleColor: (key: keyof OobStyle, hex: string) => void;
   assignContactIdentity: (contactId: string, profileId: string) => void;
   clearContactIdentity: (contactId: string) => void;
+  dismissToast: (id: string) => void;
+  setRightRailWidth: (w: number) => void;
+  startTutorial: (id: string) => void;
+  advanceTutorial: () => void;
+  fastForwardTutorial: () => void;
+  exitTutorial: () => void;
 }
 
 type Store = State & UiState & Actions;
@@ -101,6 +300,13 @@ export const useStore = create<Store>((set, get) => ({
   activeManager: 'isr',
   legendMode: 'AFFILIATION',
   activeListId: 'hptl',
+  targetListMembership: {},
+  targetListTransitions: [],
+  toasts: [],
+  pendingActions: [],
+  chatMessages: [],
+  activeChatOrgId: ORGANIZATIONS[0].id,
+  activeChatTargetId: null,
   oobSelectedId: null,
   contextLayerVisibility: Object.fromEntries(CONTEXT_LAYERS.map((l) => [l.id, l.defaultVisible])),
   ports: {},
@@ -108,8 +314,13 @@ export const useStore = create<Store>((set, get) => ({
   flyToRequest: null,
   oobStyle: { radarColor: '#3fd2e6', weaponColor: '#ffab38' },
   contactIdentityAssignments: {},
+  rightRailWidth: RIGHT_RAIL_MIN_WIDTH,
+  activeTutorialId: null,
+  tutorialStepIndex: 0,
+  tutorialSnapshot: null,
+  tutorialScratch: {},
 
-  setFromServer: (s) =>
+  setFromServer: (s) => {
     set((prev) => {
       const patch: Partial<State> = {};
       for (const key of Object.keys(s) as (keyof State)[]) {
@@ -117,8 +328,42 @@ export const useStore = create<Store>((set, get) => ({
           (patch as Record<string, unknown>)[key] = s[key];
         }
       }
-      return patch;
-    }),
+      if (!patch.targets) return patch;
+
+      // First hydration just establishes a baseline — nothing "transitioned"
+      // onto a list, it was simply already there when we started observing.
+      // Every update after that, a target gaining a list it didn't have a
+      // moment ago is logged as a real, timestamped join event.
+      const isFirstHydration = Object.keys(prev.targetListMembership).length === 0;
+      const nextMembership: Record<string, TargetListId[]> = {};
+      const newTransitions: TargetListTransition[] = [];
+      const newToasts: Toast[] = [];
+      for (const target of patch.targets) {
+        const lists = listsForTarget(target);
+        nextMembership[target.id] = lists;
+        if (!isFirstHydration) {
+          const prevLists = prev.targetListMembership[target.id] ?? [];
+          for (const listId of lists) {
+            if (!prevLists.includes(listId)) {
+              const joinedAt = patch.t ?? prev.t;
+              newTransitions.push({ targetId: target.id, listId, joinedAt });
+              const def = TARGET_LISTS.find((l) => l.id === listId)!;
+              newToasts.push({ id: `${target.id}-${listId}-${joinedAt}-${Math.random().toString(36).slice(2, 7)}`, text: `${target.id.slice(1)} ${target.name} → ${def.acronym}`, accent: def.accent });
+            }
+          }
+        }
+      }
+      return {
+        ...patch,
+        targetListMembership: nextMembership,
+        targetListTransitions: newTransitions.length ? [...newTransitions, ...prev.targetListTransitions].slice(0, 200) : prev.targetListTransitions,
+        toasts: newToasts.length ? [...prev.toasts, ...newToasts].slice(-40) : prev.toasts,
+      };
+    });
+    // Every server tick is also a chance for a board/cell/etc. to have
+    // reached its adjudication deadline on something submitted earlier.
+    get().resolveDuePendingActions();
+  },
   setConnected: (v) => set({ connected: v }),
 
   selectTarget: (id) => {
@@ -132,7 +377,125 @@ export const useStore = create<Store>((set, get) => ({
   cycleRoe: () => sendAction('cycleRoe'),
   retaskSensor: (sensorId) => sendAction('retaskSensor', { sensorId }),
   assignEffector: (effectorId) => sendAction('assignEffector', { effectorId }),
-  toggleAppr: (key) => sendAction('toggleAppr', { key }),
+  toggleAppr: (key, targetId) => sendAction('toggleAppr', { key, id: targetId }),
+  submitApproval: (key, targetId) => {
+    const kind = `toggleAppr:${key}`;
+    const route = ACTION_ROUTING.find((r) => r.action === kind);
+    if (!route) return;
+    get().submitPendingAction(kind, targetId, route.orgId);
+  },
+  submitTargetNomination: (targetId) => {
+    const route = ACTION_ROUTING.find((r) => r.action === 'nominateTarget')!;
+    get().submitPendingAction('nominateTarget', targetId, route.orgId);
+  },
+  submitPendingAction: (kind, targetId, orgId) => {
+    const alreadyPending = get().pendingActions.some((a) => a.targetId === targetId && a.kind === kind && a.status === 'pending');
+    if (alreadyPending) return;
+    const org = orgById(orgId);
+    if (!org) return;
+    const now = get().t;
+    const action: PendingAction = {
+      id: `${kind}-${targetId}-${now}-${Math.random().toString(36).slice(2, 7)}`,
+      kind,
+      targetId,
+      orgId: org.id,
+      submittedBy: 'user',
+      submittedAt: now,
+      adjudicationDueAt: now + org.cadenceSeconds,
+      status: 'pending',
+    };
+    set((prev) => ({ pendingActions: [...prev.pendingActions, action] }));
+  },
+  assignPriority: (targetId) => {
+    const targets = get().targets;
+    const nextRank = Math.max(0, ...targets.map((t) => t.pri ?? 0)) + 1;
+    sendAction('setPriority', { id: targetId, pri: nextRank });
+  },
+  clearPriority: (targetId) => sendAction('setPriority', { id: targetId, pri: null }),
+  openChat: (orgId, targetId) => set({ activeManager: 'chat', activeChatOrgId: orgId, activeChatTargetId: targetId ?? null }),
+  setChatTargetScope: (targetId) => set({ activeChatTargetId: targetId }),
+  sendChatMessage: (text) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const { activeChatOrgId, activeChatTargetId, targets, pendingActions, t } = get();
+    if (!activeChatOrgId) return;
+    const userMsg: ChatMessage = {
+      id: `chat-${t}-${Math.random().toString(36).slice(2, 7)}`,
+      orgId: activeChatOrgId,
+      targetId: activeChatTargetId,
+      from: 'user',
+      authorName: 'YOU',
+      authorRoleLabel: roleLabel('targeteer'),
+      text: trimmed,
+      t,
+    };
+    const reply = craftNpcReply(activeChatOrgId, activeChatTargetId, targets, pendingActions);
+    const npcMsg: ChatMessage = {
+      id: `chat-${t}-${Math.random().toString(36).slice(2, 7)}-r`,
+      orgId: activeChatOrgId,
+      targetId: activeChatTargetId,
+      from: 'npc',
+      authorName: reply.authorName,
+      authorRoleLabel: reply.authorRoleLabel,
+      text: reply.text,
+      t,
+    };
+    set((prev) => ({ chatMessages: [...prev.chatMessages, userMsg, npcMsg] }));
+  },
+  resolveDuePendingActions: () => {
+    const { pendingActions, t } = get();
+    const dueIds = pendingActions.filter((a) => a.status === 'pending' && a.adjudicationDueAt <= t).map((a) => a.id);
+    get().resolvePendingActionsByIds(dueIds);
+  },
+  forceResolvePendingAction: (id) => get().resolvePendingActionsByIds([id]),
+  resolvePendingActionsByIds: (ids: string[]) => {
+    const { pendingActions, t, targets } = get();
+    const due = pendingActions.filter((a) => ids.includes(a.id) && a.status === 'pending');
+    if (due.length === 0) return;
+
+    const resolvedById = new Map<string, PendingAction>();
+    const newToasts: Toast[] = [];
+    for (const action of due) {
+      const target = targets.find((x) => x.id === action.targetId);
+      const org = orgById(action.orgId);
+      // Credit the specific role ACTION_ROUTING says owns this action —
+      // not just whoever happens to be first in the org's member list —
+      // so "who decided this" is a real, named answer, not a guess.
+      const route = ACTION_ROUTING.find((r) => r.action === action.kind);
+      const resolvingEntity = route ? entityForRole(route.ownerRole, org) : undefined;
+      const resolvedBy = resolvingEntity?.id ?? org?.memberIds[0] ?? 'npc-chair';
+      const resolvingLabel = resolvingEntity && route ? `${resolvingEntity.name} (${roleLabel(route.ownerRole)})` : (org?.acronym ?? action.orgId.toUpperCase());
+      const orgName = org?.acronym ?? action.orgId.toUpperCase();
+
+      if (!target) {
+        resolvedById.set(action.id, { ...action, status: 'rejected', resolvedAt: t, resolvedBy, rationale: 'Target no longer on file at adjudication time.' });
+        continue;
+      }
+      const adjudicate = ADJUDICATORS[action.kind];
+      const { approve, reasons } = adjudicate ? adjudicate(target) : { approve: true, reasons: [] };
+      const rationale = approve ? 'Conditions met; within delegated authority.' : `Held: ${reasons.join('; ')}.`;
+      resolvedById.set(action.id, { ...action, status: approve ? 'approved' : 'rejected', resolvedAt: t, resolvedBy, rationale });
+      newToasts.push({
+        id: `resolve-${action.id}`,
+        text: `${target.id.slice(1)} ${target.name} — ${orgName} ${approve ? 'APPROVED' : 'HELD'} (${resolvingLabel}): ${rationale}`,
+        accent: approve ? 'var(--green)' : 'var(--red)',
+      });
+      // Applying the effect of an approval is itself per-kind.
+      if (approve) {
+        if (action.kind.startsWith('toggleAppr:')) {
+          const key = action.kind.slice('toggleAppr:'.length) as keyof Approvals;
+          get().toggleAppr(key, target.id);
+        } else if (action.kind === 'nominateTarget') {
+          get().assignPriority(target.id);
+        }
+      }
+    }
+
+    set((prev) => ({
+      pendingActions: prev.pendingActions.map((a) => resolvedById.get(a.id) ?? a),
+      toasts: newToasts.length ? [...prev.toasts, ...newToasts].slice(-40) : prev.toasts,
+    }));
+  },
   engage: () => sendAction('engage'),
   setStage: (id, stageIdx) => {
     set({ selectedId: id });
@@ -151,6 +514,7 @@ export const useStore = create<Store>((set, get) => ({
   moveCardTo: (x, y) => set({ cardX: Math.max(0, x), cardY: Math.max(0, y) }),
   setBasemap: (id) => set({ basemapId: id }),
   setActiveManager: (m) => set({ activeManager: m }),
+  setRightRailWidth: (w) => set({ rightRailWidth: Math.min(RIGHT_RAIL_MAX_WIDTH, Math.max(RIGHT_RAIL_MIN_WIDTH, w)) }),
   setLegendMode: (m) => set({ legendMode: m }),
   setActiveListId: (id) => set({ activeListId: id }),
   selectOob: (id) => {
@@ -177,4 +541,53 @@ export const useStore = create<Store>((set, get) => ({
       delete next[contactId];
       return { contactIdentityAssignments: next };
     }),
+  dismissToast: (id) => set((prev) => ({ toasts: prev.toasts.filter((t) => t.id !== id) })),
+  startTutorial: (id) => {
+    const tutorial = TUTORIALS.find((tu) => tu.id === id);
+    if (!tutorial) return;
+    const prev = get();
+    const snapshot: TutorialSnapshot = {
+      activeManager: prev.activeManager,
+      cardKind: prev.cardKind,
+      cardId: prev.cardId,
+      cardTab: prev.cardTab,
+      cardX: prev.cardX,
+      cardY: prev.cardY,
+      view: prev.view,
+      activeListId: prev.activeListId,
+      oobSelectedId: prev.oobSelectedId,
+      toasts: prev.toasts,
+      pendingActions: prev.pendingActions,
+      targetListTransitions: prev.targetListTransitions,
+      chatMessages: prev.chatMessages,
+      activeChatOrgId: prev.activeChatOrgId,
+      activeChatTargetId: prev.activeChatTargetId,
+    };
+    set({ activeTutorialId: id, tutorialStepIndex: 0, tutorialSnapshot: snapshot, tutorialScratch: {} });
+    tutorial.steps[0]?.run?.();
+  },
+  advanceTutorial: () => {
+    const { activeTutorialId, tutorialStepIndex } = get();
+    const tutorial = TUTORIALS.find((tu) => tu.id === activeTutorialId);
+    if (!tutorial) return;
+    const nextIndex = tutorialStepIndex + 1;
+    if (nextIndex >= tutorial.steps.length) {
+      get().exitTutorial();
+      return;
+    }
+    set({ tutorialStepIndex: nextIndex });
+    tutorial.steps[nextIndex]?.run?.();
+  },
+  fastForwardTutorial: () => {
+    const { activeTutorialId, tutorialStepIndex } = get();
+    const tutorial = TUTORIALS.find((tu) => tu.id === activeTutorialId);
+    tutorial?.steps[tutorialStepIndex]?.fastForward?.();
+  },
+  exitTutorial: () => {
+    const { activeTutorialId, tutorialSnapshot } = get();
+    const tutorial = TUTORIALS.find((tu) => tu.id === activeTutorialId);
+    tutorial?.cleanup?.();
+    if (tutorialSnapshot) set(tutorialSnapshot);
+    set({ activeTutorialId: null, tutorialStepIndex: 0, tutorialSnapshot: null, tutorialScratch: {} });
+  },
 }));

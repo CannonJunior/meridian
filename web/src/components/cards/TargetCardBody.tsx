@@ -1,4 +1,5 @@
 import { useStore } from '../../store';
+import type { Approvals } from '../../types';
 import {
   C,
   catFull,
@@ -22,6 +23,8 @@ import {
   unitFor,
 } from '../../selectors';
 import { APPR_DEFS, EmptyNote, KV, KVGrid, LinkRow, ProgressRow, SectionLabel } from './shared';
+import { TARGET_LISTS, listsForTarget } from '../../assets/targetLists';
+import { orgById, roleLabel, staffById } from '../../assets/staff';
 
 export default function TargetCardBody({ id, tab }: { id: string; tab: number }) {
   const targets = useStore((s) => s.targets);
@@ -29,15 +32,30 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
   const effectors = useStore((s) => s.effectors);
   const log = useStore((s) => s.log);
   const tick = useStore((s) => s.t);
+  const listTransitions = useStore((s) => s.targetListTransitions);
+  const pendingActions = useStore((s) => s.pendingActions);
   const t = targets.find((x) => x.id === id);
   const openCard = useStore((s) => s.openCard);
   const assignEffector = useStore((s) => s.assignEffector);
   const toggleAppr = useStore((s) => s.toggleAppr);
+  const submitApproval = useStore((s) => s.submitApproval);
+  const submitTargetNomination = useStore((s) => s.submitTargetNomination);
+  const openChat = useStore((s) => s.openChat);
+  const setView = useStore((s) => s.setView);
+  const setActiveListId = useStore((s) => s.setActiveListId);
 
   if (!t) return null;
 
   if (tab === 0) {
     const stage = STAGES[t.stage];
+    const currentLists = listsForTarget(t);
+    const history = listTransitions.filter((tr) => tr.targetId === t.id).slice(0, 6);
+    const adjudications = pendingActions
+      .filter((p) => p.targetId === t.id && p.status !== 'pending')
+      .slice(-6)
+      .reverse();
+    const nominationPending = pendingActions.find((p) => p.targetId === t.id && p.kind === 'nominateTarget' && p.status === 'pending');
+    const nominationOrg = nominationPending ? orgById(nominationPending.orgId) : undefined;
     return (
       <>
         <KVGrid>
@@ -50,6 +68,110 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
           <KV label="STATUS" value={t.status} color={statusColorFor(t)} />
         </KVGrid>
         <ProgressRow label="CLASSIFICATION CONFIDENCE" value={t.conf} color={confColor(t.conf)} />
+
+        <SectionLabel top={16}>TARGET LISTS</SectionLabel>
+        <div className="target-card-list-badges" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {currentLists.map((listId) => {
+            const def = TARGET_LISTS.find((l) => l.id === listId)!;
+            return (
+              <span
+                key={listId}
+                className="target-card-list-badge"
+                onClick={() => setActiveListId(listId)}
+                onDoubleClick={() => setView('BOARD')}
+                title={`${def.name} — click to open in the collection table, double-click for the Workbench`}
+                style={{ fontFamily: 'var(--font-display)', fontSize: 9, letterSpacing: '.06em', padding: '3px 7px', border: `1px solid ${def.accent}`, color: def.accent, fontWeight: 700, cursor: 'pointer' }}
+              >
+                {def.acronym}
+              </span>
+            );
+          })}
+          {currentLists.length === 0 && <EmptyNote>Not currently on any target list.</EmptyNote>}
+        </div>
+        {t.pri == null && (
+          <div className="target-card-nomination-row" style={{ marginTop: 8 }}>
+            {nominationPending ? (
+              <span className="target-card-nomination-pending" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9, letterSpacing: '.04em', color: 'var(--amber)' }}>
+                … NOMINATION PENDING — {nominationOrg?.acronym ?? nominationPending.orgId.toUpperCase()} · DUE {fmtLogTime(nominationPending.adjudicationDueAt)}
+                <span className="target-card-nomination-discuss-button" onClick={() => openChat(nominationPending.orgId, t.id)} style={{ color: 'var(--red)', cursor: 'pointer', fontWeight: 700 }}>
+                  ▸ DISCUSS
+                </span>
+              </span>
+            ) : (
+              <span
+                className="target-card-nomination-submit-button"
+                onClick={() => submitTargetNomination(t.id)}
+                style={{ fontSize: 9, letterSpacing: '.06em', color: 'var(--cyan)', cursor: 'pointer', fontWeight: 600 }}
+              >
+                ▸ NOMINATE FOR PRIORITIZATION (HPTL)
+              </span>
+            )}
+          </div>
+        )}
+        {history.length > 0 && (
+          <div className="target-card-list-history" style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {history.map((tr, i) => {
+              const def = TARGET_LISTS.find((l) => l.id === tr.listId)!;
+              return (
+                <div key={i} className="target-card-list-history-row" style={{ display: 'flex', gap: 8, fontSize: 9 }}>
+                  <span className="target-card-list-history-time" style={{ color: 'var(--ink-dim2)', flexShrink: 0 }}>
+                    {fmtLogTime(tr.joinedAt)}
+                  </span>
+                  <span className="target-card-list-history-text" style={{ color: 'var(--ink-faint)' }}>
+                    Added to <span className="target-card-list-history-acronym" style={{ color: def.accent }}>{def.acronym}</span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {adjudications.length > 0 && (
+          <>
+            <SectionLabel top={16}>ADJUDICATION HISTORY</SectionLabel>
+            <div className="target-card-adjudication-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {adjudications.map((a) => {
+                const org = orgById(a.orgId);
+                const entity = a.resolvedBy ? staffById(a.resolvedBy) : undefined;
+                const approved = a.status === 'approved';
+                const color = approved ? 'var(--green)' : 'var(--red)';
+                return (
+                  <div
+                    key={a.id}
+                    className="target-card-adjudication-row"
+                    style={{ border: `1px solid ${approved ? '#244536' : '#4a2420'}`, background: approved ? 'rgba(95,227,154,.04)' : 'rgba(255,90,71,.04)', padding: '7px 9px' }}
+                  >
+                    <div className="target-card-adjudication-row-header" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <span className="target-card-adjudication-org" style={{ fontFamily: 'var(--font-display)', fontSize: 10, fontWeight: 700, color: 'var(--ink-brighter)' }}>
+                        {org?.acronym ?? a.orgId.toUpperCase()}
+                      </span>
+                      <span className="target-card-adjudication-status" style={{ fontSize: 9, letterSpacing: '.06em', fontWeight: 700, color }}>
+                        {approved ? 'APPROVED' : 'HELD'}
+                      </span>
+                      <span className="target-card-adjudication-spacer" style={{ flex: 1 }} />
+                      <span className="target-card-adjudication-time" style={{ fontSize: 8.5, color: 'var(--ink-faint)' }}>
+                        {a.resolvedAt != null ? fmtLogTime(a.resolvedAt) : '—'}
+                      </span>
+                    </div>
+                    <div className="target-card-adjudication-by" style={{ fontSize: 8.5, color: 'var(--ink-mute2)', marginTop: 3 }}>
+                      {entity ? `${entity.name} (${entity.roles.map(roleLabel).join(', ')})` : 'Unknown'}
+                    </div>
+                    <div className="target-card-adjudication-rationale" style={{ fontSize: 9.5, color: 'var(--ink-mute)', marginTop: 4, lineHeight: 1.4 }}>
+                      {a.rationale}
+                    </div>
+                    <span
+                      className="target-card-adjudication-discuss-button"
+                      onClick={() => openChat(a.orgId, t.id)}
+                      style={{ display: 'inline-block', marginTop: 5, fontSize: 8.5, letterSpacing: '.04em', color: 'var(--red)', cursor: 'pointer', fontWeight: 700 }}
+                    >
+                      ▸ DISCUSS WITH {org?.acronym ?? a.orgId.toUpperCase()}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </>
     );
   }
@@ -176,6 +298,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
   // into one tab. Long, so it scrolls in its own region.
   const di = decayInfo(t.decay);
   const stage = STAGES[t.stage];
+  const approvalPending = (key: keyof Approvals) => pendingActions.find((p) => p.targetId === t.id && p.kind === `toggleAppr:${key}` && p.status === 'pending');
   const effTop = effFor(t, effectors).slice(0, 4);
   const nsl = nslDistFor(t);
   const effects = t.bda ? t.bda : t.engagedAt != null ? 'WEAPONS IN FLIGHT — TOF RUNNING' : 'NO EFFECTS EXECUTED';
@@ -281,15 +404,49 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
       <div className="target-card-authorization-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
         {APPR_DEFS.map((a) => {
           const on = t.appr[a.k];
-          const boxColor = on ? C.green : 'var(--ink-faint)';
+          const pending = approvalPending(a.k);
+          const pendingOrg = pending ? orgById(pending.orgId) : undefined;
+          const boxColor = pending ? 'var(--amber)' : on ? C.green : 'var(--ink-faint)';
           return (
-            <div key={a.k} className="target-card-authorization-row" onClick={() => toggleAppr(a.k)} style={{ display: 'flex', alignItems: 'center', gap: 7, border: `1px solid ${on ? '#244536' : 'var(--hairline-mid)'}`, background: on ? 'rgba(95,227,154,.05)' : 'var(--panel-3)', padding: '5px 7px', cursor: 'pointer' }}>
+            <div
+              key={a.k}
+              className="target-card-authorization-row"
+              onClick={() => {
+                if (pending) return;
+                if (!on) submitApproval(a.k, t.id);
+                else toggleAppr(a.k, t.id);
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+                border: `1px solid ${pending ? '#5a4420' : on ? '#244536' : 'var(--hairline-mid)'}`,
+                background: pending ? 'rgba(255,171,56,.06)' : on ? 'rgba(95,227,154,.05)' : 'var(--panel-3)',
+                padding: '5px 7px',
+                cursor: pending ? 'default' : 'pointer',
+              }}
+            >
               <span className="target-card-authorization-checkbox" style={{ width: 13, height: 13, border: `1.5px solid ${boxColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: boxColor, fontWeight: 700, flexShrink: 0 }}>
-                {on ? '✓' : ''}
+                {pending ? '…' : on ? '✓' : ''}
               </span>
               <span className="target-card-authorization-label" style={{ fontSize: 9, color: 'var(--ink)', flex: 1 }}>
                 {a.l}
               </span>
+              {pending && (
+                <span className="target-card-authorization-pending-note" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 7.5, letterSpacing: '.04em', color: 'var(--amber)', flexShrink: 0 }}>
+                  {pendingOrg?.acronym ?? pending.orgId.toUpperCase()} · DUE {fmtLogTime(pending.adjudicationDueAt)}
+                  <span
+                    className="target-card-authorization-discuss-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openChat(pending.orgId, t.id);
+                    }}
+                    style={{ color: 'var(--red)', cursor: 'pointer', fontWeight: 700 }}
+                  >
+                    ▸ DISCUSS
+                  </span>
+                </span>
+              )}
             </div>
           );
         })}

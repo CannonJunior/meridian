@@ -29,7 +29,10 @@ function dispatch(msg: ActionMessage): void {
       actions.assignEffector(msg.args.effectorId);
       break;
     case 'toggleAppr':
-      actions.toggleAppr(msg.args.key as keyof Approvals);
+      actions.toggleAppr(msg.args.key as keyof Approvals, msg.args.id);
+      break;
+    case 'setPriority':
+      actions.setPriority(msg.args.id, msg.args.pri);
       break;
     case 'engage':
       actions.engage();

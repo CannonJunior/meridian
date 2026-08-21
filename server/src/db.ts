@@ -210,8 +210,16 @@ function newLogEntries(next: LogEntry[], prev: LogEntry[]): LogEntry[] {
 }
 
 export const persistTick = db.transaction((state: State, prev: State) => {
-  for (const t of state.targets) {
-    updateTarget.run({ ...t, effector: t.effector ?? null, bda: t.bda ?? null, engagedAt: t.engagedAt ?? null, nsl: t.nsl ? 1 : 0, appr_pid: t.appr.pid ? 1 : 0, appr_jag: t.appr.jag ? 1 : 0, appr_strike: t.appr.strike ? 1 : 0, appr_tea: t.appr.tea ? 1 : 0 });
+  // Every action/tick handler that touches targets returns the same target
+  // reference for entries it didn't change (see actions.ts / sim.ts), so a
+  // per-index reference check finds exactly the rows that actually changed
+  // without needing a deep comparison.
+  if (state.targets !== prev.targets) {
+    for (let i = 0; i < state.targets.length; i++) {
+      const t = state.targets[i];
+      if (t === prev.targets[i]) continue;
+      updateTarget.run({ ...t, effector: t.effector ?? null, bda: t.bda ?? null, engagedAt: t.engagedAt ?? null, nsl: t.nsl ? 1 : 0, appr_pid: t.appr.pid ? 1 : 0, appr_jag: t.appr.jag ? 1 : 0, appr_strike: t.appr.strike ? 1 : 0, appr_tea: t.appr.tea ? 1 : 0 });
+    }
   }
   // Sensors only change on a retask action (sim ticks never touch them) —
   // skip the write entirely when the array is untouched.

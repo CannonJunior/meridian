@@ -10,6 +10,7 @@ import {
   decayInfo,
   effFor,
   effName,
+  fmtLogTime,
   isEngageReady,
   mgrs,
   nslDistFor,
@@ -19,6 +20,8 @@ import {
   trkColorFor,
 } from '../selectors';
 import type { Approvals, Target } from '../types';
+import { orgById } from '../assets/staff';
+import RightRailResizeHandle from './RightRailResizeHandle';
 
 const APPR_DEFS: { k: keyof Approvals; l: string }[] = [
   { k: 'pid', l: 'POSITIVE ID (PID)' },
@@ -56,10 +59,18 @@ export default function TargetWorkup() {
   const retreatStage = useStore((s) => s.retreatStage);
   const assignEffector = useStore((s) => s.assignEffector);
   const toggleAppr = useStore((s) => s.toggleAppr);
+  const submitApproval = useStore((s) => s.submitApproval);
+  const openChat = useStore((s) => s.openChat);
+  const pendingActions = useStore((s) => s.pendingActions);
   const engage = useStore((s) => s.engage);
 
   const sel = targets.find((t) => t.id === selectedId) ?? targets[0];
-  if (!sel) return <div className="target-workup target-workup-empty" style={{ borderLeft: '1px solid var(--hairline)', background: 'var(--panel-1)' }} />;
+  if (!sel)
+    return (
+      <div className="target-workup target-workup-empty" style={{ position: 'relative', borderLeft: '1px solid var(--hairline)', background: 'var(--panel-1)' }}>
+        <RightRailResizeHandle />
+      </div>
+    );
 
   const di = decayInfo(sel.decay);
   const candidates = effFor(sel, effectors);
@@ -68,9 +79,11 @@ export default function TargetWorkup() {
 
   const affWash = sel.aff === 'HOS' ? 'rgba(255,90,71,.07)' : sel.aff === 'UNK' ? 'rgba(255,210,63,.06)' : 'rgba(95,227,154,.05)';
   const nsl = nslDistFor(sel);
+  const approvalPending = (key: keyof Approvals) => pendingActions.find((p) => p.targetId === sel.id && p.kind === `toggleAppr:${key}` && p.status === 'pending');
 
   return (
-    <div className="target-workup" style={{ borderLeft: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+    <div className="target-workup" style={{ position: 'relative', borderLeft: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      <RightRailResizeHandle />
       <div className="target-workup-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
         <span className="target-workup-header-accent" style={{ width: 5, height: 14, background: 'var(--amber)', boxShadow: '0 0 8px var(--amber)' }} />
         <span className="target-workup-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--amber)', fontWeight: 600 }}>
@@ -341,23 +354,49 @@ export default function TargetWorkup() {
           <div className="target-workup-authorization-list" style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
             {APPR_DEFS.map((a) => {
               const on = sel.appr[a.k];
-              const boxColor = on ? C.green : 'var(--ink-faint)';
+              const pending = approvalPending(a.k);
+              const pendingOrg = pending ? orgById(pending.orgId) : undefined;
+              const boxColor = pending ? 'var(--amber)' : on ? C.green : 'var(--ink-faint)';
               return (
                 <div
                   key={a.k}
                   className="target-workup-authorization-row"
-                  onClick={() => toggleAppr(a.k)}
-                  style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '6px 8px', border: `1px solid ${on ? '#244536' : 'var(--hairline-mid)'}`, background: on ? 'rgba(95,227,154,.05)' : 'var(--panel-3)', cursor: 'pointer' }}
+                  onClick={() => {
+                    if (pending) return;
+                    if (!on) submitApproval(a.k, sel.id);
+                    else toggleAppr(a.k, sel.id);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 9,
+                    padding: '6px 8px',
+                    border: `1px solid ${pending ? '#5a4420' : on ? '#244536' : 'var(--hairline-mid)'}`,
+                    background: pending ? 'rgba(255,171,56,.06)' : on ? 'rgba(95,227,154,.05)' : 'var(--panel-3)',
+                    cursor: pending ? 'default' : 'pointer',
+                  }}
                 >
                   <span className="target-workup-authorization-checkbox" style={{ width: 14, height: 14, border: `1.5px solid ${boxColor}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: boxColor, fontWeight: 700, flexShrink: 0 }}>
-                    {on ? '✓' : ''}
+                    {pending ? '…' : on ? '✓' : ''}
                   </span>
                   <span className="target-workup-authorization-label" style={{ fontSize: 10.5, color: 'var(--ink)', letterSpacing: '.04em', flex: 1 }}>
                     {a.l}
                   </span>
-                  <span className="target-workup-authorization-status" style={{ fontSize: 8.5, letterSpacing: '.08em', color: on ? C.green : C.amber, fontWeight: 600 }}>
-                    {on ? 'MET' : 'PENDING'}
+                  <span className="target-workup-authorization-status" style={{ fontSize: 8.5, letterSpacing: '.08em', color: pending ? 'var(--amber)' : on ? C.green : C.amber, fontWeight: 600 }}>
+                    {pending ? `${pendingOrg?.acronym ?? pending.orgId.toUpperCase()} · ${fmtLogTime(pending.adjudicationDueAt)}` : on ? 'MET' : 'PENDING'}
                   </span>
+                  {pending && (
+                    <span
+                      className="target-workup-authorization-discuss-button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openChat(pending.orgId, sel.id);
+                      }}
+                      style={{ fontSize: 8, letterSpacing: '.04em', color: 'var(--red)', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}
+                    >
+                      ▸ DISCUSS
+                    </span>
+                  )}
                 </div>
               );
             })}

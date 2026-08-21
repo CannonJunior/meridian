@@ -69,18 +69,36 @@ export const TARGET_LISTS: TargetListDef[] = [
 //  - JIPTL: prioritized AND fully cleared for strike (appr.strike).
 //  - RTL:   still active (not complete) AND carries an elevated CDE rating.
 //  - NSL:   flagged as inside/near a no-strike zone.
+//
+// One predicate map drives both directions (which targets are on a list, and
+// which lists a given target is on) so the two views can't drift apart.
+const LIST_MEMBERSHIP: Record<TargetListId, (t: Target) => boolean> = {
+  jtl: () => true,
+  jiptl: (t) => t.pri != null && t.appr.strike,
+  rtl: (t) => t.stage < 4 && (t.cde === 'CDE-2' || t.cde === 'CDE-3'),
+  nsl: (t) => t.nsl,
+  hptl: (t) => t.pri != null,
+};
+
 export function targetsForList(targets: Target[], listId: TargetListId): Target[] {
-  switch (listId) {
-    case 'jtl':
-      return targets;
-    case 'jiptl':
-      return targets.filter((t) => t.pri != null && t.appr.strike);
-    case 'rtl':
-      return targets.filter((t) => t.stage < 4 && (t.cde === 'CDE-2' || t.cde === 'CDE-3'));
-    case 'nsl':
-      return targets.filter((t) => t.nsl);
-    case 'hptl':
-    default:
-      return targets.filter((t) => t.pri != null);
-  }
+  return targets.filter(LIST_MEMBERSHIP[listId]);
+}
+
+// Every list a given target currently belongs to, in TARGET_LISTS order.
+export function listsForTarget(t: Target): TargetListId[] {
+  return TARGET_LISTS.map((l) => l.id).filter((id) => LIST_MEMBERSHIP[id](t));
+}
+
+// A named-list state transition: doctrinally, a target moving onto the JTL,
+// RTL, JIPTL, etc. is a discrete, attributable event (a vetting decision, a
+// JTCB approval), not just a silently-recomputed boolean. Meridian's list
+// membership above is still derived from other fields rather than driven by
+// an explicit nomination/approval workflow — but store.ts now diffs
+// membership on every server update and records the moment a target first
+// qualifies for a list, so at least the *transition itself* is a real,
+// timestamped, auditable fact instead of nothing at all.
+export interface TargetListTransition {
+  targetId: string;
+  listId: TargetListId;
+  joinedAt: number; // simulation tick (State.t) when the transition was observed
 }

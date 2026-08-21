@@ -1,6 +1,7 @@
 import { useStore } from '../store';
 import TacticalMap from './TacticalMap';
 import Workbench from './Workbench';
+import Toasts from './Toasts';
 
 export default function CenterPanel() {
   const view = useStore((s) => s.view);
@@ -36,6 +37,7 @@ export default function CenterPanel() {
       </div>
 
       {isMap ? <TacticalMap /> : <Workbench />}
+      <Toasts />
     </div>
   );
 }

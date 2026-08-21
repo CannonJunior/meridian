@@ -144,7 +144,8 @@ export type ActionMessage =
   | { type: 'action'; name: 'cycleRoe'; args: Record<string, never> }
   | { type: 'action'; name: 'retaskSensor'; args: { sensorId: string } }
   | { type: 'action'; name: 'assignEffector'; args: { effectorId: string } }
-  | { type: 'action'; name: 'toggleAppr'; args: { key: keyof Approvals } }
+  | { type: 'action'; name: 'toggleAppr'; args: { key: keyof Approvals; id?: string } }
+  | { type: 'action'; name: 'setPriority'; args: { id: string; pri: number | null } }
   | { type: 'action'; name: 'engage'; args: Record<string, never> }
   | { type: 'action'; name: 'setStage'; args: { id: string; stageIdx: number } }
   | { type: 'action'; name: 'advanceStage'; args: Record<string, never> }

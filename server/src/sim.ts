@@ -9,19 +9,21 @@ export function tick(): void {
     let log = s.log;
 
     const targets: Target[] = s.targets.map((t) => {
+      // Terminal — neither block below can ever apply once stage hits 4
+      // (the movement/decay/trkQ block is gated on stage<4, the BDA
+      // transition requires stage===3), so skip the clone+write entirely.
+      if (t.stage >= 4) return t;
       const u: Target = { ...t };
-      if (u.stage < 4) {
-        if (u.speed > 0) {
-          const rad = ((u.course - 90) * Math.PI) / 180;
-          u.x = clamp(u.x + Math.cos(rad) * 0.1 * (u.speed / 30), 5, 95);
-          u.y = clamp(u.y + Math.sin(rad) * 0.1 * (u.speed / 30), 6, 94);
-        }
-        u.decay = u.decay + 1;
-        if (u.custody && u.custody !== '—' && u.decay > 18 + (u.id.charCodeAt(4) % 9)) {
-          u.decay = 2 + (nt % 4);
-        }
-        u.trkQ = clamp(u.trkQ + (Math.sin(nt / 3 + u.x) * 1.4 | 0), 20, 99);
+      if (u.speed > 0) {
+        const rad = ((u.course - 90) * Math.PI) / 180;
+        u.x = clamp(u.x + Math.cos(rad) * 0.1 * (u.speed / 30), 5, 95);
+        u.y = clamp(u.y + Math.sin(rad) * 0.1 * (u.speed / 30), 6, 94);
       }
+      u.decay = u.decay + 1;
+      if (u.custody && u.custody !== '—' && u.decay > 18 + (u.id.charCodeAt(4) % 9)) {
+        u.decay = 2 + (nt % 4);
+      }
+      u.trkQ = clamp(u.trkQ + (Math.sin(nt / 3 + u.x) * 1.4 | 0), 20, 99);
       if (u.engagedAt != null && nt - u.engagedAt >= 6 && u.stage === 3) {
         u.stage = 4;
         u.status = 'NEUTRALIZED';

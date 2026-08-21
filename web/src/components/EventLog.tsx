@@ -1,5 +1,6 @@
 import { useStore } from '../store';
 import { fmtLogTime } from '../selectors';
+import RightRailResizeHandle from './RightRailResizeHandle';
 
 const TAG_COLORS: Record<string, string> = {
   det: 'var(--cyan)',
@@ -15,7 +16,8 @@ export default function EventLog() {
   const log = useStore((s) => s.log);
 
   return (
-    <div className="event-log" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+    <div className="event-log" style={{ position: 'relative', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
+      <RightRailResizeHandle />
       <div className="event-log-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderBottom: '1px solid var(--hairline)', background: 'var(--panel-2)' }}>
         <span className="event-log-header-accent" style={{ width: 5, height: 13, background: 'var(--cyan)' }} />
         <span className="event-log-title" style={{ fontFamily: 'var(--font-display)', fontSize: 10.5, letterSpacing: '.2em', color: 'var(--cyan)', fontWeight: 600 }}>

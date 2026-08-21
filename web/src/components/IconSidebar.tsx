@@ -57,11 +57,23 @@ function StyleIcon({ color }: { color: string }) {
   );
 }
 
+function ChatIcon({ color }: { color: string }) {
+  return (
+    <svg className="icon-sidebar-glyph icon-sidebar-glyph-chat" width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path className="icon-sidebar-chat-glyph-bubble" d="M2 4.5C2 3.67 2.67 3 3.5 3H16.5C17.33 3 18 3.67 18 4.5V12C18 12.83 17.33 13.5 16.5 13.5H8L4.5 16.5V13.5H3.5C2.67 13.5 2 12.83 2 12V4.5Z" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+      <line className="icon-sidebar-chat-glyph-dot-1" x1="6" y1="8.25" x2="6.01" y2="8.25" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <line className="icon-sidebar-chat-glyph-dot-2" x1="10" y1="8.25" x2="10.01" y2="8.25" stroke={color} strokeWidth="2" strokeLinecap="round" />
+      <line className="icon-sidebar-chat-glyph-dot-3" x1="14" y1="8.25" x2="14.01" y2="8.25" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const MANAGERS: { id: Manager; label: string; accent: string; icon: (c: string) => ReactNode }[] = [
   { id: 'context', label: 'CONTEXT LAYERS', accent: 'var(--green)', icon: (c) => <ContextIcon color={c} /> },
   { id: 'isr', label: 'ISR COLLECTION', accent: 'var(--cyan)', icon: (c) => <IsrIcon color={c} /> },
   { id: 'oob', label: 'ORDER OF BATTLE', accent: 'var(--blue)', icon: (c) => <OobIcon color={c} /> },
   { id: 'lists', label: 'TARGET LISTS', accent: 'var(--yellow)', icon: (c) => <ListsIcon color={c} /> },
+  { id: 'chat', label: 'BOARD COMMS', accent: 'var(--red)', icon: (c) => <ChatIcon color={c} /> },
   { id: 'style', label: 'STYLE MANAGER', accent: 'var(--amber)', icon: (c) => <StyleIcon color={c} /> },
 ];
 

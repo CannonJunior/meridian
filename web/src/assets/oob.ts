@@ -589,6 +589,123 @@ const fifthAirForce: OobDraft = {
   ],
 };
 
+// -- The other active numbered air forces (top-level only) ---------------
+// Sourced from Wikipedia (Numbered Air Force) — every NAF currently active
+// per that page's status column, at the same level of detail the branch
+// summary itself uses (parent major command · role · headquarters). Unlike
+// Fifth Air Force above, these are not broken down to wing/squadron level —
+// that would need each NAF's own wing structure individually sourced the
+// way 5th AF's was, which is future work, not done here. Inactive/disbanded
+// NAFs (6th, 14th, 17th Expeditionary, 23rd, 24th, 25th) are omitted.
+const firstAirForce: OobDraft = {
+  id: 'us-1af',
+  name: 'First Air Force',
+  role: 'Air Forces Northern · Air Combat Command · NORAD/NORTHCOM air defense component · HQ Tyndall AFB, Florida',
+  kind: 'numberedAF',
+};
+const secondAirForce: OobDraft = {
+  id: 'us-2af',
+  name: 'Second Air Force',
+  role: 'Air Education and Training Command · oversees all USAF non-flying technical training · HQ Keesler AFB, Mississippi',
+  kind: 'numberedAF',
+};
+const thirdAirForce: OobDraft = {
+  id: 'us-3af',
+  name: 'Third Air Force',
+  role: 'Air Forces Europe · USAFE-AFAFRICA · supports EUCOM and AFRICOM · HQ Ramstein Air Base, Germany',
+  kind: 'numberedAF',
+};
+const fourthAirForce: OobDraft = {
+  id: 'us-4af',
+  name: 'Fourth Air Force',
+  role: 'Air Force Reserve Command · reserve airlift/mobility numbered air force · HQ March Air Reserve Base, California',
+  kind: 'numberedAF',
+};
+const seventhAirForce: OobDraft = {
+  id: 'us-7af',
+  name: 'Seventh Air Force',
+  role: 'Air Forces Korea · Pacific Air Forces · air component supporting U.S. Forces Korea · HQ Osan Air Base, South Korea',
+  kind: 'numberedAF',
+};
+const eighthAirForce: OobDraft = {
+  id: 'us-8af',
+  name: 'Eighth Air Force',
+  role: 'Air Forces Strategic · Air Force Global Strike Command · responsible for all bomber wings · HQ Barksdale AFB, Louisiana',
+  kind: 'numberedAF',
+};
+const ninthAirForce: OobDraft = {
+  id: 'us-9af',
+  name: 'Ninth Air Force',
+  role: 'Air Forces Central · Air Combat Command · USCENTCOM air component · HQ Shaw AFB, South Carolina',
+  kind: 'numberedAF',
+};
+const tenthAirForce: OobDraft = {
+  id: 'us-10af',
+  name: 'Tenth Air Force',
+  role: 'Air Force Reserve Command · reserve combat/fighter and training numbered air force · HQ NAS JRB Fort Worth, Texas',
+  kind: 'numberedAF',
+};
+const eleventhAirForce: OobDraft = {
+  id: 'us-11af',
+  name: 'Eleventh Air Force',
+  role: 'Pacific Air Forces · Alaskan NORAD Region / Alaskan Command air component · HQ Joint Base Elmendorf-Richardson, Alaska',
+  kind: 'numberedAF',
+};
+const twelfthAirForce: OobDraft = {
+  id: 'us-12af',
+  name: 'Twelfth Air Force',
+  role: 'Air Forces Southern · Air Combat Command · USSOUTHCOM air component · HQ Davis-Monthan AFB, Arizona',
+  kind: 'numberedAF',
+};
+const thirteenthAirForce: OobDraft = {
+  id: 'us-13af',
+  name: 'Thirteenth Air Force (Expeditionary)',
+  role: 'Pacific Air Forces · provisional expeditionary numbered air force, reactivated 2012 · HQ Joint Base Pearl Harbor-Hickam, Hawaii',
+  kind: 'numberedAF',
+};
+const fifteenthAirForce: OobDraft = {
+  id: 'us-15af',
+  name: 'Fifteenth Air Force',
+  role: 'Air Combat Command · combat air forces generation, reactivated 2020 consolidating former 9th/12th AF stateside wings · HQ Shaw AFB, South Carolina',
+  kind: 'numberedAF',
+};
+const sixteenthAirForce: OobDraft = {
+  id: 'us-16af',
+  name: 'Sixteenth Air Force',
+  role: 'Air Forces Cyber · Air Combat Command · supports U.S. Cyber Command, ISR and information warfare (formed 2019 from 24th/25th AF) · HQ Joint Base San Antonio-Lackland, Texas',
+  kind: 'numberedAF',
+};
+const eighteenthAirForce: OobDraft = {
+  id: 'us-18af',
+  name: 'Eighteenth Air Force',
+  role: 'Air Forces Transportation · Air Mobility Command · USTRANSCOM air mobility component · HQ Scott AFB, Illinois',
+  kind: 'numberedAF',
+};
+const nineteenthAirForce: OobDraft = {
+  id: 'us-19af',
+  name: 'Nineteenth Air Force',
+  role: 'Air Education and Training Command · oversees USAF flying training · HQ Joint Base San Antonio-Randolph, Texas',
+  kind: 'numberedAF',
+};
+const twentiethAirForce: OobDraft = {
+  id: 'us-20af',
+  name: 'Twentieth Air Force',
+  role: 'Air Forces Strategic · Air Force Global Strike Command · oversees all ICBM wings · HQ F.E. Warren AFB, Wyoming',
+  kind: 'numberedAF',
+};
+const twentyFirstAirForce: OobDraft = {
+  id: 'us-21af',
+  name: 'Twenty-First Air Force',
+  role: 'Air Mobility Command · airlift operations, reactivated September 2025 · HQ Joint Base McGuire-Dix-Lakehurst, New Jersey',
+  kind: 'numberedAF',
+};
+const twentySecondAirForce: OobDraft = {
+  id: 'us-22af',
+  name: 'Twenty-Second Air Force',
+  role: 'Air Force Reserve Command · reserve airlift/mobility numbered air force · HQ Dobbins Air Reserve Base, Georgia',
+  kind: 'numberedAF',
+};
+
 const RAW_TREE: OobDraft[] = [
   {
     id: 'ru',
@@ -623,7 +740,27 @@ const RAW_TREE: OobDraft[] = [
         id: 'us-af',
         name: 'US Air Force',
         kind: 'branch',
-        children: [fifthAirForce],
+        children: [
+          firstAirForce,
+          secondAirForce,
+          thirdAirForce,
+          fourthAirForce,
+          fifthAirForce,
+          seventhAirForce,
+          eighthAirForce,
+          ninthAirForce,
+          tenthAirForce,
+          eleventhAirForce,
+          twelfthAirForce,
+          thirteenthAirForce,
+          fifteenthAirForce,
+          sixteenthAirForce,
+          eighteenthAirForce,
+          nineteenthAirForce,
+          twentiethAirForce,
+          twentyFirstAirForce,
+          twentySecondAirForce,
+        ],
       },
     ],
   },
