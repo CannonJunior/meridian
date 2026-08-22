@@ -69,6 +69,15 @@ export interface OobNode {
   lat?: number;
   radars?: RadarSystem[];
   weapons?: WeaponSystem[];
+  // Object-only, "ship" kind only — physical parametrics used by the
+  // knowledge-base similarity search (kb/similarity.ts) to compare hulls
+  // across countries. Optional because backfilling every class in this file
+  // is future work (see kb/ontology.ts's plan notes) — only populated for
+  // classes actually exercised by a cross-country similarity comparison
+  // today (Arleigh Burke, Ticonderoga, and the new PLA Navy classes below).
+  class?: string;
+  lengthM?: number;
+  displacementT?: number;
   // Object-only, "contact" kind only:
   parametrics?: ContactParametrics;
 }
@@ -103,10 +112,23 @@ function ship(
   port: { lng: number; lat: number },
   index: number,
   count: number,
-  opts: { role?: string; status?: ObjectStatus; radars?: RadarSystem[]; weapons?: WeaponSystem[] } = {},
+  opts: { role?: string; status?: ObjectStatus; class?: string; lengthM?: number; displacementT?: number; radars?: RadarSystem[]; weapons?: WeaponSystem[] } = {},
 ): OobDraft {
   const pos = nearPort(port, index, count);
-  return { id, name, kind: 'ship', role: opts.role, status: opts.status ?? 'VISIBLE', lng: pos.lng, lat: pos.lat, radars: opts.radars, weapons: opts.weapons };
+  return {
+    id,
+    name,
+    kind: 'ship',
+    role: opts.role,
+    status: opts.status ?? 'VISIBLE',
+    lng: pos.lng,
+    lat: pos.lat,
+    class: opts.class,
+    lengthM: opts.lengthM,
+    displacementT: opts.displacementT,
+    radars: opts.radars,
+    weapons: opts.weapons,
+  };
 }
 
 // An UNIDENTIFIED contact: unlike ship(), position is a direct lng/lat (a
@@ -155,6 +177,12 @@ const TICONDEROGA_WEAPONS: WeaponSystem[] = [
   { name: 'Mk 45 5"/54 gun', type: 'naval gun', rangeNm: 13 },
   { name: 'Phalanx CIWS', type: 'close-in weapon system', rangeNm: 0.8 },
 ];
+// Physical parametrics (length/displacement from each class's Wikipedia
+// infobox) bundled with the sensor/weapon fit, so a single spread onto
+// ship()'s opts carries everything the knowledge-base similarity search
+// (kb/similarity.ts) needs — see the OobNode.class/lengthM/displacementT
+// doc comment above for why this isn't backfilled onto every class yet.
+const TICONDEROGA_FIT = { class: 'Ticonderoga-class cruiser', lengthM: 173, displacementT: 9800, radars: TICONDEROGA_RADARS, weapons: TICONDEROGA_WEAPONS };
 
 const ARLEIGH_BURKE_RADARS: RadarSystem[] = [
   { name: 'AN/SPY-1D', type: '3D multi-function phased-array', rangeNm: 200 },
@@ -169,6 +197,7 @@ const ARLEIGH_BURKE_WEAPONS: WeaponSystem[] = [
   { name: 'Phalanx CIWS', type: 'close-in weapon system', rangeNm: 0.8 },
   { name: 'Mk 46 torpedo', type: 'anti-submarine torpedo', rangeNm: 6 },
 ];
+const ARLEIGH_BURKE_FIT = { class: 'Arleigh Burke-class destroyer', lengthM: 154, displacementT: 9200, radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS };
 
 const AMERICA_LHA_RADARS: RadarSystem[] = [
   { name: 'AN/SPS-48G', type: '3D air-search', rangeNm: 250 },
@@ -236,20 +265,20 @@ const YOKOSUKA_COUNT = 14;
 const blueRidge = ship('us-7f-flagship', 'USS Blue Ridge (LCC-19)', YOKOSUKA, 0, YOKOSUKA_COUNT, { role: 'Fleet flagship', radars: BLUE_RIDGE_RADARS, weapons: BLUE_RIDGE_WEAPONS });
 const csg5Ships: OobDraft[] = [
   ship('us-cvn-73', 'USS George Washington (CVN-73)', YOKOSUKA, 1, YOKOSUKA_COUNT, { role: 'Aircraft carrier · CSG-5 flagship', radars: NIMITZ_RADARS, weapons: NIMITZ_WEAPONS }),
-  ship('us-cg-62', 'USS Robert Smalls (CG-62)', YOKOSUKA, 2, YOKOSUKA_COUNT, { role: 'Guided-missile cruiser', radars: TICONDEROGA_RADARS, weapons: TICONDEROGA_WEAPONS }),
+  ship('us-cg-62', 'USS Robert Smalls (CG-62)', YOKOSUKA, 2, YOKOSUKA_COUNT, { role: 'Guided-missile cruiser', ...TICONDEROGA_FIT }),
 ];
 const desron15Ships: OobDraft[] = [
-  ship('us-ddg-65', 'USS Benfold (DDG-65)', YOKOSUKA, 3, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-69', 'USS Milius (DDG-69)', YOKOSUKA, 4, YOKOSUKA_COUNT, { status: 'OBSCURED', radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-76', 'USS Higgins (DDG-76)', YOKOSUKA, 5, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-83', 'USS Howard (DDG-83)', YOKOSUKA, 6, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-85', 'USS McCampbell (DDG-85)', YOKOSUKA, 7, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-86', 'USS Shoup (DDG-86)', YOKOSUKA, 8, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-88', 'USS Preble (DDG-88)', YOKOSUKA, 9, YOKOSUKA_COUNT, { status: 'UNKNOWN', radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-105', 'USS Dewey (DDG-105)', YOKOSUKA, 10, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-113', 'USS John Finn (DDG-113)', YOKOSUKA, 11, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-114', 'USS Ralph Johnson (DDG-114)', YOKOSUKA, 12, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-115', 'USS Rafael Peralta (DDG-115)', YOKOSUKA, 13, YOKOSUKA_COUNT, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
+  ship('us-ddg-65', 'USS Benfold (DDG-65)', YOKOSUKA, 3, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-69', 'USS Milius (DDG-69)', YOKOSUKA, 4, YOKOSUKA_COUNT, { status: 'OBSCURED', ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-76', 'USS Higgins (DDG-76)', YOKOSUKA, 5, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-83', 'USS Howard (DDG-83)', YOKOSUKA, 6, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-85', 'USS McCampbell (DDG-85)', YOKOSUKA, 7, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-86', 'USS Shoup (DDG-86)', YOKOSUKA, 8, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-88', 'USS Preble (DDG-88)', YOKOSUKA, 9, YOKOSUKA_COUNT, { status: 'UNKNOWN', ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-105', 'USS Dewey (DDG-105)', YOKOSUKA, 10, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-113', 'USS John Finn (DDG-113)', YOKOSUKA, 11, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-114', 'USS Ralph Johnson (DDG-114)', YOKOSUKA, 12, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-115', 'USS Rafael Peralta (DDG-115)', YOKOSUKA, 13, YOKOSUKA_COUNT, { ...ARLEIGH_BURKE_FIT }),
 ];
 
 // -- Sasebo-based hulls: TF-76 amphibious force (9 total) ----------------
@@ -290,19 +319,19 @@ const thirdFleetShips: OobDraft[] = [
 ];
 
 const fifthFleetShips: OobDraft[] = [
-  ship('us-ddg-103', 'USS Truxtun (DDG-103)', BAHRAIN, 0, 3, { role: 'Guided-missile destroyer', radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-119', 'USS Delbert D. Black (DDG-119)', BAHRAIN, 1, 3, { role: 'Guided-missile destroyer · Task Force 55', radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
+  ship('us-ddg-103', 'USS Truxtun (DDG-103)', BAHRAIN, 0, 3, { role: 'Guided-missile destroyer', ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-119', 'USS Delbert D. Black (DDG-119)', BAHRAIN, 1, 3, { role: 'Guided-missile destroyer · Task Force 55', ...ARLEIGH_BURKE_FIT }),
   ship('us-lcs-32', 'USS Santa Barbara (LCS-32)', BAHRAIN, 2, 3, { role: 'Littoral combat ship · Task Force 59 (unmanned & innovation)', radars: INDEPENDENCE_LCS_RADARS, weapons: INDEPENDENCE_LCS_WEAPONS }),
 ];
 
 const mountWhitney = ship('us-lcc-20', 'USS Mount Whitney (LCC-20)', GAETA, 0, 1, { role: 'Fleet flagship', radars: BLUE_RIDGE_RADARS, weapons: BLUE_RIDGE_WEAPONS });
 const desron60Ships: OobDraft[] = [
-  ship('us-ddg-51', 'USS Arleigh Burke (DDG-51)', ROTA, 0, 6, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-75', 'USS Donald Cook (DDG-75)', ROTA, 1, 6, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-79', 'USS Oscar Austin (DDG-79)', ROTA, 2, 6, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-80', 'USS Roosevelt (DDG-80)', ROTA, 3, 6, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-84', 'USS Bulkeley (DDG-84)', ROTA, 4, 6, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
-  ship('us-ddg-117', 'USS Paul Ignatius (DDG-117)', ROTA, 5, 6, { radars: ARLEIGH_BURKE_RADARS, weapons: ARLEIGH_BURKE_WEAPONS }),
+  ship('us-ddg-51', 'USS Arleigh Burke (DDG-51)', ROTA, 0, 6, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-75', 'USS Donald Cook (DDG-75)', ROTA, 1, 6, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-79', 'USS Oscar Austin (DDG-79)', ROTA, 2, 6, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-80', 'USS Roosevelt (DDG-80)', ROTA, 3, 6, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-84', 'USS Bulkeley (DDG-84)', ROTA, 4, 6, { ...ARLEIGH_BURKE_FIT }),
+  ship('us-ddg-117', 'USS Paul Ignatius (DDG-117)', ROTA, 5, 6, { ...ARLEIGH_BURKE_FIT }),
 ];
 
 // -- Unidentified contacts ------------------------------------------------
@@ -706,6 +735,99 @@ const twentySecondAirForce: OobDraft = {
   kind: 'numberedAF',
 };
 
+// -- PLA Navy (China) hull classes ---------------------------------------
+// A small illustrative sample, not exhaustive PLAN order of battle — same
+// "representative sample" discipline this file already applies to e.g. the
+// numbered Air Forces above. Added so the knowledge-base similarity search
+// (kb/similarity.ts) has real cross-country data to compare against US
+// Navy hulls; sourced from each class's own Wikipedia page the same way
+// every other RadarSystem/WeaponSystem block in this file is. Organized
+// under the post-2016 PLA theater-command structure rather than the older
+// North/East/South Sea Fleet naming.
+const TYPE_052D_RADARS: RadarSystem[] = [
+  { name: 'Type 346B (Dragon Eye)', type: '3D multi-function phased-array', rangeNm: 250 },
+  { name: 'Type 364 (Seagull-C)', type: 'surface-search', rangeNm: 65 },
+];
+const TYPE_052D_WEAPONS: WeaponSystem[] = [
+  { name: 'HHQ-9B', type: 'surface-to-air missile', rangeNm: 108 },
+  { name: 'YJ-18', type: 'anti-ship / land-attack cruise missile', rangeNm: 290 },
+  { name: 'H/PJ-45A 130mm gun', type: 'naval gun', rangeNm: 18 },
+  { name: 'Type 730 CIWS', type: 'close-in weapon system', rangeNm: 1.6 },
+];
+const TYPE_052D_FIT = { class: 'Type 052D (Luyang III-class) destroyer', lengthM: 157, displacementT: 7500, radars: TYPE_052D_RADARS, weapons: TYPE_052D_WEAPONS };
+
+const TYPE_055_RADARS: RadarSystem[] = [
+  { name: 'Type 346B(V)2', type: '3D multi-function phased-array', rangeNm: 280 },
+  { name: 'Type 517M', type: '2D air-search', rangeNm: 220 },
+];
+const TYPE_055_WEAPONS: WeaponSystem[] = [
+  { name: 'HHQ-9B', type: 'surface-to-air missile', rangeNm: 108 },
+  { name: 'YJ-18', type: 'anti-ship / land-attack cruise missile', rangeNm: 290 },
+  { name: 'CJ-10', type: 'land-attack cruise missile', rangeNm: 810 },
+  { name: 'HQ-10', type: 'short-range surface-to-air missile', rangeNm: 5.4 },
+  { name: 'H/PJ-38 130mm gun', type: 'naval gun', rangeNm: 18 },
+];
+const TYPE_055_FIT = { class: 'Type 055 (Renhai-class) cruiser', lengthM: 180, displacementT: 13000, radars: TYPE_055_RADARS, weapons: TYPE_055_WEAPONS };
+
+const TYPE_054A_RADARS: RadarSystem[] = [
+  { name: 'Type 382 (Seagull-S)', type: '3D air-search', rangeNm: 100 },
+  { name: 'Type 344 fire-control', type: 'fire-control / surface-search', rangeNm: 35 },
+];
+const TYPE_054A_WEAPONS: WeaponSystem[] = [
+  { name: 'HHQ-16', type: 'surface-to-air missile', rangeNm: 40 },
+  { name: 'YJ-83', type: 'anti-ship missile', rangeNm: 110 },
+  { name: 'H/PJ-26 76mm gun', type: 'naval gun', rangeNm: 10.8 },
+  { name: 'Type 730 CIWS', type: 'close-in weapon system', rangeNm: 1.6 },
+  { name: 'Yu-7 torpedo', type: 'anti-submarine torpedo', rangeNm: 7.6 },
+];
+const TYPE_054A_FIT = { class: 'Type 054A (Jiangkai II-class) frigate', lengthM: 134, displacementT: 4053, radars: TYPE_054A_RADARS, weapons: TYPE_054A_WEAPONS };
+
+const QINGDAO = { lng: 120.38, lat: 36.07 };
+const ZHANJIANG = { lng: 110.4, lat: 21.21 };
+
+const QINGDAO_COUNT = 5;
+const type052dShips: OobDraft[] = [
+  ship('cn-ddg-172', 'PLANS Kunming (172)', QINGDAO, 0, QINGDAO_COUNT, { role: 'Guided-missile destroyer', ...TYPE_052D_FIT }),
+  ship('cn-ddg-173', 'PLANS Changsha (173)', QINGDAO, 1, QINGDAO_COUNT, { role: 'Guided-missile destroyer', ...TYPE_052D_FIT }),
+  ship('cn-ddg-174', 'PLANS Hefei (174)', QINGDAO, 2, QINGDAO_COUNT, { role: 'Guided-missile destroyer', ...TYPE_052D_FIT }),
+];
+const type055Ships: OobDraft[] = [
+  ship('cn-cg-101', 'PLANS Nanchang (101)', QINGDAO, 3, QINGDAO_COUNT, { role: 'Guided-missile cruiser', ...TYPE_055_FIT }),
+  ship('cn-cg-102', 'PLANS Lhasa (102)', QINGDAO, 4, QINGDAO_COUNT, { role: 'Guided-missile cruiser', ...TYPE_055_FIT }),
+];
+const ZHANJIANG_COUNT = 3;
+const type054aShips: OobDraft[] = [
+  ship('cn-ffg-546', 'PLANS Yancheng (546)', ZHANJIANG, 0, ZHANJIANG_COUNT, { role: 'Guided-missile frigate', ...TYPE_054A_FIT }),
+  ship('cn-ffg-568', 'PLANS Hengyang (568)', ZHANJIANG, 1, ZHANJIANG_COUNT, { role: 'Guided-missile frigate', ...TYPE_054A_FIT }),
+  ship('cn-ffg-598', 'PLANS Rizhao (598)', ZHANJIANG, 2, ZHANJIANG_COUNT, { role: 'Guided-missile frigate', ...TYPE_054A_FIT }),
+];
+
+const plaNavy: OobDraft = {
+  id: 'cn-navy',
+  name: "People's Liberation Army Navy",
+  role: 'Zhōngguó Rénmín Jiěfàngjūn Hǎijūn',
+  kind: 'branch',
+  children: [
+    {
+      id: 'cn-navy-northern',
+      name: 'PLAN Northern Theater Command Navy',
+      role: 'Yellow Sea / North China Sea · HQ Qingdao, Shandong',
+      kind: 'fleet',
+      children: [
+        { id: 'cn-navy-northern-052d', name: 'Type 052D Destroyer Squadron', kind: 'squadron', children: type052dShips },
+        { id: 'cn-navy-northern-055', name: 'Type 055 Cruiser Squadron', kind: 'squadron', children: type055Ships },
+      ],
+    },
+    {
+      id: 'cn-navy-southern',
+      name: 'PLAN Southern Theater Command Navy',
+      role: 'South China Sea · HQ Zhanjiang, Guangdong',
+      kind: 'fleet',
+      children: [{ id: 'cn-navy-southern-054a', name: 'Type 054A Frigate Squadron', kind: 'squadron', children: type054aShips }],
+    },
+  ],
+};
+
 const RAW_TREE: OobDraft[] = [
   {
     id: 'ru',
@@ -716,6 +838,12 @@ const RAW_TREE: OobDraft[] = [
       { id: 'ru-aerospace', name: 'Russian Aerospace Forces', kind: 'branch' },
       { id: 'ru-ground', name: 'Russian Ground Forces', kind: 'branch' },
     ],
+  },
+  {
+    id: 'cn',
+    name: 'China',
+    kind: 'country',
+    children: [plaNavy],
   },
   {
     id: 'us',

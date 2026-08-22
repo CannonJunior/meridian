@@ -11,6 +11,13 @@
 // layer/style via the GeoServer REST API. CORS must be enabled on GeoServer
 // (kartoza image: CORS_ENABLED=true) or the browser will block the
 // cross-origin GetFeature fetch.
+//
+// Some layers below (airfields, bathymetry-contours) are still bbox-scoped
+// to the Strait of Gibraltar, this project's current AO (see
+// mapProjection.ts) — that's the state of the data today, not a ceiling on
+// scope. Meridian's intended scope is worldwide; expect these to keep
+// getting replaced by genuinely worldwide sources over time, the way
+// weather-radar and submarine-cables already have been.
 
 import type { FeatureCollection } from 'geojson';
 import { TENTH_FLEET_LOCATIONS } from './tenthFleetLocations';
@@ -28,7 +35,13 @@ export type ContextLayerSourceType = 'wfs' | 'static' | 'live-raster';
 // airfield) — the point sub-layer is the identifiable one.
 // 'raster' = tiled imagery (live-raster sourceType only), not a vector
 // feature layer — no per-feature hit-testing.
-export type ContextLayerGeometryType = 'point' | 'polygon' | 'mixed' | 'line' | 'raster';
+// 'heatmap' = a WFS line/point layer's own vertices, densified and weighted
+// client-side, rendered as a MapLibre heatmap layer — a way to get a
+// density-style visualization out of real vector data without needing an
+// actual point-cloud/raster density source (see shipping-traffic-intensity,
+// built this way after no free/no-login/worldwide AIS density feed could
+// be found).
+export type ContextLayerGeometryType = 'point' | 'polygon' | 'mixed' | 'line' | 'raster' | 'heatmap';
 
 export interface ContextLayer {
   id: string;
@@ -70,6 +83,21 @@ export interface ContextLayer {
   lineOpacity?: number;
   // 'raster' geometryType only — layer paint opacity for the tile layer.
   rasterOpacity?: number;
+  // 'raster' geometryType, static tile URL only (e.g. a WMS GetMap template
+  // using MapLibre's {bbox-epsg-3857} substitution) — set for a layer whose
+  // tile URL never changes, as opposed to weather-radar's, which is
+  // resolved dynamically each time the layer is turned on (see
+  // rainviewer.ts) because RainViewer's frame path changes every ~10min.
+  rasterTileUrl?: string;
+  // 'raster' geometryType only — caps the zoom MapLibre will request tiles
+  // at, upsampling beyond that instead (weather-radar needs this because
+  // RainViewer's tile server 404s past z7; unset means no cap).
+  rasterMaxZoom?: number;
+  // 'heatmap' geometryType only — the property (e.g. shipping_lanes'
+  // lane_type) whose value looks up a per-feature weight in
+  // heatmapWeightMap; features/vertices with no match get weight 1.
+  heatmapWeightProperty?: string;
+  heatmapWeightMap?: Record<string, number>;
 }
 
 export const GEOSERVER_URL = 'http://localhost:8600/geoserver';
@@ -133,6 +161,55 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
     lineOpacityMap: { major: 0.75, middle: 0.6, minor: 0.4, chokepoint: 0.9 },
   },
   {
+    id: 'submarine-cables',
+    name: 'Submarine Cables',
+    description:
+      'Worldwide submarine telecommunication cable routes — 1,404 cables from OpenStreetMap nautical-chart data, incl. well-known systems like FLAG Europe-Asia and CANTAT-3. Solid = operational, dashed = abandoned.',
+    sourceType: 'wfs',
+    geometryType: 'line',
+    wfsBaseUrl: `${GEOSERVER_URL}/meridian/wfs`,
+    layerName: 'meridian:submarine_cables',
+    attribution: 'OpenStreetMap contributors',
+    defaultVisible: false,
+    identifiable: false,
+    lineColorProperty: 'status',
+    lineColorMap: { operational: '#5b9dff', abandoned: '#5b9dff' },
+    lineWidthMap: { operational: 1.1, abandoned: 0.7 },
+    lineOpacityMap: { operational: 0.8, abandoned: 0.35 },
+  },
+  {
+    id: 'bathymetry-contours',
+    name: 'Bathymetry Contours',
+    description:
+      'Generalised depth contours (50/100/200/500/1000/2000m), Strait of Gibraltar region — derived from the GEBCO grid, 240 lines simplified for the browser.',
+    sourceType: 'wfs',
+    geometryType: 'line',
+    wfsBaseUrl: `${GEOSERVER_URL}/meridian/wfs`,
+    layerName: 'meridian:bathymetry_contours',
+    attribution: 'EMODnet Bathymetry Consortium — EMODnet Digital Bathymetry (DTM)',
+    defaultVisible: false,
+    identifiable: false,
+    lineColorProperty: 'depth_band',
+    lineColorMap: { shallow: '#2e6fa8', mid: '#2467a0', deep: '#173f66' },
+    lineWidthMap: { shallow: 0.5, mid: 0.7, deep: 0.9 },
+    lineOpacityMap: { shallow: 0.5, mid: 0.65, deep: 0.8 },
+  },
+  {
+    id: 'shipping-traffic-intensity',
+    name: 'Shipping Traffic Intensity',
+    description:
+      "Worldwide shipping-traffic intensity — a heatmap derived from the Shipping Lanes vector data itself (weighted by major/middle/minor/chokepoint), not real AIS point density. No genuinely free, worldwide, no-login AIS density feed exists today (EMODnet's is EU-only; Global Fishing Watch's tile API needs a registered token; NOAA's global product now requires OAuth login) — this is an honest proxy from data already in this stack, not a relabeled version of one of those.",
+    sourceType: 'wfs',
+    geometryType: 'heatmap',
+    wfsBaseUrl: `${GEOSERVER_URL}/meridian/wfs`,
+    layerName: 'meridian:shipping_lanes',
+    attribution: 'Derived from Global Shipping Lanes (Paul Benden, CC BY-SA 4.0) and Eurostat SeaRoute chokepoints',
+    defaultVisible: false,
+    identifiable: false,
+    heatmapWeightProperty: 'lane_type',
+    heatmapWeightMap: { major: 1, middle: 0.6, minor: 0.3, chokepoint: 1 },
+  },
+  {
     id: 'tenth-fleet',
     name: 'Tenth Fleet (Cyber) Locations',
     description: "Fleet Cyber Command HQ and its Navy Information Operations Command detachments — Tenth Fleet has no ships; double-click a marker to open that command's object card.",
@@ -154,5 +231,6 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
     defaultVisible: false,
     identifiable: false,
     rasterOpacity: 0.55,
+    rasterMaxZoom: 7,
   },
 ];

@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { forward as mgrsForward } from 'mgrs';
 import { STAGES } from './types';
 import type { Affiliation, Category, Effector, Sensor, State, Target, Threat } from './types';
 
@@ -80,10 +81,33 @@ export function effName(effectors: Effector[], id: string | null | undefined): s
   return e ? e.callsign : '—';
 }
 
-export function mgrs(t: { x: number; y: number }): string {
-  const e = 380 + Math.round(t.x * 43);
-  const n = 610 + Math.round(t.y * 37);
-  return `37T CK ${e} ${n}`;
+// A real WGS84 -> MGRS conversion (the `mgrs` package — small, zero
+// dependencies, the standard JS implementation), replacing what used to be
+// arithmetic on the abstract x/y grid glued onto a hardcoded, made-up grid
+// zone ('37T CK') that had no relationship to the AO's real location (the
+// Strait of Gibraltar is actually grid zone 30S).
+export function mgrs(t: { lng: number; lat: number }): string {
+  const ref = mgrsForward([t.lng, t.lat], 5); // e.g. "30STE5921289469" (5-digit = 1m precision)
+  const zone = ref.slice(0, 3);
+  const square = ref.slice(3, 5);
+  const digits = ref.slice(5);
+  const half = digits.length / 2;
+  return `${zone} ${square} ${digits.slice(0, half)} ${digits.slice(half)}`;
+}
+
+const EARTH_RADIUS_NM = 3440.065;
+const toRad = (deg: number) => (deg * Math.PI) / 180;
+
+// Great-circle distance between two points, in nautical miles (haversine)
+// — mirrors server/src/helpers.ts's copy (no shared-code package between
+// the two TS projects in this repo).
+export function distanceNm(lng1: number, lat1: number, lng2: number, lat2: number): number {
+  const phi1 = toRad(lat1);
+  const phi2 = toRad(lat2);
+  const dPhi = toRad(lat2 - lat1);
+  const dLambda = toRad(lng2 - lng1);
+  const a = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) ** 2;
+  return EARTH_RADIUS_NM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 const DTG_BASE = Date.UTC(2026, 5, 28, 3, 14, 0);
@@ -225,7 +249,11 @@ export function computeAssoc(sel: Target, state: Pick<State, 'targets' | 'sensor
   if (sel.custody && sel.custody !== '—') res.push({ kind: 'sensor', aff: 'FRD', id: 'SNSR', name: sensorName(state.sensors, sel.custody), rel: 'CUSTODY', dist: '', clickable: false });
   if (sel.effector) res.push({ kind: 'effector', aff: 'FRD', id: 'EFF', name: effName(state.effectors, sel.effector), rel: 'PAIRED', dist: '', clickable: false });
 
-  const dist = (a: Target, b: Target) => Math.hypot(a.x - b.x, a.y - b.y);
+  // Thresholds are the old abstract-grid-unit values (13/28/42) converted
+  // to real nautical miles at this AO's scale (~0.45 NM/unit), preserving
+  // the original relative "how close counts as close" calibration now
+  // that the underlying distance is real.
+  const dist = (a: Target, b: Target) => distanceNm(a.lng, a.lat, b.lng, b.lat);
   const others = state.targets
     .filter((o) => o.id !== sel.id)
     .map((o) => ({ o, d: dist(sel, o) }))
@@ -234,12 +262,12 @@ export function computeAssoc(sel: Target, state: Pick<State, 'targets' | 'sensor
   for (const { o, d } of others) {
     if (added >= 5) break;
     let rel: string | null = null;
-    if (d < 13) rel = 'CO-LOCATED';
-    else if (sel.cat !== 'SAM' && o.cat === 'SAM' && o.aff === 'HOS' && d < 28) rel = 'AD COVER';
-    else if (sel.cat === 'SAM' && o.aff === 'HOS' && o.cat !== 'SAM' && d < 28 && (o.threat === 'CRIT' || o.threat === 'HIGH')) rel = 'DEFENDS';
-    else if (sel.cat === 'C2' && o.aff === 'HOS' && d < 42) rel = 'SUBORDINATE';
+    if (d < 6) rel = 'CO-LOCATED';
+    else if (sel.cat !== 'SAM' && o.cat === 'SAM' && o.aff === 'HOS' && d < 13) rel = 'AD COVER';
+    else if (sel.cat === 'SAM' && o.aff === 'HOS' && o.cat !== 'SAM' && d < 13 && (o.threat === 'CRIT' || o.threat === 'HIGH')) rel = 'DEFENDS';
+    else if (sel.cat === 'C2' && o.aff === 'HOS' && d < 19) rel = 'SUBORDINATE';
     if (rel) {
-      res.push({ kind: 'target', aff: o.aff, id: o.id, name: o.name, rel, dist: `${(d * 0.62).toFixed(1)} KM`, clickable: true, oid: o.id });
+      res.push({ kind: 'target', aff: o.aff, id: o.id, name: o.name, rel, dist: `${d.toFixed(1)} NM`, clickable: true, oid: o.id });
       added++;
     }
   }

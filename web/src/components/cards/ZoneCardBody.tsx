@@ -1,6 +1,12 @@
 import { useStore } from '../../store';
-import { affColor, affFull, affShapeStyle } from '../../selectors';
+import { affColor, affFull, affShapeStyle, distanceNm } from '../../selectors';
 import { EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
+
+// Matches the "~6 NM" radius stated in the TAB 0 overview below — the old
+// code compared abstract grid units (`< 11`) against a radius the UI
+// described in nautical miles, two numbers with no real relationship to
+// each other. This is now the one real number both use.
+const NSZ_RADIUS_NM = 6;
 
 const RESTRICTIONS = [
   'No kinetic fires within NSZ boundary',
@@ -16,7 +22,7 @@ export default function ZoneCardBody({ tab }: { tab: number }) {
 
   const drift = targets.find((t) => t.id === 'T2210');
   const inside = drift
-    ? targets.filter((t) => Math.hypot(t.x - drift.x, t.y - drift.y) < 11).map((t) => ({ idShort: t.id.slice(1), name: t.name, affColor: affColor(t.aff), affShape: affShapeStyle(t.aff), affFull: affFull(t.aff), id: t.id }))
+    ? targets.filter((t) => distanceNm(t.lng, t.lat, drift.lng, drift.lat) < NSZ_RADIUS_NM).map((t) => ({ idShort: t.id.slice(1), name: t.name, affColor: affColor(t.aff), affShape: affShapeStyle(t.aff), affFull: affFull(t.aff), id: t.id }))
     : [];
 
   if (tab === 0) {
@@ -25,7 +31,7 @@ export default function ZoneCardBody({ tab }: { tab: number }) {
         <KVGrid>
           <KV label="ZONE TYPE" value="NO-STRIKE / NSL ENTITY" />
           <KV label="PROTECTS" value="M/V DRIFT — civilian cargo" color="var(--green)" />
-          <KV label="RADIUS" value="~6 NM" />
+          <KV label="RADIUS" value={`~${NSZ_RADIUS_NM} NM`} />
           <KV label="AUTHORITY" value="CJTF SJA · ROE ANNEX C" />
           <KV label="STATUS" value="ENFORCED" color="var(--green)" />
         </KVGrid>

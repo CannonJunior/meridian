@@ -13,7 +13,7 @@ import { TUTORIALS } from './assets/tutorials';
 import type { PortFeature } from './portFeature';
 import type { AirfieldFeature } from './airfieldFeature';
 
-export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat';
+export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb';
 export type LegendMode = 'AFFILIATION' | 'OOB';
 
 export interface OobStyle {
@@ -179,6 +179,9 @@ interface UiState {
   cardX: number;
   cardY: number;
   basemapId: string;
+  // EPSG code TacticalMap's OpenLayers View renders in — see
+  // mapProjection.ts's PROJECTION_OPTIONS for the offered set.
+  mapProjectionCode: string;
   activeManager: Manager;
   legendMode: LegendMode;
   activeListId: TargetListId;
@@ -208,6 +211,13 @@ interface UiState {
   // identity doesn't mutate assets/oob.ts data, it just records the
   // analyst's tentative call, which components read alongside the node.
   contactIdentityAssignments: Record<string, string>;
+  // Knowledge-base graph: kbAssociations is a user-created, symmetric
+  // URI-to-URI adjacency list (same client-side-overlay precedent as
+  // contactIdentityAssignments above — not persisted server-side yet) that
+  // kb/deriveGraph.ts merges into the derived JSON-LD graph as
+  // `associatedWith` edges. kbSelectedUri is the currently focused KG node.
+  kbAssociations: Record<string, string[]>;
+  kbSelectedUri: string | null;
   // Shared width for the right rail (target workup, event log, command
   // bar ROE/clock) — see layout.ts for why these three stay in sync.
   rightRailWidth: number;
@@ -253,6 +263,7 @@ interface Actions {
   setCardTab: (i: number) => void;
   moveCardTo: (x: number, y: number) => void;
   setBasemap: (id: string) => void;
+  setMapProjectionCode: (code: string) => void;
   setActiveManager: (m: Manager) => void;
   setLegendMode: (m: LegendMode) => void;
   setActiveListId: (id: TargetListId) => void;
@@ -265,6 +276,9 @@ interface Actions {
   setOobStyleColor: (key: keyof OobStyle, hex: string) => void;
   assignContactIdentity: (contactId: string, profileId: string) => void;
   clearContactIdentity: (contactId: string) => void;
+  selectKbEntity: (uri: string) => void;
+  associateEntities: (uriA: string, uriB: string) => void;
+  dissociateEntities: (uriA: string, uriB: string) => void;
   dismissToast: (id: string) => void;
   setRightRailWidth: (w: number) => void;
   startTutorial: (id: string) => void;
@@ -297,6 +311,7 @@ export const useStore = create<Store>((set, get) => ({
   cardX: 330,
   cardY: 96,
   basemapId: 'tactical',
+  mapProjectionCode: 'EPSG:3857',
   activeManager: 'isr',
   legendMode: 'AFFILIATION',
   activeListId: 'hptl',
@@ -314,6 +329,8 @@ export const useStore = create<Store>((set, get) => ({
   flyToRequest: null,
   oobStyle: { radarColor: '#3fd2e6', weaponColor: '#ffab38' },
   contactIdentityAssignments: {},
+  kbAssociations: {},
+  kbSelectedUri: null,
   rightRailWidth: RIGHT_RAIL_MIN_WIDTH,
   activeTutorialId: null,
   tutorialStepIndex: 0,
@@ -513,6 +530,7 @@ export const useStore = create<Store>((set, get) => ({
   setCardTab: (i) => set({ cardTab: i }),
   moveCardTo: (x, y) => set({ cardX: Math.max(0, x), cardY: Math.max(0, y) }),
   setBasemap: (id) => set({ basemapId: id }),
+  setMapProjectionCode: (code) => set({ mapProjectionCode: code }),
   setActiveManager: (m) => set({ activeManager: m }),
   setRightRailWidth: (w) => set({ rightRailWidth: Math.min(RIGHT_RAIL_MAX_WIDTH, Math.max(RIGHT_RAIL_MIN_WIDTH, w)) }),
   setLegendMode: (m) => set({ legendMode: m }),
@@ -540,6 +558,28 @@ export const useStore = create<Store>((set, get) => ({
       const next = { ...prev.contactIdentityAssignments };
       delete next[contactId];
       return { contactIdentityAssignments: next };
+    }),
+  selectKbEntity: (uri) => set({ kbSelectedUri: uri, activeManager: 'kb', cardKind: 'kbEntity', cardId: uri, cardTab: 0 }),
+  associateEntities: (uriA, uriB) =>
+    set((prev) => {
+      if (uriA === uriB) return prev;
+      const addEdge = (map: Record<string, string[]>, from: string, to: string) => {
+        const existing = map[from] ?? [];
+        return existing.includes(to) ? map : { ...map, [from]: [...existing, to] };
+      };
+      const withA = addEdge(prev.kbAssociations, uriA, uriB);
+      const withBoth = addEdge(withA, uriB, uriA);
+      return { kbAssociations: withBoth };
+    }),
+  dissociateEntities: (uriA, uriB) =>
+    set((prev) => {
+      const removeEdge = (map: Record<string, string[]>, from: string, to: string) => {
+        if (!map[from]) return map;
+        return { ...map, [from]: map[from].filter((u) => u !== to) };
+      };
+      const withA = removeEdge(prev.kbAssociations, uriA, uriB);
+      const withBoth = removeEdge(withA, uriB, uriA);
+      return { kbAssociations: withBoth };
     }),
   dismissToast: (id) => set((prev) => ({ toasts: prev.toasts.filter((t) => t.id !== id) })),
   startTutorial: (id) => {

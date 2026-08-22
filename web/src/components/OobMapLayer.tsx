@@ -11,7 +11,7 @@ const OBJECTS = flattenObjects();
 // object's location: project the center and a point offset due north by
 // that many nm (1 nm = 1/60 degree latitude), then measure the pixel
 // distance between them. This tracks the map's current zoom/projection
-// without needing direct access to the maplibre map instance.
+// without needing direct access to the OpenLayers map instance.
 function rangeRingRadiusPx(project: ProjectLL, lng: number, lat: number, rangeNm: number): number {
   const center = project(lng, lat);
   const edge = project(lng, lat + rangeNm / 60);

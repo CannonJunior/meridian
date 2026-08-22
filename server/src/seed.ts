@@ -1,27 +1,33 @@
 import type { Effector, FriendlyUnit, LogEntry, Nai, Sensor, State, Target } from './types.js';
 
 // Transcribed verbatim from design_handoff_meridian_fires_c2/Meridian Fires C2.dc.html
-// (constructor of `class Component extends DCLogic`, lines ~744-807).
+// (constructor of `class Component extends DCLogic`, lines ~744-807) — with
+// the original abstract 0-100 x/y grid coordinates replaced by real WGS84
+// lng/lat, computed by applying the old grid's linear mapping onto the AO
+// bounding box (mapProjection.ts's former AO_BOUNDS/toLngLat) exactly once,
+// so the opening picture looks the same as it always has, but every
+// coordinate from here on is real and everything downstream (distance,
+// bearing, MGRS, GeoServer) can treat it as such.
 
 export const SEED_SENSORS: Sensor[] = [
-  { id: 'HAWK01', callsign: 'HAWK-01', platform: 'MQ-9A REAPER', intType: 'EO/IR · SAR', status: 'ON STATION', tasking: 'NAI-3 · VIPER', endur: 78, x: 30, y: 24, cov: 'cone', covDir: 120 },
-  { id: 'GLOBE7', callsign: 'GLOBE-7', platform: 'RQ-4 GLOBAL HAWK', intType: 'WAS · GMTI', status: 'ON STATION', tasking: 'NAI-1 · WIDE', endur: 64, x: 62, y: 14, cov: 'wide' },
-  { id: 'SENTRY3', callsign: 'SENTRY-3', platform: 'E-3G SENTRY', intType: 'AEW RADAR', status: 'ON STATION', tasking: 'AIR PICTURE', endur: 52, x: 78, y: 62, cov: 'area' },
-  { id: 'ORACLE', callsign: 'ORACLE', platform: 'GEOINT SAT', intType: 'EO / OVERHEAD', status: 'TASKED', tasking: 'NAI-2 · ANVIL', endur: 90, x: 46, y: 50, cov: 'none' },
-  { id: 'PROWLER', callsign: 'PROWLER-2', platform: 'RC-135V RIVET', intType: 'ELINT / SIGINT', status: 'ON STATION', tasking: 'EMITTER GEO', endur: 71, x: 18, y: 70, cov: 'none' },
-  { id: 'GREY', callsign: 'GREYHOUND', platform: 'AN/TPS-80 G/ATOR', intType: 'GROUND MTI', status: 'DEGRADED', tasking: '— FAULT —', endur: 33, x: 14, y: 88, cov: 'none' },
+  { id: 'HAWK01', callsign: 'HAWK-01', platform: 'MQ-9A REAPER', intType: 'EO/IR · SAR', status: 'ON STATION', tasking: 'NAI-3 · VIPER', endur: 78, lng: -5.78, lat: 36.13, cov: 'cone', covDir: 120 },
+  { id: 'GLOBE7', callsign: 'GLOBE-7', platform: 'RQ-4 GLOBAL HAWK', intType: 'WAS · GMTI', status: 'ON STATION', tasking: 'NAI-1 · WIDE', endur: 64, lng: -5.492, lat: 36.18, cov: 'wide' },
+  { id: 'SENTRY3', callsign: 'SENTRY-3', platform: 'E-3G SENTRY', intType: 'AEW RADAR', status: 'ON STATION', tasking: 'AIR PICTURE', endur: 52, lng: -5.348, lat: 35.94, cov: 'area' },
+  { id: 'ORACLE', callsign: 'ORACLE', platform: 'GEOINT SAT', intType: 'EO / OVERHEAD', status: 'TASKED', tasking: 'NAI-2 · ANVIL', endur: 90, lng: -5.636, lat: 36.0, cov: 'none' },
+  { id: 'PROWLER', callsign: 'PROWLER-2', platform: 'RC-135V RIVET', intType: 'ELINT / SIGINT', status: 'ON STATION', tasking: 'EMITTER GEO', endur: 71, lng: -5.888, lat: 35.9, cov: 'none' },
+  { id: 'GREY', callsign: 'GREYHOUND', platform: 'AN/TPS-80 G/ATOR', intType: 'GROUND MTI', status: 'DEGRADED', tasking: '— FAULT —', endur: 33, lng: -5.924, lat: 35.81, cov: 'none' },
 ];
 
 export const SEED_UNITS: FriendlyUnit[] = [
-  { id: 'CSG1', callsign: 'CSG-1', platform: 'CARRIER STRIKE GROUP', type: 'NAVAL TASK FORCE', role: 'SEA CONTROL / STRIKE', status: 'ON STATION', x: 12, y: 86, weapon: 'CVW · 44 AC · 3 ESCORTS', endur: 88, effId: null },
-  { id: 'ARLEIGHU', callsign: 'ARLEIGH', platform: 'DDG-113 ARLEIGH BURKE', type: 'GUIDED-MISSILE DESTROYER', role: 'STRIKE / AAW / BMD', status: 'ON STATION', x: 18, y: 80, weapon: 'TLAM Blk V ×8 · SM-6', endur: 80, effId: 'ARLEIGH' },
-  { id: 'CAP3', callsign: 'CAP-3', platform: 'F-15EX ×2', type: 'COMBAT AIR PATROL', role: 'OCA / DCA', status: 'AIRBORNE', x: 70, y: 88, weapon: 'AIM-120D ×6 · AIM-9X', endur: 55, effId: null },
+  { id: 'CSG1', callsign: 'CSG-1', platform: 'CARRIER STRIKE GROUP', type: 'NAVAL TASK FORCE', role: 'SEA CONTROL / STRIKE', status: 'ON STATION', lng: -5.942, lat: 35.82, weapon: 'CVW · 44 AC · 3 ESCORTS', endur: 88, effId: null },
+  { id: 'ARLEIGHU', callsign: 'ARLEIGH', platform: 'DDG-113 ARLEIGH BURKE', type: 'GUIDED-MISSILE DESTROYER', role: 'STRIKE / AAW / BMD', status: 'ON STATION', lng: -5.888, lat: 35.85, weapon: 'TLAM Blk V ×8 · SM-6', endur: 80, effId: 'ARLEIGH' },
+  { id: 'CAP3', callsign: 'CAP-3', platform: 'F-15EX ×2', type: 'COMBAT AIR PATROL', role: 'OCA / DCA', status: 'AIRBORNE', lng: -5.42, lat: 35.81, weapon: 'AIM-120D ×6 · AIM-9X', endur: 55, effId: null },
 ];
 
 export const SEED_NAIS: Nai[] = [
-  { id: 'NAI-1', desc: 'Coastal AShM belt', pir: 'PIR-1', color: '#ffab38', x: 55, y: 8, w: 30, h: 20 },
-  { id: 'NAI-2', desc: 'TBM dispersal area', pir: 'PIR-1', color: '#ff5a47', x: 38, y: 40, w: 22, h: 22 },
-  { id: 'NAI-3', desc: 'IADS / SAM ring', pir: 'PIR-2', color: '#ffd23f', x: 20, y: 18, w: 24, h: 20 },
+  { id: 'NAI-1', desc: 'Coastal AShM belt', pir: 'PIR-1', color: '#ffab38', lngMin: -5.555, latMin: 36.11, lngMax: -5.285, latMax: 36.21 },
+  { id: 'NAI-2', desc: 'TBM dispersal area', pir: 'PIR-1', color: '#ff5a47', lngMin: -5.708, latMin: 35.94, lngMax: -5.51, latMax: 36.05 },
+  { id: 'NAI-3', desc: 'IADS / SAM ring', pir: 'PIR-2', color: '#ffd23f', lngMin: -5.87, latMin: 36.06, lngMax: -5.654, latMax: 36.16 },
 ];
 
 export const SEED_EFFECTORS: Effector[] = [
@@ -44,19 +50,19 @@ const mk = (o: Omit<Target, 'effector' | 'engagedAt' | 'bda' | 'course' | 'speed
 });
 
 export const SEED_TARGETS: Target[] = [
-  mk({ id: 'T2202', name: 'ANVIL', type: 'SS-26 ISKANDER TEL', cat: 'TEL', aff: 'HOS', threat: 'CRIT', stage: 3, pri: 1, conf: 91, trkQ: 88, x: 42, y: 46, course: 84, speed: 18, elev: '+412 M', custody: 'ORACLE', decay: 9, sidc: 'SHGPUCVRT-----', method: 'STEALTH STANDOFF', cde: 'CDE-2', appr: { tea: true, jag: true, pid: true, strike: true }, status: 'CLEARED HOT' }),
-  mk({ id: 'T2201', name: 'VIPER', type: 'SA-21 GROWLER SAM', cat: 'SAM', aff: 'HOS', threat: 'HIGH', stage: 1, pri: 2, conf: 96, trkQ: 94, x: 26, y: 22, elev: '+88 M', custody: 'HAWK01', decay: 6, sidc: 'SHGPUCDAS-----', method: 'HARM SUPPRESS', cde: 'CDE-1', appr: { tea: false, jag: true, pid: true, strike: false }, status: 'TRACKING' }),
-  mk({ id: 'T2205', name: 'BASTION', type: 'YJ-12 AShM BTY', cat: 'SAM', aff: 'HOS', threat: 'HIGH', stage: 1, pri: 3, conf: 84, trkQ: 79, x: 64, y: 12, elev: '+24 M', custody: 'GLOBE7', decay: 14, sidc: 'SHGPUCDM------', method: 'STANDOFF', cde: 'CDE-2', appr: { tea: false, jag: true, pid: false, strike: false }, status: 'TRACKING' }),
-  mk({ id: 'T2208', name: 'WARDEN', type: 'IADS C2 BUNKER', cat: 'C2', aff: 'HOS', threat: 'HIGH', stage: 2, pri: 4, conf: 88, trkQ: 90, x: 34, y: 64, elev: '-6 M', custody: 'PROWLER', decay: 11, sidc: 'SHGPUUSC------', method: 'PENETRATOR', cde: 'CDE-3', appr: { tea: false, jag: true, pid: true, strike: true }, status: 'IN COORD' }),
-  mk({ id: 'T2203', name: 'REEF', type: 'TYPE-052D DDG', cat: 'SHIP', aff: 'HOS', threat: 'HIGH', stage: 2, pri: 5, conf: 82, trkQ: 76, x: 80, y: 40, course: 215, speed: 22, elev: 'SURFACE', custody: 'GLOBE7', decay: 19, sidc: 'SHSPCLDD------', method: 'AShM SALVO', cde: 'CDE-1', appr: { tea: false, jag: true, pid: true, strike: false }, status: 'IN COORD' }),
-  mk({ id: 'T2209', name: 'TANGENT', type: 'SA-22 GREYHOUND', cat: 'SAM', aff: 'HOS', threat: 'MED', stage: 1, pri: 6, conf: 74, trkQ: 68, x: 48, y: 30, course: 300, speed: 14, elev: '+102 M', custody: 'HAWK01', decay: 22, sidc: 'SHGPUCDAS-----', method: 'HARM SUPPRESS', cde: 'CDE-1', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'TRACKING' }),
-  mk({ id: 'T2206', name: 'EMBER', type: 'YLC-8B EW RADAR', cat: 'RADAR', aff: 'HOS', threat: 'MED', stage: 0, pri: 7, conf: 71, trkQ: 61, x: 22, y: 50, elev: '+140 M', custody: 'PROWLER', decay: 28, sidc: 'SHGPUCRRD-----', method: 'NON-KINETIC', cde: 'CDE-1', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'IDENTIFIED' }),
-  mk({ id: 'T2207', name: 'GHOST', type: 'TYPE-022 FAC ×3', cat: 'BOAT', aff: 'HOS', threat: 'MED', stage: 0, pri: 8, conf: 69, trkQ: 64, x: 72, y: 54, course: 190, speed: 34, elev: 'SURFACE', custody: 'GLOBE7', decay: 17, sidc: 'SHSPXM--------', method: 'STRAFE / HELLFIRE', cde: 'CDE-1', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'IDENTIFIED' }),
-  mk({ id: 'T2204', name: 'KITE', type: 'WJ-700 RECON UAS', cat: 'UAS', aff: 'UNK', threat: 'MED', stage: 0, pri: 9, conf: 58, trkQ: 55, x: 56, y: 24, course: 140, speed: 96, elev: '+5,800 M', custody: 'SENTRY3', decay: 8, sidc: 'SUAPMFQ-------', method: '—', cde: '—', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'IDENTIFIED' }),
-  mk({ id: 'T2211', name: 'OUTPOST', type: 'MECH INF COY', cat: 'TROOP', aff: 'HOS', threat: 'LOW', stage: 0, pri: 10, conf: 63, trkQ: 58, x: 30, y: 78, elev: '+60 M', custody: 'GREY', decay: 41, sidc: 'SHGPUCI-------', method: 'AREA / GMLRS', cde: 'CDE-3', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'IDENTIFIED' }),
-  mk({ id: 'T2212', name: 'HALO', type: 'UNK SIGINT EMITTER', cat: 'EMIT', aff: 'UNK', threat: 'LOW', stage: 0, pri: 11, conf: 44, trkQ: 38, x: 18, y: 38, elev: '—', custody: 'PROWLER', decay: 52, sidc: 'SUPP----------', method: '—', cde: '—', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'UNRESOLVED' }),
-  mk({ id: 'T2210', name: 'DRIFT', type: 'M/V CARGO (CIV)', cat: 'SHIP', aff: 'NEU', threat: 'LOW', stage: 0, pri: null, conf: 97, trkQ: 92, x: 60, y: 68, course: 95, speed: 12, elev: 'SURFACE', custody: 'GLOBE7', decay: 7, nsl: true, sidc: 'SNSPXMTU------', method: 'NO-STRIKE', cde: '—', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'NO-STRIKE' }),
-  mk({ id: 'T2198', name: 'FORGE', type: 'HQ-9 SAM SITE', cat: 'SAM', aff: 'HOS', threat: 'HIGH', stage: 4, pri: null, conf: 99, trkQ: 0, x: 38, y: 14, elev: '+96 M', custody: '—', decay: 120, sidc: 'SHGPUCDAS-----', method: 'JASSM ×2', cde: 'CDE-2', effector: 'VENOM1', bda: 'DESTROYED · 2 SECONDARIES', appr: { tea: true, jag: true, pid: true, strike: true }, status: 'NEUTRALIZED' }),
+  mk({ id: 'T2202', name: 'ANVIL', type: 'SS-26 ISKANDER TEL', cat: 'TEL', aff: 'HOS', threat: 'CRIT', stage: 3, pri: 1, conf: 91, trkQ: 88, lng: -5.672, lat: 36.02, course: 84, speed: 18, elev: '+412 M', custody: 'ORACLE', decay: 9, sidc: 'SHGPUCVRT-----', method: 'STEALTH STANDOFF', cde: 'CDE-2', appr: { tea: true, jag: true, pid: true, strike: true }, status: 'CLEARED HOT' }),
+  mk({ id: 'T2201', name: 'VIPER', type: 'SA-21 GROWLER SAM', cat: 'SAM', aff: 'HOS', threat: 'HIGH', stage: 1, pri: 2, conf: 96, trkQ: 94, lng: -5.816, lat: 36.14, elev: '+88 M', custody: 'HAWK01', decay: 6, sidc: 'SHGPUCDAS-----', method: 'HARM SUPPRESS', cde: 'CDE-1', appr: { tea: false, jag: true, pid: true, strike: false }, status: 'TRACKING' }),
+  mk({ id: 'T2205', name: 'BASTION', type: 'YJ-12 AShM BTY', cat: 'SAM', aff: 'HOS', threat: 'HIGH', stage: 1, pri: 3, conf: 84, trkQ: 79, lng: -5.474, lat: 36.19, elev: '+24 M', custody: 'GLOBE7', decay: 14, sidc: 'SHGPUCDM------', method: 'STANDOFF', cde: 'CDE-2', appr: { tea: false, jag: true, pid: false, strike: false }, status: 'TRACKING' }),
+  mk({ id: 'T2208', name: 'WARDEN', type: 'IADS C2 BUNKER', cat: 'C2', aff: 'HOS', threat: 'HIGH', stage: 2, pri: 4, conf: 88, trkQ: 90, lng: -5.744, lat: 35.93, elev: '-6 M', custody: 'PROWLER', decay: 11, sidc: 'SHGPUUSC------', method: 'PENETRATOR', cde: 'CDE-3', appr: { tea: false, jag: true, pid: true, strike: true }, status: 'IN COORD' }),
+  mk({ id: 'T2203', name: 'REEF', type: 'TYPE-052D DDG', cat: 'SHIP', aff: 'HOS', threat: 'HIGH', stage: 2, pri: 5, conf: 82, trkQ: 76, lng: -5.33, lat: 36.05, course: 215, speed: 22, elev: 'SURFACE', custody: 'GLOBE7', decay: 19, sidc: 'SHSPCLDD------', method: 'AShM SALVO', cde: 'CDE-1', appr: { tea: false, jag: true, pid: true, strike: false }, status: 'IN COORD' }),
+  mk({ id: 'T2209', name: 'TANGENT', type: 'SA-22 GREYHOUND', cat: 'SAM', aff: 'HOS', threat: 'MED', stage: 1, pri: 6, conf: 74, trkQ: 68, lng: -5.618, lat: 36.1, course: 300, speed: 14, elev: '+102 M', custody: 'HAWK01', decay: 22, sidc: 'SHGPUCDAS-----', method: 'HARM SUPPRESS', cde: 'CDE-1', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'TRACKING' }),
+  mk({ id: 'T2206', name: 'EMBER', type: 'YLC-8B EW RADAR', cat: 'RADAR', aff: 'HOS', threat: 'MED', stage: 0, pri: 7, conf: 71, trkQ: 61, lng: -5.852, lat: 36.0, elev: '+140 M', custody: 'PROWLER', decay: 28, sidc: 'SHGPUCRRD-----', method: 'NON-KINETIC', cde: 'CDE-1', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'IDENTIFIED' }),
+  mk({ id: 'T2207', name: 'GHOST', type: 'TYPE-022 FAC ×3', cat: 'BOAT', aff: 'HOS', threat: 'MED', stage: 0, pri: 8, conf: 69, trkQ: 64, lng: -5.402, lat: 35.98, course: 190, speed: 34, elev: 'SURFACE', custody: 'GLOBE7', decay: 17, sidc: 'SHSPXM--------', method: 'STRAFE / HELLFIRE', cde: 'CDE-1', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'IDENTIFIED' }),
+  mk({ id: 'T2204', name: 'KITE', type: 'WJ-700 RECON UAS', cat: 'UAS', aff: 'UNK', threat: 'MED', stage: 0, pri: 9, conf: 58, trkQ: 55, lng: -5.546, lat: 36.13, course: 140, speed: 96, elev: '+5,800 M', custody: 'SENTRY3', decay: 8, sidc: 'SUAPMFQ-------', method: '—', cde: '—', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'IDENTIFIED' }),
+  mk({ id: 'T2211', name: 'OUTPOST', type: 'MECH INF COY', cat: 'TROOP', aff: 'HOS', threat: 'LOW', stage: 0, pri: 10, conf: 63, trkQ: 58, lng: -5.78, lat: 35.86, elev: '+60 M', custody: 'GREY', decay: 41, sidc: 'SHGPUCI-------', method: 'AREA / GMLRS', cde: 'CDE-3', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'IDENTIFIED' }),
+  mk({ id: 'T2212', name: 'HALO', type: 'UNK SIGINT EMITTER', cat: 'EMIT', aff: 'UNK', threat: 'LOW', stage: 0, pri: 11, conf: 44, trkQ: 38, lng: -5.888, lat: 36.06, elev: '—', custody: 'PROWLER', decay: 52, sidc: 'SUPP----------', method: '—', cde: '—', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'UNRESOLVED' }),
+  mk({ id: 'T2210', name: 'DRIFT', type: 'M/V CARGO (CIV)', cat: 'SHIP', aff: 'NEU', threat: 'LOW', stage: 0, pri: null, conf: 97, trkQ: 92, lng: -5.51, lat: 35.91, course: 95, speed: 12, elev: 'SURFACE', custody: 'GLOBE7', decay: 7, nsl: true, sidc: 'SNSPXMTU------', method: 'NO-STRIKE', cde: '—', appr: { tea: false, jag: false, pid: false, strike: false }, status: 'NO-STRIKE' }),
+  mk({ id: 'T2198', name: 'FORGE', type: 'HQ-9 SAM SITE', cat: 'SAM', aff: 'HOS', threat: 'HIGH', stage: 4, pri: null, conf: 99, trkQ: 0, lng: -5.708, lat: 36.18, elev: '+96 M', custody: '—', decay: 120, sidc: 'SHGPUCDAS-----', method: 'JASSM ×2', cde: 'CDE-2', effector: 'VENOM1', bda: 'DESTROYED · 2 SECONDARIES', appr: { tea: true, jag: true, pid: true, strike: true }, status: 'NEUTRALIZED' }),
 ];
 
 export const SEED_LOG: LogEntry[] = [

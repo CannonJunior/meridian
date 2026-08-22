@@ -1,8 +1,14 @@
 import { update } from './store.js';
-import { clamp, sensorName } from './helpers.js';
+import { AO_BOUNDS } from './aoBounds.js';
+import { clamp, destinationPoint, SIM_MINUTES_PER_TICK, sensorName } from './helpers.js';
 import type { LogEntry, State, Target } from './types.js';
 
-// Ported 1:1 from `tick()` in Meridian Fires C2.dc.html (lines ~813-846).
+// Ported 1:1 from `tick()` in Meridian Fires C2.dc.html (lines ~813-846),
+// with the position update rewritten: the original moved an abstract x/y
+// grid coordinate by an arbitrary fraction of `speed` with no physical
+// meaning. This moves a real lng/lat by a real geodesic step — course as a
+// true bearing, speed in knots, advanced through SIM_MINUTES_PER_TICK of
+// simulated time per real-second tick (see helpers.ts).
 export function tick(): void {
   update((s: State): State => {
     const nt = s.t + 1;
@@ -15,15 +21,20 @@ export function tick(): void {
       if (t.stage >= 4) return t;
       const u: Target = { ...t };
       if (u.speed > 0) {
-        const rad = ((u.course - 90) * Math.PI) / 180;
-        u.x = clamp(u.x + Math.cos(rad) * 0.1 * (u.speed / 30), 5, 95);
-        u.y = clamp(u.y + Math.sin(rad) * 0.1 * (u.speed / 30), 6, 94);
+        const distanceNm = (u.speed * SIM_MINUTES_PER_TICK) / 60;
+        const dest = destinationPoint(u.lng, u.lat, u.course, distanceNm);
+        // Keep targets inside the AO with a small margin, same rationale
+        // as the original grid's clamp(x, 5, 95) — a target that reaches
+        // the edge holds there rather than sailing off the map.
+        const margin = 0.02;
+        u.lng = Math.min(AO_BOUNDS.east - margin, Math.max(AO_BOUNDS.west + margin, dest.lng));
+        u.lat = Math.min(AO_BOUNDS.north - margin, Math.max(AO_BOUNDS.south + margin, dest.lat));
       }
       u.decay = u.decay + 1;
       if (u.custody && u.custody !== '—' && u.decay > 18 + (u.id.charCodeAt(4) % 9)) {
         u.decay = 2 + (nt % 4);
       }
-      u.trkQ = clamp(u.trkQ + (Math.sin(nt / 3 + u.x) * 1.4 | 0), 20, 99);
+      u.trkQ = clamp(u.trkQ + (Math.sin(nt / 3 + u.lng) * 1.4 | 0), 20, 99);
       if (u.engagedAt != null && nt - u.engagedAt >= 6 && u.stage === 3) {
         u.stage = 4;
         u.status = 'NEUTRALIZED';

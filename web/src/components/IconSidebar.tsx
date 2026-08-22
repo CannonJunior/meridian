@@ -57,6 +57,22 @@ function StyleIcon({ color }: { color: string }) {
   );
 }
 
+function KbIcon({ color }: { color: string }) {
+  return (
+    <svg className="icon-sidebar-glyph icon-sidebar-glyph-kb" width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <circle className="icon-sidebar-kb-glyph-node-center" cx="10" cy="10" r="1.8" fill={color} />
+      <circle className="icon-sidebar-kb-glyph-node-tl" cx="3.5" cy="4" r="1.6" stroke={color} strokeWidth="1.3" />
+      <circle className="icon-sidebar-kb-glyph-node-tr" cx="16.5" cy="4" r="1.6" stroke={color} strokeWidth="1.3" opacity="0.8" />
+      <circle className="icon-sidebar-kb-glyph-node-bl" cx="3.5" cy="16" r="1.6" stroke={color} strokeWidth="1.3" opacity="0.6" />
+      <circle className="icon-sidebar-kb-glyph-node-br" cx="16.5" cy="16" r="1.6" stroke={color} strokeWidth="1.3" opacity="0.45" />
+      <line className="icon-sidebar-kb-glyph-edge-tl" x1="10" y1="10" x2="4.6" y2="5.1" stroke={color} strokeWidth="1.1" />
+      <line className="icon-sidebar-kb-glyph-edge-tr" x1="10" y1="10" x2="15.4" y2="5.1" stroke={color} strokeWidth="1.1" opacity="0.8" />
+      <line className="icon-sidebar-kb-glyph-edge-bl" x1="10" y1="10" x2="4.6" y2="14.9" stroke={color} strokeWidth="1.1" opacity="0.6" />
+      <line className="icon-sidebar-kb-glyph-edge-br" x1="10" y1="10" x2="15.4" y2="14.9" stroke={color} strokeWidth="1.1" opacity="0.45" />
+    </svg>
+  );
+}
+
 function ChatIcon({ color }: { color: string }) {
   return (
     <svg className="icon-sidebar-glyph icon-sidebar-glyph-chat" width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -72,6 +88,7 @@ const MANAGERS: { id: Manager; label: string; accent: string; icon: (c: string) 
   { id: 'context', label: 'CONTEXT LAYERS', accent: 'var(--green)', icon: (c) => <ContextIcon color={c} /> },
   { id: 'isr', label: 'ISR COLLECTION', accent: 'var(--cyan)', icon: (c) => <IsrIcon color={c} /> },
   { id: 'oob', label: 'ORDER OF BATTLE', accent: 'var(--blue)', icon: (c) => <OobIcon color={c} /> },
+  { id: 'kb', label: 'KNOWLEDGE BASE', accent: 'var(--violet)', icon: (c) => <KbIcon color={c} /> },
   { id: 'lists', label: 'TARGET LISTS', accent: 'var(--yellow)', icon: (c) => <ListsIcon color={c} /> },
   { id: 'chat', label: 'BOARD COMMS', accent: 'var(--red)', icon: (c) => <ChatIcon color={c} /> },
   { id: 'style', label: 'STYLE MANAGER', accent: 'var(--amber)', icon: (c) => <StyleIcon color={c} /> },

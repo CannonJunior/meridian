@@ -1,11 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { AttributionControl, Map as MaplibreMap, type RasterTileSource } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import 'ol/ol.css';
+import OlMap from 'ol/Map';
+import View from 'ol/View';
+import type BaseLayer from 'ol/layer/Base';
+import TileLayer from 'ol/layer/Tile';
+import VectorLayer from 'ol/layer/Vector';
+import HeatmapLayer from 'ol/layer/Heatmap';
+import XYZ from 'ol/source/XYZ';
+import VectorSource from 'ol/source/Vector';
+import GeoJSONFormat from 'ol/format/GeoJSON';
+import { Style, Fill, Stroke, Circle as CircleStyle } from 'ol/style';
+import { fromLonLat, toLonLat, transformExtent } from 'ol/proj';
+import type { FeatureLike } from 'ol/Feature';
+import { defaults as defaultInteractions } from 'ol/interaction/defaults';
+import { defaults as defaultControls } from 'ol/control/defaults';
+import Attribution from 'ol/control/Attribution';
 import { useStore } from '../store';
 import { affColor } from '../selectors';
 import { statusMeta } from '../oobSelectors';
 import type { ObjectStatus } from '../assets/oob';
-import { AO_BOUNDS, AO_CENTER, BASEMAP_STYLES, toLngLat } from '../mapProjection';
+import { hexToRgba } from '../assets/palette';
+import { AO_BOUNDS, AO_CENTER, BASEMAP_STYLES, PROJECTION_OPTIONS, registerProjections } from '../mapProjection';
 import type { Sensor, Target } from '../types';
 import OobMapLayer from './OobMapLayer';
 import { CONTEXT_LAYERS } from '../assets/contextLayers';
@@ -14,8 +29,11 @@ import { loadContextLayerData } from '../contextLayerData';
 import { portFeatureFromGeoJSON } from '../portFeature';
 import { airfieldFeatureFromGeoJSON } from '../airfieldFeature';
 import { fetchLatestRadarTileUrl } from '../rainviewer';
+import type { Feature, FeatureCollection, Point } from 'geojson';
 
-type ProjectFn = (x: number, y: number) => { x: number; y: number };
+type ProjectFn = (lng: number, lat: number) => { x: number; y: number };
+
+registerProjections();
 
 const OOB_LEGEND_ROWS: { status: ObjectStatus; glyph?: string }[] = [
   { status: 'VISIBLE' },
@@ -26,84 +44,143 @@ const OOB_LEGEND_ROWS: { status: ObjectStatus; glyph?: string }[] = [
   { status: 'DESTROYED', glyph: '╳' },
 ];
 
-function outlineLayerId(layerId: string): string {
-  return `${layerId}-outline`;
-}
-function pointLayerId(layerId: string): string {
-  return `${layerId}-point`;
-}
-
-// The MapLibre layer that should receive click/hover interaction for a
-// context layer: for plain point layers (ports) that's the base layer
-// itself; for 'mixed' layers (airfields) the polygons stay non-interactive
-// and only the dedicated point sub-layer is identifiable.
-function identifyLayerId(layer: ContextLayer): string {
-  const base = `ctx-layer-${layer.id}`;
-  return layer.geometryType === 'mixed' ? pointLayerId(base) : base;
+// CARTO's retina-tile convention: `{r}` becomes `@2x` on a high-DPI screen,
+// empty otherwise. OpenLayers' XYZ source has no equivalent placeholder, so
+// it's resolved once here instead of left in the template.
+function resolveTileUrls(templates: string[]): string[] {
+  const r = window.devicePixelRatio >= 2 ? '@2x' : '';
+  return templates.map((t) => t.replace('{r}', r));
 }
 
-// Context layers are external GeoJSON overlays (GeoServer WFS), rendered as
-// native MapLibre vector layers (point -> circle; polygon -> fill + line
-// outline; mixed -> fill + line outline + a circle for the one identifiable
-// point per feature group) — real feature hit-testing instead of
-// raster-tile pixels. map.setStyle() wipes all custom sources/layers, so
-// this must be re-run after every style swap, not just when the visibility
-// toggle changes. Adding is async (data must be fetched/cached first), so
-// re-check desired visibility once the fetch resolves in case the user
-// toggled it back off in the meantime.
-// Builds line paint for a 'line' geometry context layer: a per-feature
-// MapLibre `match` expression keyed on layer.lineColorProperty when the
-// layer defines one (e.g. shipping lanes' Major/Middle/Minor `lane_type`),
-// falling back to the layer's flat line* fields otherwise.
-function buildLinePaint(layer: ContextLayer): Record<string, unknown> {
-  const { lineColorProperty, lineColorMap, lineWidthMap, lineOpacityMap } = layer;
-  if (lineColorProperty && lineColorMap) {
-    const toMatch = (map: Record<string, number> | undefined, fallback: number) => {
-      if (!map) return fallback;
-      const expr: unknown[] = ['match', ['get', lineColorProperty]];
-      for (const [k, v] of Object.entries(map)) expr.push(k, v);
-      expr.push(fallback);
-      return expr;
-    };
-    const colorExpr: unknown[] = ['match', ['get', lineColorProperty]];
-    for (const [k, v] of Object.entries(lineColorMap)) colorExpr.push(k, v);
-    colorExpr.push(layer.lineColor ?? '#ffffff');
-    return {
-      'line-color': colorExpr,
-      'line-width': toMatch(lineWidthMap, layer.lineWidth ?? 1),
-      'line-opacity': toMatch(lineOpacityMap, layer.lineOpacity ?? 0.6),
-    };
+function densifySegment(a: [number, number], b: [number, number], stepDeg: number): [number, number][] {
+  const dist = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const steps = Math.max(1, Math.ceil(dist / stepDeg));
+  const out: [number, number][] = [];
+  for (let s = 0; s < steps; s++) {
+    const t = s / steps;
+    out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
   }
-  return {
-    'line-color': layer.lineColor ?? '#ffffff',
-    'line-width': layer.lineWidth ?? 1,
-    'line-opacity': layer.lineOpacity ?? 0.6,
+  return out;
+}
+
+// Turns a line-geometry WFS layer's own vertices into a weighted point
+// FeatureCollection for a heatmap layer — used when there's no real
+// point-density/raster source for what the layer is trying to show (see
+// shipping-traffic-intensity, contextLayers.ts). Segments are densified
+// (extra points inserted every ~0.5°) so long, sparsely-vertexed open-ocean
+// stretches don't read as gaps in the heat trail.
+function buildHeatmapPoints(layer: ContextLayer, geojson: FeatureCollection): FeatureCollection {
+  const STEP_DEG = 0.5;
+  const weightProp = layer.heatmapWeightProperty;
+  const weightMap = layer.heatmapWeightMap ?? {};
+  const points: Feature<Point, { weight: number }>[] = [];
+  for (const feature of geojson.features) {
+    const geom = feature.geometry;
+    const lines: [number, number][][] =
+      geom.type === 'LineString'
+        ? [geom.coordinates as [number, number][]]
+        : geom.type === 'MultiLineString'
+          ? (geom.coordinates as [number, number][][])
+          : [];
+    const weight = weightProp ? (weightMap[String((feature.properties ?? {})[weightProp])] ?? 1) : 1;
+    for (const line of lines) {
+      for (let i = 0; i < line.length - 1; i++) {
+        for (const pt of densifySegment(line[i], line[i + 1], STEP_DEG)) {
+          points.push({ type: 'Feature', properties: { weight }, geometry: { type: 'Point', coordinates: pt } });
+        }
+      }
+      const last = line[line.length - 1];
+      if (last) points.push({ type: 'Feature', properties: { weight }, geometry: { type: 'Point', coordinates: last } });
+    }
+  }
+  return { type: 'FeatureCollection', features: points };
+}
+
+// Every vector source is read with a fixed internal storage projection
+// (EPSG:3857) regardless of the view's current projection — OpenLayers
+// reprojects vector (and raster) layers on the fly at render time when a
+// layer's data projection differs from the view's, so switching projection
+// via the picker never requires re-fetching or re-parsing any layer.
+const FEATURE_STORAGE_PROJECTION = 'EPSG:3857';
+const geoJSONFormat = new GeoJSONFormat({ dataProjection: 'EPSG:4326', featureProjection: FEATURE_STORAGE_PROJECTION });
+
+// Builds the OL style for a 'polygon' or 'mixed' geometry context layer.
+// Airfields (the one 'mixed' layer) carries a `kind` property
+// (boundary/runway/taxiway/centerpoint) — style each differently, matching
+// the GeoServer-side SLD used for non-OpenLayers WMS consumers
+// (geoserver-init/airfields_style.sld). Point (centerpoint) features get a
+// circle style instead of fill/stroke. Other polygon layers (e.g. EEZ) have
+// no `kind` property and use their own flat paint overrides instead (see
+// ContextLayer.polygon* fields).
+function polygonStyleFor(layer: ContextLayer) {
+  return (feature: FeatureLike): Style => {
+    const geomType = feature.getGeometry()?.getType();
+    if (geomType === 'Point') {
+      return new Style({ image: new CircleStyle({ radius: 5, fill: new Fill({ color: layer.pointColor ?? '#3fd2e6' }), stroke: new Stroke({ color: '#06090a', width: 0.6 }) }) });
+    }
+    if (layer.id === 'airfields') {
+      const kind = feature.get('kind') as string | undefined;
+      const fillColor = kind === 'boundary' ? '#ffab38' : kind === 'runway' ? '#cdd9d7' : kind === 'taxiway' ? '#9fb2ae' : '#5fe39a';
+      const fillOpacity = kind === 'boundary' ? 0.06 : kind === 'runway' ? 0.85 : kind === 'taxiway' ? 0.7 : 0.5;
+      const lineColor = kind === 'boundary' ? '#ffab38' : '#06090a';
+      const lineWidth = kind === 'boundary' ? 1.2 : 0.4;
+      return new Style({ fill: new Fill({ color: hexToRgba(fillColor, fillOpacity) }), stroke: new Stroke({ color: lineColor, width: lineWidth }) });
+    }
+    return new Style({
+      fill: new Fill({ color: hexToRgba(layer.polygonFillColor ?? '#5fe39a', layer.polygonFillOpacity ?? 0.5) }),
+      stroke: new Stroke({ color: layer.polygonLineColor ?? '#06090a', width: layer.polygonLineWidth ?? 0.4, lineDash: layer.polygonLineDasharray }),
+    });
   };
 }
 
-function syncContextLayers(map: MaplibreMap, visibility: Record<string, boolean>) {
+// Builds the OL style for a 'line' geometry context layer: per-feature
+// color/width/opacity keyed on layer.lineColorProperty when the layer
+// defines one (e.g. shipping lanes' major/middle/minor/chokepoint
+// `lane_type`), falling back to the layer's flat line* fields for
+// unmatched values or when no lineColorProperty is set.
+function lineStyleFor(layer: ContextLayer) {
+  const { lineColorProperty, lineColorMap, lineWidthMap, lineOpacityMap } = layer;
+  return (feature: FeatureLike): Style => {
+    let color = layer.lineColor ?? '#ffffff';
+    let width = layer.lineWidth ?? 1;
+    let opacity = layer.lineOpacity ?? 0.6;
+    if (lineColorProperty && lineColorMap) {
+      const key = String(feature.get(lineColorProperty));
+      color = lineColorMap[key] ?? color;
+      width = lineWidthMap?.[key] ?? width;
+      opacity = lineOpacityMap?.[key] ?? opacity;
+    }
+    return new Style({ stroke: new Stroke({ color: hexToRgba(color, opacity), width }) });
+  };
+}
+
+function syncContextLayers(map: OlMap, visibility: Record<string, boolean>, layerRefs: Map<string, BaseLayer>, radarUrlRef: { current: string | null }) {
   for (const layer of CONTEXT_LAYERS) {
-    const srcId = `ctx-src-${layer.id}`;
-    const layerId = `ctx-layer-${layer.id}`;
     const shouldShow = !!visibility[layer.id];
-    const hasLayer = !!map.getLayer(layerId);
+    const hasLayer = layerRefs.has(layer.id);
 
     if (layer.geometryType === 'raster') {
       if (shouldShow && !hasLayer) {
-        fetchLatestRadarTileUrl()
+        // weather-radar's tile URL changes every ~10min (see rainviewer.ts)
+        // and must be re-resolved each time it's turned on; every other
+        // raster layer's URL is a fixed template, already sitting on
+        // layer.rasterTileUrl — resolve immediately, no fetch needed.
+        const urlPromise = layer.id === 'weather-radar' ? fetchLatestRadarTileUrl() : Promise.resolve(layer.rasterTileUrl!);
+        urlPromise
           .then((url) => {
-            if (!useStore.getState().contextLayerVisibility[layer.id] || map.getLayer(layerId)) return;
-            // RainViewer's tile server tops out at zoom 7 (returns a "Zoom
-            // Level Not Supported" placeholder image beyond that) — maxzoom
-            // tells MapLibre to keep requesting z7 tiles and upsample them
-            // for closer views instead of requesting nonexistent z8+ tiles.
-            if (!map.getSource(srcId)) map.addSource(srcId, { type: 'raster', tiles: [url], tileSize: 256, maxzoom: 7 });
-            map.addLayer({ id: layerId, type: 'raster', source: srcId, paint: { 'raster-opacity': layer.rasterOpacity ?? 0.6 } });
+            if (!useStore.getState().contextLayerVisibility[layer.id] || layerRefs.has(layer.id)) return;
+            if (layer.id === 'weather-radar') radarUrlRef.current = url;
+            const olLayer = new TileLayer({
+              source: new XYZ({ url, maxZoom: layer.rasterMaxZoom, attributions: layer.attribution }),
+              opacity: layer.rasterOpacity ?? 0.6,
+            });
+            layerRefs.set(layer.id, olLayer);
+            map.addLayer(olLayer);
           })
           .catch((err) => console.error(`Failed to load context layer "${layer.id}"`, err));
       } else if (!shouldShow && hasLayer) {
-        map.removeLayer(layerId);
-        if (map.getSource(srcId)) map.removeSource(srcId);
+        map.removeLayer(layerRefs.get(layer.id)!);
+        layerRefs.delete(layer.id);
       }
       continue;
     }
@@ -111,106 +188,49 @@ function syncContextLayers(map: MaplibreMap, visibility: Record<string, boolean>
     if (shouldShow && !hasLayer) {
       loadContextLayerData(layer)
         .then((geojson) => {
-          if (!useStore.getState().contextLayerVisibility[layer.id] || map.getLayer(layerId)) return;
-          if (!map.getSource(srcId)) map.addSource(srcId, { type: 'geojson', data: geojson });
+          if (!useStore.getState().contextLayerVisibility[layer.id] || layerRefs.has(layer.id)) return;
 
+          if (layer.geometryType === 'heatmap') {
+            const points = buildHeatmapPoints(layer, geojson);
+            const source = new VectorSource({ features: geoJSONFormat.readFeatures(points) });
+            const olLayer = new HeatmapLayer({
+              source,
+              weight: (f) => (f.get('weight') as number) ?? 1,
+              radius: 10,
+              blur: 16,
+              gradient: ['rgba(0,0,0,0)', 'rgba(63,210,230,.6)', 'rgba(95,227,154,.75)', 'rgba(255,214,10,.85)', 'rgba(255,171,56,.9)', 'rgba(255,90,71,.95)'],
+              opacity: 0.7,
+            });
+            layerRefs.set(layer.id, olLayer);
+            map.addLayer(olLayer);
+            return;
+          }
+
+          const source = new VectorSource({ features: geoJSONFormat.readFeatures(geojson) });
+          let olLayer: BaseLayer;
           if (layer.geometryType === 'polygon' || layer.geometryType === 'mixed') {
-            // Airfields carry a `kind` property (boundary/runway/taxiway/
-            // centerpoint) — style each differently, matching the
-            // GeoServer-side SLD used for non-MapLibre WMS consumers
-            // (geoserver-init/airfields_style.sld). Fill/line layers only
-            // ever draw polygon geometry, so the centerpoint features are
-            // naturally ignored here. Other polygon layers (e.g. EEZ) have
-            // no `kind` property and use their own flat paint overrides
-            // instead (see ContextLayer.polygon* fields).
-            map.addLayer({
-              id: layerId,
-              type: 'fill',
-              source: srcId,
-              paint:
-                layer.id === 'airfields'
-                  ? {
-                      'fill-color': ['match', ['get', 'kind'], 'boundary', '#ffab38', 'runway', '#cdd9d7', 'taxiway', '#9fb2ae', '#5fe39a'],
-                      'fill-opacity': ['match', ['get', 'kind'], 'boundary', 0.06, 'runway', 0.85, 'taxiway', 0.7, 0.5],
-                    }
-                  : {
-                      'fill-color': layer.polygonFillColor ?? '#5fe39a',
-                      'fill-opacity': layer.polygonFillOpacity ?? 0.5,
-                    },
-            });
-            map.addLayer({
-              id: outlineLayerId(layerId),
-              type: 'line',
-              source: srcId,
-              paint:
-                layer.id === 'airfields'
-                  ? {
-                      'line-color': ['match', ['get', 'kind'], 'boundary', '#ffab38', '#06090a'],
-                      'line-width': ['match', ['get', 'kind'], 'boundary', 1.2, 0.4],
-                    }
-                  : {
-                      'line-color': layer.polygonLineColor ?? '#06090a',
-                      'line-width': layer.polygonLineWidth ?? 0.4,
-                      ...(layer.polygonLineDasharray ? { 'line-dasharray': layer.polygonLineDasharray } : {}),
-                    },
+            olLayer = new VectorLayer({ source, style: polygonStyleFor(layer) });
+          } else if (layer.geometryType === 'line') {
+            olLayer = new VectorLayer({ source, style: lineStyleFor(layer) });
+          } else {
+            olLayer = new VectorLayer({
+              source,
+              style: new Style({ image: new CircleStyle({ radius: 3, fill: new Fill({ color: layer.pointColor ?? '#3fd2e6' }), stroke: new Stroke({ color: '#06090a', width: 0.6 }) }) }),
             });
           }
-          if (layer.geometryType === 'line') {
-            map.addLayer({
-              id: layerId,
-              type: 'line',
-              source: srcId,
-              layout: { 'line-cap': 'round', 'line-join': 'round' },
-              paint: buildLinePaint(layer),
-            });
-          }
-          if (layer.geometryType === 'point' || layer.geometryType === 'mixed') {
-            // Circle layers only ever draw point geometry, so for 'mixed'
-            // this naturally picks out just the centerpoint features.
-            const id = layer.geometryType === 'mixed' ? pointLayerId(layerId) : layerId;
-            map.addLayer({
-              id,
-              type: 'circle',
-              source: srcId,
-              filter: layer.geometryType === 'mixed' ? ['==', ['get', 'kind'], 'centerpoint'] : undefined,
-              paint: {
-                'circle-radius': layer.geometryType === 'mixed' ? 5 : 3,
-                'circle-color': layer.pointColor ?? '#3fd2e6',
-                'circle-opacity': 0.85,
-                'circle-stroke-color': '#06090a',
-                'circle-stroke-width': 0.6,
-              },
-            });
-          }
+          layerRefs.set(layer.id, olLayer);
+          map.addLayer(olLayer);
         })
         .catch((err) => console.error(`Failed to load context layer "${layer.id}"`, err));
     } else if (!shouldShow && hasLayer) {
-      for (const id of [layerId, outlineLayerId(layerId), pointLayerId(layerId)]) {
-        if (map.getLayer(id)) map.removeLayer(id);
-      }
-      if (map.getSource(srcId)) map.removeSource(srcId);
+      map.removeLayer(layerRefs.get(layer.id)!);
+      layerRefs.delete(layer.id);
     }
   }
 }
 
-// `style.load` is not consistently reliable to catch right after a
-// setStyle() call (it can fire before the listener is attached, or not at
-// all in some MapLibre versions/timings). Polling isStyleLoaded() is the
-// robust way to know when it's safe to add sources/layers again.
-function whenStyleReady(map: MaplibreMap, cb: () => void) {
-  if (map.isStyleLoaded()) {
-    cb();
-    return;
-  }
-  const check = () => {
-    if (map.isStyleLoaded()) cb();
-    else requestAnimationFrame(check);
-  };
-  requestAnimationFrame(check);
-}
-
 function SensorCoverage({ s, project }: { s: Sensor; project: ProjectFn }) {
-  const { x: sx, y: sy } = project(s.x, s.y);
+  const { x: sx, y: sy } = project(s.lng, s.lat);
   if (s.cov === 'cone') {
     const a = ((s.covDir ?? 120) * Math.PI) / 180;
     const sp = 0.5;
@@ -232,7 +252,7 @@ function SensorCoverage({ s, project }: { s: Sensor; project: ProjectFn }) {
 
 function TrackSymbol({ t, selected, project, onSelect, onOpen }: { t: Target; selected: boolean; project: ProjectFn; onSelect: () => void; onOpen: () => void }) {
   if (t.stage === 4 && t.id !== 'T2198') return null;
-  const { x, y } = project(t.x, t.y);
+  const { x, y } = project(t.lng, t.lat);
   const col = affColor(t.aff);
   const stale = t.decay >= 35 && t.stage < 4;
   const lock = t.stage === 3 || t.engagedAt != null;
@@ -305,8 +325,13 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
   const openEntity = useStore((s) => s.openEntity);
 
   const drift = targets.find((t) => t.id === 'T2210');
-  const ownship = project(12, 86);
-  const bullseye = project(50, 46);
+  // Fixed reference points on the picture, not tied to any live entity —
+  // real lng/lat equivalent to the old abstract grid's (12,86) and
+  // (50,46), computed once via the AO's linear stretch (see seed.ts's
+  // header comment for how every other fixed seed position was converted
+  // the same way).
+  const ownship = project(-5.942, 35.82);
+  const bullseye = project(-5.6, 36.02);
 
   return (
     <svg className="map-overlay-svg" viewBox={`0 0 ${width} ${height}`} width={width} height={height} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
@@ -324,8 +349,8 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
       </text>
 
       {nais.map((n) => {
-        const p1 = project(n.x, n.y);
-        const p2 = project(n.x + n.w, n.y + n.h);
+        const p1 = project(n.lngMin, n.latMax);
+        const p2 = project(n.lngMax, n.latMin);
         const rx = Math.min(p1.x, p2.x);
         const ry = Math.min(p1.y, p2.y);
         const rw = Math.abs(p2.x - p1.x);
@@ -348,7 +373,7 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
       ))}
 
       {sensors.map((s) => {
-        const { x: sx, y: sy } = project(s.x, s.y);
+        const { x: sx, y: sy } = project(s.lng, s.lat);
         const col = s.status === 'DEGRADED' ? 'var(--red)' : 'var(--cyan)';
         return (
           <g key={s.id} className="map-overlay-sensor-marker" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onClick={() => openEntity('sensor', s.id)} onDoubleClick={() => openEntity('sensor', s.id)}>
@@ -362,7 +387,7 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
       })}
 
       {drift && (() => {
-        const { x: dx, y: dy } = project(drift.x, drift.y);
+        const { x: dx, y: dy } = project(drift.lng, drift.lat);
         return (
           <>
             <circle className="map-overlay-nsz-circle" cx={dx} cy={dy} r={62} fill="rgba(95,227,154,.04)" stroke="rgba(95,227,154,.45)" strokeWidth={1.5} strokeDasharray="6 5" style={{ pointerEvents: 'none' }} />
@@ -377,7 +402,7 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
       })()}
 
       {units.map((u) => {
-        const { x: fx, y: fy } = project(u.x, u.y);
+        const { x: fx, y: fy } = project(u.lng, u.lat);
         return (
           <g key={u.id} className="map-overlay-unit-marker" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onClick={() => openEntity('unit', u.id)} onDoubleClick={() => openEntity('unit', u.id)}>
             <circle className="map-overlay-unit-marker-shape" cx={fx} cy={fy} r={9} fill="#0a1316" stroke="var(--cyan)" strokeWidth={1.5} />
@@ -399,126 +424,186 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
 function StylePicker() {
   const basemapId = useStore((s) => s.basemapId);
   const setBasemap = useStore((s) => s.setBasemap);
+  const mapProjectionCode = useStore((s) => s.mapProjectionCode);
+  const setMapProjectionCode = useStore((s) => s.setMapProjectionCode);
   return (
-    <div className="style-picker" style={{ position: 'absolute', right: 14, top: 82, display: 'flex', flexDirection: 'column', border: '1px solid var(--hairline-mid)', background: 'rgba(8,13,14,.82)' }}>
-      {BASEMAP_STYLES.map((b) => (
-        <div
-          key={b.id}
-          className="style-picker-option"
-          onClick={() => setBasemap(b.id)}
-          style={{
-            padding: '4px 10px',
-            fontFamily: 'var(--font-display)',
-            fontSize: 9.5,
-            letterSpacing: '.1em',
-            fontWeight: 600,
-            cursor: 'pointer',
-            color: basemapId === b.id ? '#06090a' : 'var(--ink-mute)',
-            background: basemapId === b.id ? 'var(--amber)' : 'transparent',
-          }}
-        >
-          {b.label}
-        </div>
-      ))}
+    <div className="style-picker" style={{ position: 'absolute', right: 14, top: 82, display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div className="style-picker-basemap-group" style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--hairline-mid)', background: 'rgba(8,13,14,.82)' }}>
+        {BASEMAP_STYLES.map((b) => (
+          <div
+            key={b.id}
+            className="style-picker-option"
+            onClick={() => setBasemap(b.id)}
+            style={{
+              padding: '4px 10px',
+              fontFamily: 'var(--font-display)',
+              fontSize: 9.5,
+              letterSpacing: '.1em',
+              fontWeight: 600,
+              cursor: 'pointer',
+              color: basemapId === b.id ? '#06090a' : 'var(--ink-mute)',
+              background: basemapId === b.id ? 'var(--amber)' : 'transparent',
+            }}
+          >
+            {b.label}
+          </div>
+        ))}
+      </div>
+      <div className="style-picker-projection-group" style={{ display: 'flex', flexDirection: 'column', border: '1px solid var(--hairline-mid)', background: 'rgba(8,13,14,.82)' }}>
+        {PROJECTION_OPTIONS.map((p) => (
+          <div
+            key={p.code}
+            className="style-picker-projection-option"
+            onClick={() => setMapProjectionCode(p.code)}
+            title={p.code}
+            style={{
+              padding: '4px 10px',
+              fontFamily: 'var(--font-display)',
+              fontSize: 9.5,
+              letterSpacing: '.1em',
+              fontWeight: 600,
+              cursor: 'pointer',
+              color: mapProjectionCode === p.code ? '#06090a' : 'var(--ink-mute)',
+              background: mapProjectionCode === p.code ? 'var(--cyan)' : 'transparent',
+            }}
+          >
+            {p.label}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 export default function TacticalMap() {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<MaplibreMap | null>(null);
+  const mapRef = useRef<OlMap | null>(null);
+  const baseLayerRef = useRef<TileLayer<XYZ> | null>(null);
+  const layerRefs = useRef(new Map<string, BaseLayer>());
+  const radarUrlRef = useRef<string | null>(null);
   const basemapId = useStore((s) => s.basemapId);
+  const mapProjectionCode = useStore((s) => s.mapProjectionCode);
   const legendMode = useStore((s) => s.legendMode);
-  // Tracks which basemap style is actually applied to the current map
-  // instance, so this effect is a no-op when basemapId hasn't really
-  // changed (covers React StrictMode's dev-mode double-invoke of mount
-  // effects, which would otherwise fire a redundant, racing setStyle()).
-  const appliedBasemapId = useRef(basemapId);
   const [, bumpRender] = useState(0);
   const [size, setSize] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const style = BASEMAP_STYLES.find((b) => b.id === basemapId) ?? BASEMAP_STYLES[0];
-    const map = new MaplibreMap({
-      container: containerRef.current,
-      style: style.styleUrl,
-      center: AO_CENTER,
-      zoom: 10,
-      minZoom: 0,
-      pitch: 0,
-      bearing: 0,
-      dragRotate: false,
-      attributionControl: false,
-      renderWorldCopies: false,
+    const basemap = BASEMAP_STYLES.find((b) => b.id === basemapId) ?? BASEMAP_STYLES[0];
+    const projection = mapProjectionCode;
+
+    const baseLayer = new TileLayer({ source: new XYZ({ urls: resolveTileUrls(basemap.tileUrlTemplates), attributions: basemap.attribution }) });
+    baseLayerRef.current = baseLayer;
+
+    const view = new View({ projection, center: fromLonLat(AO_CENTER, projection), zoom: 10, minZoom: 0 });
+
+    const map = new OlMap({
+      target: containerRef.current,
+      layers: [baseLayer],
+      view,
+      // doubleClickZoom is on by default — off here since double-click is
+      // this app's "identify" gesture (open a port/airfield/OOB card), not
+      // a zoom trigger.
+      interactions: defaultInteractions({ altShiftDragRotate: false, pinchRotate: false, doubleClickZoom: false }),
+      controls: defaultControls({ zoom: false, rotate: false, attribution: false }).extend([new Attribution({ collapsible: false })]),
     });
-    map.touchZoomRotate.disableRotation();
-    map.addControl(new AttributionControl({ compact: true }), 'bottom-left');
     mapRef.current = map;
 
     const rerender = () => bumpRender((v) => v + 1);
-    map.on('move', rerender);
-    map.on('load', () => {
-      map.fitBounds(
-        [
-          [AO_BOUNDS.west, AO_BOUNDS.south],
-          [AO_BOUNDS.east, AO_BOUNDS.north],
-        ],
-        { padding: 24, duration: 0 },
-      );
-      rerender();
-    });
+    map.on('postrender', rerender);
+    view.fit(transformExtent([AO_BOUNDS.west, AO_BOUNDS.south, AO_BOUNDS.east, AO_BOUNDS.north], 'EPSG:4326', projection), { padding: [24, 24, 24, 24], duration: 0 });
 
-    // Layer-scoped listeners are safe to register even before the layer
-    // exists (e.g. the context layer is toggled off at mount) — MapLibre
-    // simply finds no features to hit-test until it's added.
-    for (const layer of CONTEXT_LAYERS.filter((l) => l.identifiable)) {
-      const targetLayerId = identifyLayerId(layer);
-      map.on('dblclick', targetLayerId, (e) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
-        if (layer.id === 'airfields') useStore.getState().openAirfield(airfieldFeatureFromGeoJSON(feature));
-        else if (layer.id === 'tenth-fleet') useStore.getState().openOob(feature.properties!.oobId as string);
-        else useStore.getState().openPort(portFeatureFromGeoJSON(feature));
-      });
-      map.on('mouseenter', targetLayerId, () => {
-        map.getCanvas().style.cursor = 'pointer';
-      });
-      map.on('mouseleave', targetLayerId, () => {
-        map.getCanvas().style.cursor = '';
-      });
-    }
+    // One map-level dblclick/pointermove pair covers every identifiable
+    // context layer — OpenLayers doesn't have MapLibre's per-layer-id event
+    // binding, so identify which ContextLayer (if any) owns the hit OL
+    // layer via layerRefs. 'mixed' layers (airfields) only treat their
+    // Point (centerpoint) features as identifiable, same as before —
+    // boundary/runway/taxiway polygons stay non-interactive.
+    const identifiableLayers = CONTEXT_LAYERS.filter((l) => l.identifiable);
+    const layerFilter = (l: BaseLayer) => identifiableLayers.some((cl) => layerRefs.current.get(cl.id) === l);
+
+    map.on('dblclick', (evt) => {
+      const hit = map.forEachFeatureAtPixel(
+        evt.pixel,
+        (feature, olLayer) => {
+          const layer = identifiableLayers.find((cl) => layerRefs.current.get(cl.id) === olLayer);
+          if (!layer) return undefined;
+          if (layer.geometryType === 'mixed' && feature.getGeometry()?.getType() !== 'Point') return undefined;
+          return { feature, layer };
+        },
+        { layerFilter, hitTolerance: 6 },
+      );
+      if (!hit) return;
+      // Features are always parsed into FEATURE_STORAGE_PROJECTION
+      // (EPSG:3857), independent of whatever the view's current projection
+      // is — reproject from that fixed storage projection, not the view's.
+      if (hit.layer.id === 'airfields') useStore.getState().openAirfield(airfieldFeatureFromGeoJSON(hit.feature, FEATURE_STORAGE_PROJECTION));
+      else if (hit.layer.id === 'tenth-fleet') useStore.getState().openOob(hit.feature.get('oobId') as string);
+      else useStore.getState().openPort(portFeatureFromGeoJSON(hit.feature, FEATURE_STORAGE_PROJECTION));
+    });
+    map.on('pointermove', (evt) => {
+      if (evt.dragging) return;
+      const hit = map.hasFeatureAtPixel(evt.pixel, { layerFilter, hitTolerance: 6 });
+      const el = map.getTargetElement();
+      if (el) el.style.cursor = hit ? 'pointer' : '';
+    });
 
     const ro = new ResizeObserver((entries) => {
       const box = entries[0]?.contentRect;
       if (box) setSize({ w: box.width, h: box.height });
-      map.resize();
+      map.updateSize();
       rerender();
     });
     ro.observe(containerRef.current);
 
+    const layers = layerRefs.current;
     return () => {
       ro.disconnect();
-      map.remove();
+      map.setTarget(undefined);
       mapRef.current = null;
+      baseLayerRef.current = null;
+      layers.clear();
     };
+    // Basemap and projection changes are handled by their own effects below
+    // (swap the base layer's source / rebuild the view in place) rather
+    // than tearing down and remounting the whole map — only the initial
+    // basemapId/mapProjectionCode values matter here.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Swapping the base layer's source (rather than MapLibre's old
+  // map.setStyle(), which wiped every custom source/layer) means context
+  // layers never need re-syncing after a basemap change — they live on the
+  // map's layer collection independently of the base layer.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || basemapId === appliedBasemapId.current) return;
-    appliedBasemapId.current = basemapId;
-    const style = BASEMAP_STYLES.find((b) => b.id === basemapId) ?? BASEMAP_STYLES[0];
-    map.setStyle(style.styleUrl);
-    whenStyleReady(map, () => syncContextLayers(map, useStore.getState().contextLayerVisibility));
+    if (!map || !baseLayerRef.current) return;
+    const basemap = BASEMAP_STYLES.find((b) => b.id === basemapId) ?? BASEMAP_STYLES[0];
+    baseLayerRef.current.setSource(new XYZ({ urls: resolveTileUrls(basemap.tileUrlTemplates), attributions: basemap.attribution }));
   }, [basemapId]);
+
+  // Switching projection means constructing a new View (OpenLayers has no
+  // in-place projection change) — vector/raster layers need no touching at
+  // all, since they were parsed into a fixed storage projection and
+  // OpenLayers reprojects on the fly at render time whenever a layer's data
+  // projection differs from the view's.
+  const appliedProjectionCode = useRef(mapProjectionCode);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || mapProjectionCode === appliedProjectionCode.current) return;
+    const prevView = map.getView();
+    const prevProjection = prevView.getProjection();
+    const centerLngLat = toLonLat(prevView.getCenter() ?? fromLonLat(AO_CENTER, prevProjection), prevProjection);
+    const nextView = new View({ projection: mapProjectionCode, center: fromLonLat(centerLngLat, mapProjectionCode), zoom: prevView.getZoom() ?? 10, minZoom: 0 });
+    map.setView(nextView);
+    appliedProjectionCode.current = mapProjectionCode;
+  }, [mapProjectionCode]);
 
   const contextLayerVisibility = useStore((s) => s.contextLayerVisibility);
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    whenStyleReady(map, () => syncContextLayers(map, contextLayerVisibility));
+    syncContextLayers(map, contextLayerVisibility, layerRefs.current, radarUrlRef);
   }, [contextLayerVisibility]);
 
   // RainViewer's mosaic advances roughly every 10 minutes — re-poll on that
@@ -528,12 +613,13 @@ export default function TacticalMap() {
   useEffect(() => {
     if (!radarVisible) return;
     const id = setInterval(() => {
-      const map = mapRef.current;
-      if (!map) return;
-      const src = map.getSource('ctx-src-weather-radar');
-      if (!src) return;
+      const olLayer = layerRefs.current.get('weather-radar') as TileLayer<XYZ> | undefined;
+      if (!olLayer) return;
       fetchLatestRadarTileUrl()
-        .then((url) => (src as RasterTileSource).setTiles([url]))
+        .then((url) => {
+          radarUrlRef.current = url;
+          olLayer.getSource()?.setUrl(url);
+        })
         .catch((err) => console.error('Failed to refresh weather-radar tiles', err));
     }, 5 * 60 * 1000);
     return () => clearInterval(id);
@@ -543,22 +629,17 @@ export default function TacticalMap() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !flyToRequest) return;
-    map.flyTo({ center: [flyToRequest.lng, flyToRequest.lat], zoom: flyToRequest.zoom, duration: 1200 });
+    const view = map.getView();
+    const projection = view.getProjection();
+    view.animate({ center: fromLonLat([flyToRequest.lng, flyToRequest.lat], projection), zoom: flyToRequest.zoom, duration: 1200 });
   }, [flyToRequest]);
 
-  const project: ProjectFn = (x, y) => {
+  const project: ProjectFn = (lng, lat) => {
     const map = mapRef.current;
     if (!map) return { x: -9999, y: -9999 };
-    const [lng, lat] = toLngLat(x, y);
-    const p = map.project([lng, lat]);
-    return { x: p.x, y: p.y };
-  };
-
-  const projectLL: ProjectFn = (lng, lat) => {
-    const map = mapRef.current;
-    if (!map) return { x: -9999, y: -9999 };
-    const p = map.project([lng, lat]);
-    return { x: p.x, y: p.y };
+    const projection = map.getView().getProjection();
+    const p = map.getPixelFromCoordinate(fromLonLat([lng, lat], projection));
+    return p ? { x: p[0], y: p[1] } : { x: -9999, y: -9999 };
   };
 
   return (
@@ -567,7 +648,7 @@ export default function TacticalMap() {
 
       {size.w > 0 && (
         <div className="tactical-map-overlay-wrap" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-          <OobMapLayer project={projectLL} width={size.w} height={size.h} />
+          <OobMapLayer project={project} width={size.w} height={size.h} />
           <MapOverlaySvg project={project} width={size.w} height={size.h} />
         </div>
       )}

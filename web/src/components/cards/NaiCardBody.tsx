@@ -1,5 +1,5 @@
 import { useStore } from '../../store';
-import { affColor, affShapeStyle, C, threatColor } from '../../selectors';
+import { affColor, affShapeStyle, C, distanceNm, threatColor } from '../../selectors';
 import { EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
 
 export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
@@ -16,8 +16,17 @@ export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
     .map((s) => ({ callsign: s.callsign, platform: s.platform, intType: s.intType, statusColor: s.status === 'DEGRADED' ? C.red : s.status === 'TASKED' ? C.amber : C.cyan, id: s.id }));
 
   const inside = targets
-    .filter((t) => t.x >= n.x && t.x <= n.x + n.w && t.y >= n.y && t.y <= n.y + n.h)
+    .filter((t) => t.lng >= n.lngMin && t.lng <= n.lngMax && t.lat >= n.latMin && t.lat <= n.latMax)
     .map((t) => ({ idShort: t.id.slice(1), name: t.name, affColor: affColor(t.aff), affShape: affShapeStyle(t.aff), threat: t.threat || '—', threatColor: threatColor(t.threat), id: t.id }));
+
+  // Real width/height in NM, along the box's mid-latitude/mid-longitude —
+  // not exact for a large box (meridians converge toward the poles) but
+  // more than accurate enough at NAI scale, and a real geodesic distance
+  // rather than the old abstract-grid-units * 0.6 approximation.
+  const latMid = (n.latMin + n.latMax) / 2;
+  const lngMid = (n.lngMin + n.lngMax) / 2;
+  const areaWidthNm = Math.round(distanceNm(n.lngMin, latMid, n.lngMax, latMid));
+  const areaHeightNm = Math.round(distanceNm(lngMid, n.latMin, lngMid, n.latMax));
 
   if (tab === 0) {
     return (
@@ -26,7 +35,7 @@ export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
           <KV label="DESIGNATION" value={n.id} />
           <KV label="DESCRIPTION" value={n.desc} />
           <KV label="LINKED PIR" value={n.pir} color="var(--amber)" />
-          <KV label="AREA" value={`~${Math.round(n.w * 0.6)} × ${Math.round(n.h * 0.6)} NM`} />
+          <KV label="AREA" value={`~${areaWidthNm} × ${areaHeightNm} NM`} />
           <KV label="STATUS" value="ACTIVE COLLECTION" color="var(--green)" />
         </KVGrid>
         <div className="nai-card-overview-note" style={{ fontSize: 9.5, color: 'var(--ink-faint)', marginTop: 12, lineHeight: 1.5 }}>

@@ -1,12 +1,23 @@
-import type { StyleSpecification } from 'maplibre-gl';
+import proj4 from 'proj4';
+import { register } from 'ol/proj/proj4';
 
-// Maps the simulation's abstract 0-100 x/y percent space onto a real bounding
-// box so the tactical picture can render over a real basemap. The AO ("AZ
-// STRAIT") is fictional; the Strait of Gibraltar was picked only because its
-// coastline shape reads well as a strait — no claim about the identity of
-// any real force is implied. x runs west->east, y runs north->south (top of
-// the old abstract map = north), matching the existing simulation's screen-
-// down y convention.
+// The AO's real-world bounding box. The AO ("AZ STRAIT") is fictional; the
+// Strait of Gibraltar was picked only because its coastline shape reads
+// well as a strait — no claim about the identity of any real force is
+// implied. Every live entity (targets/sensors/effectors/units/nais) now
+// carries real WGS84 lng/lat directly from the server — this bbox is used
+// only for the map's initial view (fitBounds), not for any coordinate
+// conversion; that's what AO_BOUNDS used to be for (a linear x/y -> lng/lat
+// stretch, applied once, before the simulation itself moved to real
+// coordinates — see server/src/aoBounds.ts, which mirrors this file since
+// server/ and web/ don't share a code package).
+//
+// Gibraltar is this project's first AO, not its only one — Meridian's
+// long-term scope is worldwide, with more real-world AOs (each its own
+// AO_BOUNDS-equivalent, own context layers, own OOB) added over time. Code
+// and comments elsewhere that describe "the Strait of Gibraltar region" are
+// describing this current pilot AO's actual data coverage, not a
+// permanent ceiling on the project.
 export const AO_BOUNDS = {
   west: -6.05,
   east: -5.15,
@@ -14,18 +25,16 @@ export const AO_BOUNDS = {
   north: 36.25,
 };
 
-export function toLngLat(x: number, y: number): [number, number] {
-  const lng = AO_BOUNDS.west + (x / 100) * (AO_BOUNDS.east - AO_BOUNDS.west);
-  const lat = AO_BOUNDS.north - (y / 100) * (AO_BOUNDS.north - AO_BOUNDS.south);
-  return [lng, lat];
-}
+export const AO_CENTER: [number, number] = [(AO_BOUNDS.west + AO_BOUNDS.east) / 2, (AO_BOUNDS.south + AO_BOUNDS.north) / 2];
 
-export const AO_CENTER: [number, number] = toLngLat(50, 50);
-
+// Plain XYZ tile URL templates — used to build an ol/source/XYZ per style
+// (see TacticalMap.tsx). `{r}` is CARTO's retina-tile convention (becomes
+// `@2x` on a high-DPI screen, empty otherwise); resolved at source-creation
+// time, not baked in here, since it depends on the runtime devicePixelRatio.
 export interface BasemapStyle {
   id: string;
   label: string;
-  styleUrl: StyleSpecification;
+  tileUrlTemplates: string[];
   attribution: string;
 }
 
@@ -34,68 +43,70 @@ export const BASEMAP_STYLES: BasemapStyle[] = [
     id: 'tactical',
     label: 'TAC',
     attribution: '© CARTO © OpenStreetMap contributors',
-    styleUrl: {
-      version: 8,
-      sources: {
-        basemap: {
-          type: 'raster',
-          tiles: ['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'],
-          tileSize: 256,
-          attribution: '© CARTO © OpenStreetMap contributors',
-        },
-      },
-      layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
-    },
+    tileUrlTemplates: ['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'],
   },
   {
     id: 'light',
     label: 'LIGHT',
     attribution: '© CARTO © OpenStreetMap contributors',
-    styleUrl: {
-      version: 8,
-      sources: {
-        basemap: {
-          type: 'raster',
-          tiles: ['https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png'],
-          tileSize: 256,
-          attribution: '© CARTO © OpenStreetMap contributors',
-        },
-      },
-      layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
-    },
+    tileUrlTemplates: ['https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png'],
   },
   {
     id: 'satellite',
     label: 'SAT',
     attribution: 'Esri, Maxar, Earthstar Geographics',
-    styleUrl: {
-      version: 8,
-      sources: {
-        basemap: {
-          type: 'raster',
-          tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-          tileSize: 256,
-          attribution: 'Esri, Maxar, Earthstar Geographics',
-        },
-      },
-      layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
-    },
+    tileUrlTemplates: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
   },
   {
     id: 'streets',
     label: 'STR',
     attribution: '© CARTO © OpenStreetMap contributors',
-    styleUrl: {
-      version: 8,
-      sources: {
-        basemap: {
-          type: 'raster',
-          tiles: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'],
-          tileSize: 256,
-          attribution: '© CARTO © OpenStreetMap contributors',
-        },
-      },
-      layers: [{ id: 'basemap', type: 'raster', source: 'basemap' }],
-    },
+    tileUrlTemplates: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'],
   },
 ];
+
+// Projections offered in TacticalMap's projection picker. EPSG:3857 (Web
+// Mercator) and EPSG:4326 (Plate Carrée) are built into OpenLayers;
+// EPSG:32630 (UTM zone 30N — the real UTM zone for this AO) is not, and
+// needs a proj4 definition registered before use (see TacticalMap.tsx's
+// registerProjections()). MapLibre, which this app used before, only ever
+// rendered in Web Mercator — this is the actual "different map
+// projections" capability, not just a relabeled basemap picker.
+export interface ProjectionOption {
+  code: string;
+  label: string;
+  proj4def?: string;
+  // OpenLayers needs an explicit extent for a UTM zone (used for the
+  // default view's fit and validity clipping) — degrees, WGS84.
+  worldExtentDeg?: [number, number, number, number];
+}
+
+export const PROJECTION_OPTIONS: ProjectionOption[] = [
+  { code: 'EPSG:3857', label: 'MERCATOR' },
+  { code: 'EPSG:4326', label: 'PLATE CARRÉE' },
+  {
+    code: 'EPSG:32630',
+    label: 'UTM 30N',
+    proj4def: '+proj=utm +zone=30 +datum=WGS84 +units=m +no_defs',
+    worldExtentDeg: [-6, 0, 0, 84],
+  },
+];
+
+let projectionsRegistered = false;
+
+// Registers every PROJECTION_OPTIONS entry that needs a proj4 definition
+// (anything OpenLayers doesn't already know natively) with proj4, then
+// hands the whole proj4 registry to OpenLayers via ol/proj/proj4's
+// register() — the documented pattern for adding a custom CRS. Synchronous
+// and idempotent, so it's safe to call at a component module's top level
+// and be certain every PROJECTION_OPTIONS code is usable by the time the
+// first View is constructed (an async version of this raced View creation
+// against the projection actually being registered).
+export function registerProjections(): void {
+  if (projectionsRegistered) return;
+  projectionsRegistered = true;
+  for (const p of PROJECTION_OPTIONS) {
+    if (p.proj4def) proj4.defs(p.code, p.proj4def);
+  }
+  register(proj4);
+}

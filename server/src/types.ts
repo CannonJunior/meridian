@@ -23,8 +23,8 @@ export interface Target {
   pri: number | null;
   conf: number;
   trkQ: number;
-  x: number;
-  y: number;
+  lng: number;
+  lat: number;
   course: number;
   speed: number;
   elev: string;
@@ -49,8 +49,8 @@ export interface Sensor {
   status: 'ON STATION' | 'TASKED' | 'DEGRADED' | 'RTB';
   tasking: string;
   endur: number;
-  x: number;
-  y: number;
+  lng: number;
+  lat: number;
   cov: SensorCoverage;
   covDir?: number;
 }
@@ -75,22 +75,26 @@ export interface FriendlyUnit {
   type: string;
   role: string;
   status: string;
-  x: number;
-  y: number;
+  lng: number;
+  lat: number;
   weapon: string;
   endur: number;
   effId: string | null;
 }
 
+// A real geographic bounding box (degrees), replacing the old abstract
+// x/y/w/h box — lngMin/latMin is the southwest corner, lngMax/latMax the
+// northeast corner, matching the west->east / south->north sense every
+// other real-coordinate field in this app now uses.
 export interface Nai {
   id: string;
   desc: string;
   pir: string;
   color: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+  lngMin: number;
+  latMin: number;
+  lngMax: number;
+  latMax: number;
 }
 
 export interface LogEntry {

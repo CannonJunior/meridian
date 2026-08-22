@@ -5,6 +5,7 @@ import IconSidebar from './components/IconSidebar';
 import ContextLayerManager from './components/ContextLayerManager';
 import LeftRail from './components/LeftRail';
 import OobManager from './components/OobManager';
+import KnowledgeBaseManager from './components/KnowledgeBaseManager';
 import ListsManager from './components/ListsManager';
 import ChatManager from './components/ChatManager';
 import StyleManager from './components/StyleManager';
@@ -14,8 +15,8 @@ import BottomPanel from './components/BottomPanel';
 import TutorialOverlay from './components/TutorialOverlay';
 import { useStore } from './store';
 
-// Lazily loaded: ObjectCard pulls in all 7 card-body variants (target,
-// sensor/unit, NAI, zone, OOB, port, airfield — ~1,500 lines combined) but
+// Lazily loaded: ObjectCard pulls in all 8 card-body variants (target,
+// sensor/unit, NAI, zone, OOB, port, airfield, knowledge-base entity) but
 // only ever mounts once a card is actually opened, so there's no reason
 // for that code to sit in the initial bundle.
 const ObjectCard = lazy(() => import('./components/ObjectCard'));
@@ -55,6 +56,9 @@ export default function App() {
         </div>
         <div className="app-manager-slot app-manager-slot-oob" style={{ display: activeManager === 'oob' ? 'contents' : 'none' }}>
           <OobManager />
+        </div>
+        <div className="app-manager-slot app-manager-slot-kb" style={{ display: activeManager === 'kb' ? 'contents' : 'none' }}>
+          <KnowledgeBaseManager />
         </div>
         <div className="app-manager-slot app-manager-slot-lists" style={{ display: activeManager === 'lists' ? 'contents' : 'none' }}>
           <ListsManager />

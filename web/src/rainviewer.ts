@@ -1,7 +1,9 @@
 // RainViewer (rainviewer.com) live global weather radar — free, no API key.
-// Aggregates 1000+ national radar networks worldwide (incl. Spain's AEMET),
-// unlike NOAA nowCOAST which is CONUS-only and has zero coverage over this
-// project's AO (Strait of Gibraltar). weather-maps.json lists available
+// Aggregates 1000+ national radar networks worldwide (incl. Spain's AEMET,
+// covering the current Gibraltar AO), unlike NOAA nowCOAST which is
+// CONUS-only. Genuinely worldwide coverage, which is why this was picked
+// over NOAA — it'll keep working as more AOs are added elsewhere in the
+// world. weather-maps.json lists available
 // frames; the most recent "past" frame is the current live mosaic. Frames
 // advance roughly every 10 minutes, so callers should re-fetch on that
 // cadence to keep the tile URL current.

@@ -2,8 +2,9 @@ import { useRef } from 'react';
 import { useStore } from '../store';
 import { affColor, affFull, affShapeStyle, threatColor } from '../selectors';
 import { effectiveStatus, findOobNode, kindLabel, oobTabNames, statusMeta } from '../oobSelectors';
-import { toLngLat } from '../mapProjection';
 import { VESSEL_PROFILES } from '../assets/vesselProfiles';
+import { useKnowledgeGraph } from '../kb/deriveGraph';
+import { KG_TYPE_LABEL, kgTabNames, kgTypeColor } from '../kb/ontology';
 import TargetCardBody from './cards/TargetCardBody';
 import SensorUnitCardBody from './cards/SensorUnitCardBody';
 import NaiCardBody from './cards/NaiCardBody';
@@ -11,6 +12,7 @@ import ZoneCardBody from './cards/ZoneCardBody';
 import OobObjectCardBody from './cards/OobObjectCardBody';
 import PortCardBody from './cards/PortCardBody';
 import AirfieldCardBody from './cards/AirfieldCardBody';
+import KbEntityCardBody from './cards/KbEntityCardBody';
 import type { CardKind } from '../types';
 
 function CrosshairsIcon({ color }: { color: string }) {
@@ -33,34 +35,38 @@ function useCardLocation(kind: CardKind, id: string | null): { lng: number; lat:
   const nais = useStore((s) => s.nais);
   const ports = useStore((s) => s.ports);
   const airfields = useStore((s) => s.airfields);
+  const kg = useKnowledgeGraph();
 
-  function fromXY(x: number, y: number) {
-    const [lng, lat] = toLngLat(x, y);
-    return { lng, lat };
+  if (kind === 'kbEntity') {
+    if (id == null) return null;
+    const node = kg['@graph'].find((n) => n['@id'] === id);
+    const lat = node?.properties.lat;
+    const lng = node?.properties.lng;
+    return typeof lat === 'number' && typeof lng === 'number' ? { lng, lat } : null;
   }
 
   if (kind === 'zone') {
     const drift = targets.find((t) => t.id === 'T2210');
-    return drift ? fromXY(drift.x, drift.y) : null;
+    return drift ? { lng: drift.lng, lat: drift.lat } : null;
   }
 
   if (id == null) return null;
 
   if (kind === 'target') {
     const t = targets.find((x) => x.id === id);
-    return t ? fromXY(t.x, t.y) : null;
+    return t ? { lng: t.lng, lat: t.lat } : null;
   }
   if (kind === 'sensor') {
     const s = sensors.find((x) => x.id === id);
-    return s ? fromXY(s.x, s.y) : null;
+    return s ? { lng: s.lng, lat: s.lat } : null;
   }
   if (kind === 'unit') {
     const u = units.find((x) => x.id === id);
-    return u ? fromXY(u.x, u.y) : null;
+    return u ? { lng: u.lng, lat: u.lat } : null;
   }
   if (kind === 'nai') {
     const n = nais.find((x) => x.id === id) ?? nais[0];
-    return n ? fromXY(n.x + n.w / 2, n.y + n.h / 2) : null;
+    return n ? { lng: (n.lngMin + n.lngMax) / 2, lat: (n.latMin + n.latMax) / 2 } : null;
   }
   if (kind === 'oobObject') {
     const n = findOobNode(id);
@@ -99,8 +105,28 @@ function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
   const ports = useStore((s) => s.ports);
   const airfields = useStore((s) => s.airfields);
   const contactIdentityAssignments = useStore((s) => s.contactIdentityAssignments);
+  const kg = useKnowledgeGraph();
 
   if (id == null) return null;
+
+  if (kind === 'kbEntity') {
+    const node = kg['@graph'].find((n) => n['@id'] === id);
+    if (!node) return null;
+    const color = kgTypeColor(node['@type']);
+    return {
+      idShort: KG_TYPE_LABEL[node['@type']],
+      name: node.name,
+      affColor: color,
+      affShapeStyle: {},
+      affFull: 'KNOWLEDGE BASE',
+      affGlow: color,
+      affWash: 'rgba(185,139,255,.08)',
+      typePillLabel: KG_TYPE_LABEL[node['@type']],
+      typePillColor: color,
+      typePillBorder: color,
+      tabNames: kgTabNames(node['@type']),
+    };
+  }
 
   if (kind === 'target') {
     const t = targets.find((x) => x.id === id);
@@ -387,6 +413,7 @@ export default function ObjectCard() {
         {cardKind === 'oobObject' && cardId && <OobObjectCardBody id={cardId} tab={cardTab} />}
         {cardKind === 'port' && cardId && <PortCardBody id={cardId} />}
         {cardKind === 'airfield' && cardId && <AirfieldCardBody id={cardId} />}
+        {cardKind === 'kbEntity' && cardId && <KbEntityCardBody uri={cardId} tab={cardTab} />}
       </div>
     </div>
   );

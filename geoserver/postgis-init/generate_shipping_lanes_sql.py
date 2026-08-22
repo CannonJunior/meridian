@@ -28,7 +28,9 @@
 #   through the 12 named straits/canals it recognizes for routing (Suez,
 #   Panama, Malacca, Gibraltar, Dover, Bering, Magellan, Bab-el-Mandeb,
 #   Kiel, Corinth, Northwest/Northeast Passage) — several of which matter
-#   directly to this app's Strait of Gibraltar AO. Straits are narrow,
+#   directly to this project's current Strait of Gibraltar AO, though this
+#   dataset is worldwide and will keep being useful as more AOs are added
+#   elsewhere. Straits are narrow,
 #   direct transits in reality, so a straight segment there isn't the
 #   visual problem it is for open-ocean routes; only those pass-tagged
 #   segments are kept, the rest of marnet is discarded.

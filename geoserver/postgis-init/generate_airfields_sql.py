@@ -2,8 +2,10 @@
 # automatically — 30-airfields.sql is checked in and picked up by postgres's
 # docker-entrypoint-initdb.d on first container start. Re-run only to refresh
 # the data (region is the Strait of Gibraltar area: south Spain / Gibraltar /
-# N. Morocco — the real-world area this app's fictional AO is modeled on;
-# widen the bbox below for broader coverage):
+# N. Morocco — this project's current AO, not its only intended one; the
+# long-term scope is worldwide, so treat this bbox as the first of several
+# regions rather than a fixed limit — widen/replace it below for broader
+# coverage as new AOs are added):
 #
 #   curl -s --data-urlencode 'data=[out:json][timeout:120];(way["aeroway"="aerodrome"](34.5,-9.0,38.0,-4.5);relation["aeroway"="aerodrome"](34.5,-9.0,38.0,-4.5);way["aeroway"="runway"](34.5,-9.0,38.0,-4.5);way["area:aeroway"="runway"](34.5,-9.0,38.0,-4.5);way["aeroway"="taxiway"](34.5,-9.0,38.0,-4.5);way["area:aeroway"="taxiway"](34.5,-9.0,38.0,-4.5););out geom;' \
 #     https://overpass-api.de/api/interpreter -o airfields_raw.json

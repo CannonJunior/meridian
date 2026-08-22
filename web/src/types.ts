@@ -3,7 +3,7 @@ export type Threat = 'CRIT' | 'HIGH' | 'MED' | 'LOW' | null;
 export type Category = 'TEL' | 'SAM' | 'C2' | 'SHIP' | 'BOAT' | 'RADAR' | 'UAS' | 'TROOP' | 'EMIT';
 export type SensorCoverage = 'cone' | 'wide' | 'area' | 'none';
 export type View = 'MAP' | 'BOARD';
-export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone' | 'oobObject' | 'port' | 'airfield';
+export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone' | 'oobObject' | 'port' | 'airfield' | 'kbEntity';
 // Which target list is currently driving the collection-table's contents —
 // see assets/targetLists.ts for each list's definition and membership rule.
 export type TargetListId = 'hptl' | 'jtl' | 'jiptl' | 'rtl' | 'nsl';
@@ -26,8 +26,8 @@ export interface Target {
   pri: number | null;
   conf: number;
   trkQ: number;
-  x: number;
-  y: number;
+  lng: number;
+  lat: number;
   course: number;
   speed: number;
   elev: string;
@@ -52,8 +52,8 @@ export interface Sensor {
   status: 'ON STATION' | 'TASKED' | 'DEGRADED' | 'RTB';
   tasking: string;
   endur: number;
-  x: number;
-  y: number;
+  lng: number;
+  lat: number;
   cov: SensorCoverage;
   covDir?: number;
 }
@@ -78,22 +78,25 @@ export interface FriendlyUnit {
   type: string;
   role: string;
   status: string;
-  x: number;
-  y: number;
+  lng: number;
+  lat: number;
   weapon: string;
   endur: number;
   effId: string | null;
 }
 
+// A real geographic bounding box (degrees) — southwest corner
+// (lngMin/latMin) to northeast corner (lngMax/latMax) — replacing the old
+// abstract x/y/w/h box.
 export interface Nai {
   id: string;
   desc: string;
   pir: string;
   color: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
+  lngMin: number;
+  latMin: number;
+  lngMax: number;
+  latMax: number;
 }
 
 export interface LogEntry {

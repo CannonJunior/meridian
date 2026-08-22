@@ -1,8 +1,12 @@
-// Maps a rendered GeoJSON airfield center-point feature (hit via MapLibre's
-// native feature click) into the AirfieldFeature shape the store/object
-// card expect. The boundary/runway/taxiway polygons in the same layer are
-// not identifiable — only the one representative point per airfield is.
-import type { MapGeoJSONFeature } from 'maplibre-gl';
+// Maps a rendered GeoJSON airfield center-point feature (hit via
+// OpenLayers' native feature click) into the AirfieldFeature shape the
+// store/object card expect. The boundary/runway/taxiway polygons in the
+// same layer are not identifiable — only the one representative point per
+// airfield is.
+import type { FeatureLike } from 'ol/Feature';
+import { toLonLat } from 'ol/proj';
+import type { ProjectionLike } from 'ol/proj';
+import type { Point } from 'ol/geom';
 
 export interface AirfieldFeature {
   id: string;
@@ -12,12 +16,13 @@ export interface AirfieldFeature {
   lat: number;
 }
 
-export function airfieldFeatureFromGeoJSON(feature: MapGeoJSONFeature): AirfieldFeature {
-  const p = feature.properties ?? {};
-  const geom = feature.geometry;
-  const [lng, lat] = geom.type === 'Point' ? (geom.coordinates as [number, number]) : [0, 0];
+export function airfieldFeatureFromGeoJSON(feature: FeatureLike, viewProjection: ProjectionLike): AirfieldFeature {
+  const p = feature.getProperties();
+  const geom = feature.getGeometry();
+  const coord = geom?.getType() === 'Point' ? (geom as Point).getCoordinates() : [0, 0];
+  const [lng, lat] = toLonLat(coord, viewProjection);
   return {
-    id: `airfield-${feature.id ?? p.osm_id ?? `${lng},${lat}`}`,
+    id: `airfield-${feature.getId() ?? p.osm_id ?? `${lng},${lat}`}`,
     name: p.name ?? 'UNNAMED AIRFIELD',
     icao: p.icao ?? null,
     lng,

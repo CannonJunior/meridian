@@ -1,7 +1,10 @@
 // Maps a rendered GeoJSON port feature (from the WFS-loaded context layer,
-// hit via MapLibre's native feature click) into the PortFeature shape the
+// hit via OpenLayers' native feature click) into the PortFeature shape the
 // store/object card expect.
-import type { MapGeoJSONFeature } from 'maplibre-gl';
+import type { FeatureLike } from 'ol/Feature';
+import { toLonLat } from 'ol/proj';
+import type { ProjectionLike } from 'ol/proj';
+import type { Point } from 'ol/geom';
 
 export interface PortFeature {
   id: string;
@@ -16,12 +19,13 @@ export interface PortFeature {
   lat: number;
 }
 
-export function portFeatureFromGeoJSON(feature: MapGeoJSONFeature): PortFeature {
-  const p = feature.properties ?? {};
-  const geom = feature.geometry;
-  const [lng, lat] = geom.type === 'Point' ? (geom.coordinates as [number, number]) : [0, 0];
+export function portFeatureFromGeoJSON(feature: FeatureLike, viewProjection: ProjectionLike): PortFeature {
+  const p = feature.getProperties();
+  const geom = feature.getGeometry();
+  const coord = geom?.getType() === 'Point' ? (geom as Point).getCoordinates() : [0, 0];
+  const [lng, lat] = toLonLat(coord, viewProjection);
   return {
-    id: `port-${feature.id ?? p.wpi_port_id ?? `${lng},${lat}`}`,
+    id: `port-${feature.getId() ?? p.wpi_port_id ?? `${lng},${lat}`}`,
     wpiPortId: p.wpi_port_id ?? null,
     name: p.name ?? 'UNNAMED PORT',
     country: p.country ?? null,
