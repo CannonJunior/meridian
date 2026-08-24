@@ -44,7 +44,9 @@ CREATE TABLE targets (
   appr_tea BOOLEAN NOT NULL,
   status TEXT NOT NULL,
   bda TEXT,
-  engagedAt INTEGER
+  engagedAt INTEGER,
+  altFt REAL,
+  vsFtMin REAL
 );
 CREATE INDEX targets_geom_idx ON targets USING GIST (geom);
 
@@ -59,7 +61,8 @@ CREATE TABLE sensors (
   endur INTEGER NOT NULL,
   geom geometry(Point, 4326) NOT NULL,
   cov TEXT NOT NULL,
-  covDir REAL
+  covDir REAL,
+  altFt REAL
 );
 CREATE INDEX sensors_geom_idx ON sensors USING GIST (geom);
 
@@ -74,7 +77,8 @@ CREATE TABLE effectors (
   rng INTEGER NOT NULL,
   suits JSONB NOT NULL,
   stealth BOOLEAN NOT NULL,
-  kinetic BOOLEAN NOT NULL
+  kinetic BOOLEAN NOT NULL,
+  altFt REAL
 );
 
 DROP TABLE IF EXISTS friendly_units;

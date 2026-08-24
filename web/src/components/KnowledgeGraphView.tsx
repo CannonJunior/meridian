@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
-import type { Core } from 'cytoscape';
+import type { Core, NodeSingular } from 'cytoscape';
 import { useStore } from '../store';
 import { toCytoscapeElements, useKnowledgeGraph } from '../kb/deriveGraph';
 import type { KgType } from '../kb/ontology';
+import LockRing from './LockRing';
 
 // Cytoscape renders to canvas, which can't resolve CSS custom properties —
 // theme.css stays the single source of truth for these hues, resolved to
@@ -18,6 +19,11 @@ export default function KnowledgeGraphView() {
   const doc = useKnowledgeGraph();
   const kbSelectedUri = useStore((s) => s.kbSelectedUri);
   const selectKbEntity = useStore((s) => s.selectKbEntity);
+  // On-screen (rendered, not graph-space) position of the selected node's
+  // lock ring — null while nothing is selected or the graph hasn't laid
+  // out yet. Kept in sync with pan/zoom below so the ring stays glued to
+  // the node exactly like TacticalMap's track-symbol lock ring does.
+  const [lockRingPos, setLockRingPos] = useState<{ x: number; y: number } | null>(null);
 
   // Live targets move every simulation tick (~1s), which changes `doc`'s
   // identity every tick too — rebuilding the whole Cytoscape instance and
@@ -41,11 +47,13 @@ export default function KnowledgeGraphView() {
 
     const typeColor: Record<KgType, string> = {
       NavalVessel: cssVar('--cyan'),
+      Unit: cssVar('--cyan'),
       Contact: cssVar('--yellow'),
       Command: cssVar('--blue'),
       RadarSystem: cssVar('--violet'),
       WeaponSystem: cssVar('--red'),
       ContextLayer: cssVar('--green'),
+      GeoFeature: cssVar('--green'),
       TargetList: cssVar('--amber'),
       Target: cssVar('--ink-mute'),
     };
@@ -91,7 +99,39 @@ export default function KnowledgeGraphView() {
           style: { 'border-width': 2, 'border-color': cssVar('--ink-warm'), 'font-size': 9 },
         },
       ],
-      layout: { name: 'cose', animate: false, fit: true, padding: 40 },
+      // Concentric rings by depth in the OOB command hierarchy (walked via
+      // partOf edges only — hasRadar/hasWeapon/memberOfList/relatedTo/
+      // associatedWith are still drawn as edges, just don't affect ring
+      // placement) — countries at the center, ships/units on the
+      // outermost ring. Tried first: 'cose' (the previous default) is a
+      // force-directed hairball at this node count, illegible. 'breadthfirst'
+      // (tree layout, also built into cytoscape core) turned into an
+      // unreadable thin horizontal strip — this data is a very wide,
+      // shallow tree (~5 levels, ~90 leaf ships), and a straight-line tree
+      // layout wastes almost all the panel's height on that shape.
+      // 'dagre' (a real dependency, tried and reverted) had the same
+      // problem plus poor handling of the many nodes with no partOf at all
+      // (radar/weapon/context-layer/target-list roots). Concentric turns
+      // "wide" into "ring circumference" instead of "line width", which
+      // fits this shape well and needs no extra dependency.
+      layout: {
+        name: 'concentric',
+        concentric: (node: NodeSingular) => {
+          let depth = 0;
+          let cur = node;
+          while (cur.outgoers('edge[label="partOf"]').length) {
+            cur = cur.outgoers('edge[label="partOf"]').targets()[0];
+            depth++;
+            if (depth > 20) break; // guards against a malformed/cyclic partOf chain
+          }
+          return 100 - depth; // cytoscape centers the highest value, so root (depth 0) sorts innermost
+        },
+        levelWidth: () => 1,
+        animate: false,
+        fit: true,
+        padding: 40,
+        spacingFactor: 0.9,
+      },
       minZoom: 0.15,
       maxZoom: 3,
       wheelSensitivity: 0.25,
@@ -111,18 +151,45 @@ export default function KnowledgeGraphView() {
   }, [structuralKey, selectKbEntity]);
 
   // Keep the graph's own selection/focus in sync when a node is selected
-  // elsewhere (the KB manager rail, or an entity card's RELATIONSHIPS tab).
+  // elsewhere (the KB manager rail, or an entity card's RELATIONSHIPS tab),
+  // and track that node's on-screen position for the lock ring overlay
+  // below — 'pan'/'zoom'/'position' cover both the centering animate()
+  // just below and any manual pan/zoom/drag the user does afterward.
   useEffect(() => {
     const cy = cyRef.current;
     if (!cy) return;
     cy.nodes().unselect();
-    if (!kbSelectedUri) return;
-    const node = cy.getElementById(kbSelectedUri);
-    if (node.length) {
-      node.select();
-      cy.animate({ center: { eles: node }, zoom: Math.max(cy.zoom(), 1.2) }, { duration: 250 });
+    if (!kbSelectedUri) {
+      setLockRingPos(null);
+      return;
     }
+    const node = cy.getElementById(kbSelectedUri);
+    if (!node.length) {
+      setLockRingPos(null);
+      return;
+    }
+    node.select();
+    cy.animate({ center: { eles: node }, zoom: Math.max(cy.zoom(), 1.2) }, { duration: 250 });
+
+    const updateRingPos = () => {
+      const p = node.renderedPosition();
+      setLockRingPos({ x: p.x, y: p.y });
+    };
+    updateRingPos();
+    cy.on('pan zoom position', updateRingPos);
+    return () => {
+      cy.off('pan zoom position', updateRingPos);
+    };
   }, [kbSelectedUri]);
 
-  return <div className="knowledge-graph-view" ref={containerRef} style={{ flex: 1, minHeight: 0, background: 'var(--map-bg)' }} />;
+  return (
+    <div className="knowledge-graph-view-wrap" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+      <div className="knowledge-graph-view" ref={containerRef} style={{ position: 'absolute', inset: 0, background: 'var(--map-bg)' }} />
+      {lockRingPos && (
+        <svg className="knowledge-graph-view-lock-ring-svg" width="100%" height="100%" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+          <LockRing x={lockRingPos.x} y={lockRingPos.y} color="var(--violet)" />
+        </svg>
+      )}
+    </div>
+  );
 }

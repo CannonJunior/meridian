@@ -42,6 +42,24 @@ export function decayInfo(d: number): { color: string; label: string } {
   return { color: C.red, label: `STALE ${d}s` };
 }
 
+// TCAS/MIL-STD-2525D-style altitude tag + a deliberately-not-to-scale stem
+// length — bucketed into bands, not linear, so the boring middle of the
+// range gets compressed and a threshold crossing (e.g. climbing above
+// 30,000ft) gets a visibly different band rather than a barely-different
+// pixel offset. See the altitude display plan's Plan A (Section 04).
+export interface AltBand {
+  label: string;
+  color: string;
+  stemLen: number;
+}
+export function altBand(altFt: number): AltBand {
+  const label = altFt >= 18000 ? `FL${Math.round(altFt / 100)}` : `${Math.round(altFt).toLocaleString()} FT`;
+  if (altFt < 5000) return { label, color: C.amber, stemLen: 8 };
+  if (altFt < 15000) return { label, color: C.cyan, stemLen: 16 };
+  if (altFt < 30000) return { label, color: C.blue, stemLen: 24 };
+  return { label, color: C.green, stemLen: 32 };
+}
+
 const CAT_FULL: Record<Category, string> = {
   TEL: 'BALLISTIC MISSILE / TEL',
   SAM: 'SURFACE-AIR / AIR DEFENSE',
@@ -108,6 +126,95 @@ export function distanceNm(lng1: number, lat1: number, lng2: number, lat2: numbe
   const dLambda = toRad(lng2 - lng1);
   const a = Math.sin(dPhi / 2) ** 2 + Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2) ** 2;
   return EARTH_RADIUS_NM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+// Destination point given a start position, bearing, and great-circle
+// distance — mirrors server/src/helpers.ts's copy (no shared-code package
+// between the two TS projects in this repo).
+export function destinationPoint(lng: number, lat: number, bearingDeg: number, distanceNm: number): { lng: number; lat: number } {
+  const dr = distanceNm / EARTH_RADIUS_NM;
+  const br = toRad(bearingDeg);
+  const phi1 = toRad(lat);
+  const lambda1 = toRad(lng);
+  const phi2 = Math.asin(Math.sin(phi1) * Math.cos(dr) + Math.cos(phi1) * Math.sin(dr) * Math.cos(br));
+  const lambda2 = lambda1 + Math.atan2(Math.sin(br) * Math.sin(dr) * Math.cos(phi1), Math.cos(dr) - Math.sin(phi1) * Math.sin(phi2));
+  return { lng: toDeg(lambda2), lat: toDeg(phi2) };
+}
+
+// Vertices (lng/lat) of a true geodesic circle — a constant-great-circle-
+// distance ring around a center point — rather than the flat screen-space
+// circle range rings used to be drawn as (a fixed pixel radius around a
+// single projected center point). A screen-space circle's implied ground
+// radius shrinks the farther the center is from the equator (Web Mercator
+// stretches distance by secant(lat)), and has no relationship at all to the
+// actual ground footprint once a 3D/2.5D camera is tilted or rotated. Since
+// every OTHER vertex is projected individually through the map's own
+// project() — same as every other geographic overlay element (NAIs, sensor
+// coverage, etc.) — the resulting polygon automatically reflects whatever
+// distortion the active 2D projection or 3D camera applies, rather than
+// pretending a range ring is a perfect on-screen circle regardless of
+// latitude or viewing angle.
+export function geodesicCircleLngLat(centerLng: number, centerLat: number, radiusNm: number, segments = 72): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= segments; i++) {
+    const { lng, lat } = destinationPoint(centerLng, centerLat, (360 * i) / segments, radiusNm);
+    pts.push([lng, lat]);
+  }
+  return pts;
+}
+
+// Vertices (lng/lat) of a sensor's field-of-view "cone" as a true geodesic
+// sector (a fan of equal-radius bearings from the sensor, not the flat
+// screen-space triangle — sensor point + two straight-line far corners —
+// sensor coverage cones used to be drawn as). The center point is included
+// first and last so the caller can render it directly as a closed polygon;
+// same geodesic-vertex rationale as geodesicCircleLngLat above.
+export function geodesicSectorLngLat(
+  centerLng: number,
+  centerLat: number,
+  radiusNm: number,
+  centerBearingDeg: number,
+  halfAngleDeg: number,
+  segments = 24,
+): [number, number][] {
+  const pts: [number, number][] = [[centerLng, centerLat]];
+  for (let i = 0; i <= segments; i++) {
+    const bearing = centerBearingDeg - halfAngleDeg + (2 * halfAngleDeg * i) / segments;
+    const { lng, lat } = destinationPoint(centerLng, centerLat, bearing, radiusNm);
+    pts.push([lng, lat]);
+  }
+  pts.push([centerLng, centerLat]);
+  return pts;
+}
+
+// Vertices (lng/lat) of a wide-area sensor's elliptical footprint — same
+// geodesic-vertex fix as the circle/sector above, generalized to an
+// ellipse: radius at each bearing follows the standard polar-ellipse
+// equation (relative to the ellipse's own major-axis bearing), then that
+// per-bearing radius is placed with the same destinationPoint great-circle
+// math as everything else here, rather than an axis-aligned screen-space
+// <ellipse>.
+export function geodesicEllipseLngLat(
+  centerLng: number,
+  centerLat: number,
+  semiMajorNm: number,
+  semiMinorNm: number,
+  majorAxisBearingDeg: number,
+  segments = 72,
+): [number, number][] {
+  const pts: [number, number][] = [];
+  for (let i = 0; i <= segments; i++) {
+    const bearing = (360 * i) / segments;
+    const theta = toRad(bearing - majorAxisBearingDeg);
+    const a = semiMajorNm;
+    const b = semiMinorNm;
+    const r = (a * b) / Math.sqrt((b * Math.cos(theta)) ** 2 + (a * Math.sin(theta)) ** 2);
+    const { lng, lat } = destinationPoint(centerLng, centerLat, bearing, r);
+    pts.push([lng, lat]);
+  }
+  return pts;
 }
 
 const DTG_BASE = Date.UTC(2026, 5, 28, 3, 14, 0);

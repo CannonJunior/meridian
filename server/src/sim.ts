@@ -30,6 +30,18 @@ export function tick(): void {
         u.lng = Math.min(AO_BOUNDS.east - margin, Math.max(AO_BOUNDS.west + margin, dest.lng));
         u.lat = Math.min(AO_BOUNDS.north - margin, Math.max(AO_BOUNDS.south + margin, dest.lat));
       }
+      if (u.altFt != null) {
+        // Minimal climb/cruise/descend cycle for the one airborne target
+        // that has an altFt today (KITE) — deterministic on `nt`, the same
+        // style of periodic nudge decay/trkQ already use, rather than new
+        // per-target state. 60-tick cycle: climb, cruise, descend, cruise,
+        // each quarter, at a realistic ~2,000 ft/min rate.
+        const phase = nt % 60;
+        u.vsFtMin = phase < 15 ? 2000 : phase < 30 ? 0 : phase < 45 ? -2000 : 0;
+        if (u.vsFtMin !== 0) {
+          u.altFt = Math.round(u.altFt + u.vsFtMin * SIM_MINUTES_PER_TICK);
+        }
+      }
       u.decay = u.decay + 1;
       if (u.custody && u.custody !== '—' && u.decay > 18 + (u.id.charCodeAt(4) % 9)) {
         u.decay = 2 + (nt % 4);

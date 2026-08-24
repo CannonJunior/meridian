@@ -216,6 +216,27 @@ export default function OobObjectCardBody({ id, tab }: { id: string; tab: number
             </div>
           ))}
         </div>
+
+        {isObject && (
+          <>
+            <SectionLabel top={16}>SOURCES</SectionLabel>
+            <div className="oob-object-card-sources-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {(node.sources ?? []).map((s) => (
+                <a
+                  key={s.url}
+                  className="oob-object-card-source-row"
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ display: 'block', border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', fontSize: 9.5, color: 'var(--cyan)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                >
+                  {s.label}
+                </a>
+              ))}
+              {(!node.sources || node.sources.length === 0) && <EmptyNote>No reference documented for this hull's command assignment.</EmptyNote>}
+            </div>
+          </>
+        )}
       </>
     );
   }

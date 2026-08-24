@@ -35,13 +35,14 @@ function rowToTarget(r: any): Target {
     sidc: r.sidc, effector: r.effector, method: r.method, cde: r.cde, nsl: r.nsl,
     appr: { pid: r.appr_pid, jag: r.appr_jag, strike: r.appr_strike, tea: r.appr_tea } as Approvals,
     status: r.status, bda: r.bda, engagedAt: r.engagedat,
+    altFt: r.altft == null ? null : Number(r.altft), vsFtMin: r.vsftmin == null ? null : Number(r.vsftmin),
   };
 }
 function rowToSensor(r: any): Sensor {
-  return { id: r.id, callsign: r.callsign, platform: r.platform, intType: r.inttype, status: r.status, tasking: r.tasking, endur: r.endur, lng: Number(r.lng), lat: Number(r.lat), cov: r.cov, covDir: r.covdir ?? undefined };
+  return { id: r.id, callsign: r.callsign, platform: r.platform, intType: r.inttype, status: r.status, tasking: r.tasking, endur: r.endur, lng: Number(r.lng), lat: Number(r.lat), cov: r.cov, covDir: r.covdir ?? undefined, altFt: r.altft == null ? null : Number(r.altft) };
 }
 function rowToEffector(r: any): Effector {
-  return { id: r.id, callsign: r.callsign, platform: r.platform, weapon: r.weapon, status: r.status, tot: r.tot, rng: r.rng, suits: r.suits, stealth: r.stealth, kinetic: r.kinetic };
+  return { id: r.id, callsign: r.callsign, platform: r.platform, weapon: r.weapon, status: r.status, tot: r.tot, rng: r.rng, suits: r.suits, stealth: r.stealth, kinetic: r.kinetic, altFt: r.altft == null ? null : Number(r.altft) };
 }
 function rowToUnit(r: any): FriendlyUnit {
   return { id: r.id, callsign: r.callsign, platform: r.platform, type: r.type, role: r.role, status: r.status, lng: Number(r.lng), lat: Number(r.lat), weapon: r.weapon, endur: r.endur, effId: r.effid };
@@ -61,22 +62,22 @@ async function seedFresh(): Promise<void> {
     await client.query('DELETE FROM targets; DELETE FROM sensors; DELETE FROM effectors; DELETE FROM friendly_units; DELETE FROM nais; DELETE FROM log; DELETE FROM meta;');
     for (const t of s.targets) {
       await client.query(
-        `INSERT INTO targets (id,name,type,cat,aff,threat,stage,pri,conf,trkQ,geom,course,speed,elev,custody,decay,sidc,effector,method,cde,nsl,appr_pid,appr_jag,appr_strike,appr_tea,status,bda,engagedAt)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,ST_SetSRID(ST_MakePoint($11,$12),4326),$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)`,
-        [t.id, t.name, t.type, t.cat, t.aff, t.threat, t.stage, t.pri, t.conf, t.trkQ, t.lng, t.lat, t.course, t.speed, t.elev, t.custody, t.decay, t.sidc, t.effector, t.method, t.cde, t.nsl, t.appr.pid, t.appr.jag, t.appr.strike, t.appr.tea, t.status, t.bda, t.engagedAt],
+        `INSERT INTO targets (id,name,type,cat,aff,threat,stage,pri,conf,trkQ,geom,course,speed,elev,custody,decay,sidc,effector,method,cde,nsl,appr_pid,appr_jag,appr_strike,appr_tea,status,bda,engagedAt,altFt,vsFtMin)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,ST_SetSRID(ST_MakePoint($11,$12),4326),$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)`,
+        [t.id, t.name, t.type, t.cat, t.aff, t.threat, t.stage, t.pri, t.conf, t.trkQ, t.lng, t.lat, t.course, t.speed, t.elev, t.custody, t.decay, t.sidc, t.effector, t.method, t.cde, t.nsl, t.appr.pid, t.appr.jag, t.appr.strike, t.appr.tea, t.status, t.bda, t.engagedAt, t.altFt, t.vsFtMin],
       );
     }
     for (const sn of s.sensors) {
       await client.query(
-        `INSERT INTO sensors (id,callsign,platform,intType,status,tasking,endur,geom,cov,covDir)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,ST_SetSRID(ST_MakePoint($8,$9),4326),$10,$11)`,
-        [sn.id, sn.callsign, sn.platform, sn.intType, sn.status, sn.tasking, sn.endur, sn.lng, sn.lat, sn.cov, sn.covDir ?? null],
+        `INSERT INTO sensors (id,callsign,platform,intType,status,tasking,endur,geom,cov,covDir,altFt)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,ST_SetSRID(ST_MakePoint($8,$9),4326),$10,$11,$12)`,
+        [sn.id, sn.callsign, sn.platform, sn.intType, sn.status, sn.tasking, sn.endur, sn.lng, sn.lat, sn.cov, sn.covDir ?? null, sn.altFt],
       );
     }
     for (const e of s.effectors) {
       await client.query(
-        `INSERT INTO effectors (id,callsign,platform,weapon,status,tot,rng,suits,stealth,kinetic) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [e.id, e.callsign, e.platform, e.weapon, e.status, e.tot, e.rng, JSON.stringify(e.suits), e.stealth, e.kinetic],
+        `INSERT INTO effectors (id,callsign,platform,weapon,status,tot,rng,suits,stealth,kinetic,altFt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [e.id, e.callsign, e.platform, e.weapon, e.status, e.tot, e.rng, JSON.stringify(e.suits), e.stealth, e.kinetic, e.altFt],
       );
     }
     for (const u of s.units) {
@@ -113,9 +114,9 @@ export async function loadState(): Promise<State> {
     return loadState();
   }
   const [targets, sensors, effectors, units, nais, log] = await Promise.all([
-    pool.query('SELECT id,name,type,cat,aff,threat,stage,pri,conf,trkQ,ST_X(geom) AS lng,ST_Y(geom) AS lat,course,speed,elev,custody,decay,sidc,effector,method,cde,nsl,appr_pid,appr_jag,appr_strike,appr_tea,status,bda,engagedAt FROM targets'),
-    pool.query('SELECT id,callsign,platform,intType,status,tasking,endur,ST_X(geom) AS lng,ST_Y(geom) AS lat,cov,covDir FROM sensors'),
-    pool.query('SELECT id,callsign,platform,weapon,status,tot,rng,suits,stealth,kinetic FROM effectors'),
+    pool.query('SELECT id,name,type,cat,aff,threat,stage,pri,conf,trkQ,ST_X(geom) AS lng,ST_Y(geom) AS lat,course,speed,elev,custody,decay,sidc,effector,method,cde,nsl,appr_pid,appr_jag,appr_strike,appr_tea,status,bda,engagedAt,altFt,vsFtMin FROM targets'),
+    pool.query('SELECT id,callsign,platform,intType,status,tasking,endur,ST_X(geom) AS lng,ST_Y(geom) AS lat,cov,covDir,altFt FROM sensors'),
+    pool.query('SELECT id,callsign,platform,weapon,status,tot,rng,suits,stealth,kinetic,altFt FROM effectors'),
     pool.query('SELECT id,callsign,platform,type,role,status,ST_X(geom) AS lng,ST_Y(geom) AS lat,weapon,endur,effId FROM friendly_units'),
     pool.query('SELECT id,description,pir,color,ST_XMin(geom) AS lng_min,ST_YMin(geom) AS lat_min,ST_XMax(geom) AS lng_max,ST_YMax(geom) AS lat_max FROM nais'),
     pool.query('SELECT t,tag,text,tag2 FROM log ORDER BY seq DESC LIMIT 60'),
@@ -132,6 +133,27 @@ export async function loadState(): Promise<State> {
     nais: nais.rows.map(rowToNai),
     log: log.rows.map(rowToLog),
   };
+}
+
+// Single-row fetches for server/src/liveSync.ts's LISTEN/NOTIFY handler —
+// re-reads the current committed row for whatever id a trigger notified
+// about, rather than trusting the (deliberately minimal) NOTIFY payload.
+// Same column lists as loadState()'s bulk queries, just WHERE-scoped.
+export async function fetchTargetById(id: string): Promise<Target | null> {
+  const r = (await pool.query('SELECT id,name,type,cat,aff,threat,stage,pri,conf,trkQ,ST_X(geom) AS lng,ST_Y(geom) AS lat,course,speed,elev,custody,decay,sidc,effector,method,cde,nsl,appr_pid,appr_jag,appr_strike,appr_tea,status,bda,engagedAt,altFt,vsFtMin FROM targets WHERE id=$1', [id])).rows[0];
+  return r ? rowToTarget(r) : null;
+}
+export async function fetchSensorById(id: string): Promise<Sensor | null> {
+  const r = (await pool.query('SELECT id,callsign,platform,intType,status,tasking,endur,ST_X(geom) AS lng,ST_Y(geom) AS lat,cov,covDir,altFt FROM sensors WHERE id=$1', [id])).rows[0];
+  return r ? rowToSensor(r) : null;
+}
+export async function fetchUnitById(id: string): Promise<FriendlyUnit | null> {
+  const r = (await pool.query('SELECT id,callsign,platform,type,role,status,ST_X(geom) AS lng,ST_Y(geom) AS lat,weapon,endur,effId FROM friendly_units WHERE id=$1', [id])).rows[0];
+  return r ? rowToUnit(r) : null;
+}
+export async function fetchNaiById(id: string): Promise<Nai | null> {
+  const r = (await pool.query('SELECT id,description,pir,color,ST_XMin(geom) AS lng_min,ST_YMin(geom) AS lat_min,ST_XMax(geom) AS lng_max,ST_YMax(geom) AS lat_max FROM nais WHERE id=$1', [id])).rows[0];
+  return r ? rowToNai(r) : null;
 }
 
 // Log entries are only ever prepended (never mutated), so the entries added
@@ -163,8 +185,8 @@ export async function persistTick(state: State, prev: State): Promise<void> {
         await client.query(
           `UPDATE targets SET stage=$1,pri=$2,conf=$3,trkQ=$4,geom=ST_SetSRID(ST_MakePoint($5,$6),4326),course=$7,speed=$8,
              custody=$9,decay=$10,effector=$11,nsl=$12,appr_pid=$13,appr_jag=$14,appr_strike=$15,appr_tea=$16,
-             status=$17,bda=$18,engagedAt=$19 WHERE id=$20`,
-          [t.stage, t.pri, t.conf, t.trkQ, t.lng, t.lat, t.course, t.speed, t.custody, t.decay, t.effector, t.nsl, t.appr.pid, t.appr.jag, t.appr.strike, t.appr.tea, t.status, t.bda, t.engagedAt, t.id],
+             status=$17,bda=$18,engagedAt=$19,altFt=$20,vsFtMin=$21 WHERE id=$22`,
+          [t.stage, t.pri, t.conf, t.trkQ, t.lng, t.lat, t.course, t.speed, t.custody, t.decay, t.effector, t.nsl, t.appr.pid, t.appr.jag, t.appr.strike, t.appr.tea, t.status, t.bda, t.engagedAt, t.altFt, t.vsFtMin, t.id],
         );
       }
     }

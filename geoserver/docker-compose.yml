@@ -20,6 +20,8 @@ services:
       - ./postgis-init/60-submarine-cables.sql:/docker-entrypoint-initdb.d/60-submarine-cables.sql:ro
       - ./postgis-init/70-bathymetry.sql:/docker-entrypoint-initdb.d/70-bathymetry.sql:ro
       - ./postgis-init/80-live-entities.sql:/docker-entrypoint-initdb.d/80-live-entities.sql:ro
+      - ./postgis-init/90-live-entities-triggers.sql:/docker-entrypoint-initdb.d/90-live-entities-triggers.sql:ro
+      - ./postgis-init/95-drawn-shapes.sql:/docker-entrypoint-initdb.d/95-drawn-shapes.sql:ro
     ports:
       - "${POSTGIS_PORT:-5555}:5432"
     healthcheck:

@@ -28,6 +28,24 @@ function CrosshairsIcon({ color }: { color: string }) {
   );
 }
 
+// Filled when the card is pinned, outline otherwise — same two-state glyph
+// idiom as the rest of this app's hand-drawn icons (see e.g. OobIcon's
+// status dots switching fill/opacity by state).
+function ThumbtackIcon({ color, pinned }: { color: string; pinned: boolean }) {
+  return (
+    <svg className="object-card-thumbtack-glyph" width="13" height="13" viewBox="0 0 20 20" fill="none">
+      <path
+        className="object-card-thumbtack-glyph-head"
+        d="M7 3H13L12.3 8.2L15 10.5V12H10.6V17L10 18L9.4 17V12H5V10.5L7.7 8.2L7 3Z"
+        fill={pinned ? color : 'none'}
+        stroke={color}
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function useCardLocation(kind: CardKind, id: string | null): { lng: number; lat: number } | null {
   const targets = useStore((s) => s.targets);
   const sensors = useStore((s) => s.sensors);
@@ -293,17 +311,29 @@ function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
   };
 }
 
-export default function ObjectCard() {
-  const cardKind = useStore((s) => s.cardKind);
-  const cardId = useStore((s) => s.cardId);
-  const cardTab = useStore((s) => s.cardTab);
-  const cardX = useStore((s) => s.cardX);
-  const cardY = useStore((s) => s.cardY);
-  const setCardTab = useStore((s) => s.setCardTab);
-  const closeCard = useStore((s) => s.closeCard);
-  const moveCardTo = useStore((s) => s.moveCardTo);
-  const flyTo = useStore((s) => s.flyTo);
+interface ObjectCardShellProps {
+  cardKind: CardKind;
+  cardId: string;
+  cardTab: number;
+  cardX: number;
+  cardY: number;
+  pinned: boolean;
+  zIndex: number;
+  onSetTab: (i: number) => void;
+  onMove: (x: number, y: number) => void;
+  onClose: () => void;
+  onTogglePin: () => void;
+}
 
+// Presentational: everything about how one card renders and behaves, keyed
+// purely off (cardKind, cardId) — knows nothing about whether it's the
+// single transient card or one of N pinned ones. See ObjectCard below for
+// what actually feeds it props: the current card reads/writes the store's
+// scalar cardKind/cardId/cardTab/cardX/cardY (unchanged from before pinning
+// existed), while pinned cards read/write their own entry in
+// store.pinnedCards by key.
+function ObjectCardShell({ cardKind, cardId, cardTab, cardX, cardY, pinned, zIndex, onSetTab, onMove, onClose, onTogglePin }: ObjectCardShellProps) {
+  const flyTo = useStore((s) => s.flyTo);
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
 
   const info = useHeaderInfo(cardKind, cardId);
@@ -316,21 +346,21 @@ export default function ObjectCard() {
   // something is actually being dragged.
   function startDrag(e: React.PointerEvent) {
     dragRef.current = { sx: e.clientX, sy: e.clientY, ox: cardX, oy: cardY };
-    const onMove = (ev: PointerEvent) => {
+    const onMoveEvt = (ev: PointerEvent) => {
       const d = dragRef.current;
       if (!d) return;
-      moveCardTo(d.ox + ev.clientX - d.sx, d.oy + ev.clientY - d.sy);
+      onMove(d.ox + ev.clientX - d.sx, d.oy + ev.clientY - d.sy);
     };
     const onUp = () => {
       dragRef.current = null;
-      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointermove', onMoveEvt);
       document.removeEventListener('pointerup', onUp);
     };
-    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointermove', onMoveEvt);
     document.addEventListener('pointerup', onUp);
   }
 
-  if (!info || cardId == null) return null;
+  if (!info) return null;
 
   return (
     <div
@@ -341,7 +371,7 @@ export default function ObjectCard() {
         top: cardY,
         width: 544,
         maxHeight: '80vh',
-        zIndex: 200,
+        zIndex,
         background: 'var(--panel-2)',
         border: '1px solid #2a3d3a',
         boxShadow: '0 28px 90px rgba(0,0,0,.72), 0 0 0 1px rgba(255,171,56,.12)',
@@ -383,8 +413,17 @@ export default function ObjectCard() {
           )}
         </div>
         <div
+          className="object-card-pin-button"
+          onClick={onTogglePin}
+          onPointerDown={(e) => e.stopPropagation()}
+          title={pinned ? 'Unpin this card' : 'Pin this card open'}
+          style={{ width: 22, height: 22, border: `1px solid ${pinned ? 'var(--amber)' : '#2a3d3a'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+        >
+          <ThumbtackIcon color={pinned ? 'var(--amber)' : 'var(--ink-mute)'} pinned={pinned} />
+        </div>
+        <div
           className="object-card-close-button"
-          onClick={closeCard}
+          onClick={onClose}
           onPointerDown={(e) => e.stopPropagation()}
           style={{ width: 22, height: 22, border: '1px solid #2a3d3a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--ink-mute)', cursor: 'pointer' }}
         >
@@ -397,7 +436,7 @@ export default function ObjectCard() {
           <div
             key={name}
             className="object-card-tab"
-            onClick={() => setCardTab(i)}
+            onClick={() => onSetTab(i)}
             style={{ padding: '8px 13px', fontFamily: 'var(--font-display)', fontSize: 10, letterSpacing: '.1em', fontWeight: 600, cursor: 'pointer', color: cardTab === i ? '#06090a' : 'var(--ink-mute)', background: cardTab === i ? 'var(--amber)' : 'transparent', borderRight: '1px solid #131e1d' }}
           >
             {name}
@@ -406,15 +445,68 @@ export default function ObjectCard() {
       </div>
 
       <div className="object-card-body" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 14 }}>
-        {cardKind === 'target' && cardId && <TargetCardBody id={cardId} tab={cardTab} />}
-        {(cardKind === 'sensor' || cardKind === 'unit') && cardId && <SensorUnitCardBody kind={cardKind} id={cardId} tab={cardTab} />}
-        {cardKind === 'nai' && cardId && <NaiCardBody id={cardId} tab={cardTab} />}
+        {cardKind === 'target' && <TargetCardBody id={cardId} tab={cardTab} />}
+        {(cardKind === 'sensor' || cardKind === 'unit') && <SensorUnitCardBody kind={cardKind} id={cardId} tab={cardTab} />}
+        {cardKind === 'nai' && <NaiCardBody id={cardId} tab={cardTab} />}
         {cardKind === 'zone' && <ZoneCardBody tab={cardTab} />}
-        {cardKind === 'oobObject' && cardId && <OobObjectCardBody id={cardId} tab={cardTab} />}
-        {cardKind === 'port' && cardId && <PortCardBody id={cardId} />}
-        {cardKind === 'airfield' && cardId && <AirfieldCardBody id={cardId} />}
-        {cardKind === 'kbEntity' && cardId && <KbEntityCardBody uri={cardId} tab={cardTab} />}
+        {cardKind === 'oobObject' && <OobObjectCardBody id={cardId} tab={cardTab} />}
+        {cardKind === 'port' && <PortCardBody id={cardId} />}
+        {cardKind === 'airfield' && <AirfieldCardBody id={cardId} />}
+        {cardKind === 'kbEntity' && <KbEntityCardBody uri={cardId} tab={cardTab} />}
       </div>
     </div>
+  );
+}
+
+export default function ObjectCard() {
+  const cardKind = useStore((s) => s.cardKind);
+  const cardId = useStore((s) => s.cardId);
+  const cardTab = useStore((s) => s.cardTab);
+  const cardX = useStore((s) => s.cardX);
+  const cardY = useStore((s) => s.cardY);
+  const setCardTab = useStore((s) => s.setCardTab);
+  const closeCard = useStore((s) => s.closeCard);
+  const moveCardTo = useStore((s) => s.moveCardTo);
+  const pinCurrentCard = useStore((s) => s.pinCurrentCard);
+  const pinnedCards = useStore((s) => s.pinnedCards);
+  const unpinCard = useStore((s) => s.unpinCard);
+  const closePinnedCard = useStore((s) => s.closePinnedCard);
+  const setPinnedCardTab = useStore((s) => s.setPinnedCardTab);
+  const movePinnedCardTo = useStore((s) => s.movePinnedCardTo);
+
+  return (
+    <>
+      {pinnedCards.map((c, i) => (
+        <ObjectCardShell
+          key={c.key}
+          cardKind={c.kind}
+          cardId={c.id}
+          cardTab={c.tab}
+          cardX={c.x}
+          cardY={c.y}
+          pinned
+          zIndex={150 + i}
+          onSetTab={(tab) => setPinnedCardTab(c.key, tab)}
+          onMove={(x, y) => movePinnedCardTo(c.key, x, y)}
+          onClose={() => closePinnedCard(c.key)}
+          onTogglePin={() => unpinCard(c.key)}
+        />
+      ))}
+      {cardId != null && (
+        <ObjectCardShell
+          cardKind={cardKind}
+          cardId={cardId}
+          cardTab={cardTab}
+          cardX={cardX}
+          cardY={cardY}
+          pinned={false}
+          zIndex={200}
+          onSetTab={setCardTab}
+          onMove={moveCardTo}
+          onClose={closeCard}
+          onTogglePin={pinCurrentCard}
+        />
+      )}
+    </>
   );
 }

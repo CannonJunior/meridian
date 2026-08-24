@@ -9,6 +9,7 @@ import KnowledgeBaseManager from './components/KnowledgeBaseManager';
 import ListsManager from './components/ListsManager';
 import ChatManager from './components/ChatManager';
 import StyleManager from './components/StyleManager';
+import DrawingToolManager from './components/DrawingToolManager';
 import CenterPanel from './components/CenterPanel';
 import TargetWorkup from './components/TargetWorkup';
 import BottomPanel from './components/BottomPanel';
@@ -23,6 +24,7 @@ const ObjectCard = lazy(() => import('./components/ObjectCard'));
 
 export default function App() {
   const cardId = useStore((s) => s.cardId);
+  const hasPinnedCards = useStore((s) => s.pinnedCards.length > 0);
   const activeManager = useStore((s) => s.activeManager);
   const rightRailWidth = useStore((s) => s.rightRailWidth);
 
@@ -69,6 +71,9 @@ export default function App() {
         <div className="app-manager-slot app-manager-slot-style" style={{ display: activeManager === 'style' ? 'contents' : 'none' }}>
           <StyleManager />
         </div>
+        <div className="app-manager-slot app-manager-slot-draw" style={{ display: activeManager === 'draw' ? 'contents' : 'none' }}>
+          <DrawingToolManager />
+        </div>
         <CenterPanel />
         <TargetWorkup />
       </div>
@@ -76,7 +81,7 @@ export default function App() {
       <BottomPanel />
       <BottomClassificationBanner />
 
-      {cardId != null && (
+      {(cardId != null || hasPinnedCards) && (
         <Suspense fallback={null}>
           <ObjectCard />
         </Suspense>

@@ -20,29 +20,38 @@ export const KG_CONTEXT: Record<string, string> = {
   hasRadar: `${MERIDIAN_NS}hasRadar`,
   hasWeapon: `${MERIDIAN_NS}hasWeapon`,
   memberOfList: `${MERIDIAN_NS}memberOfList`,
+  relatedTo: `${MERIDIAN_NS}relatedTo`,
   associatedWith: `${MERIDIAN_NS}associatedWith`,
 };
 
-export type KgType = 'NavalVessel' | 'Contact' | 'Command' | 'RadarSystem' | 'WeaponSystem' | 'ContextLayer' | 'TargetList' | 'Target';
+export type KgType = 'NavalVessel' | 'Unit' | 'Contact' | 'Command' | 'RadarSystem' | 'WeaponSystem' | 'ContextLayer' | 'GeoFeature' | 'TargetList' | 'Target';
 
 export const KG_TYPE_LABEL: Record<KgType, string> = {
   NavalVessel: 'NAVAL VESSEL',
+  Unit: 'UNIT',
   Contact: 'UNIDENTIFIED CONTACT',
   Command: 'COMMAND / ORGANIZATION',
   RadarSystem: 'RADAR SYSTEM',
   WeaponSystem: 'WEAPON SYSTEM',
   ContextLayer: 'CONTEXT LAYER',
+  // A specific real feature drawn from a context layer's own WFS/GeoJSON
+  // dataset (an EEZ zone, a matched port) — distinct from the ContextLayer
+  // node itself, which represents the dataset/layer as a whole. See
+  // kb/geoMatch.ts for how these get derived and joined to OOB entities.
+  GeoFeature: 'GEOGRAPHIC FEATURE',
   TargetList: 'TARGET LIST',
   Target: 'TARGET',
 };
 
 const KG_TYPE_COLOR: Record<KgType, string> = {
   NavalVessel: 'var(--cyan)',
+  Unit: 'var(--cyan)',
   Contact: 'var(--yellow)',
   Command: 'var(--blue)',
   RadarSystem: 'var(--violet)',
   WeaponSystem: 'var(--red)',
   ContextLayer: 'var(--green)',
+  GeoFeature: 'var(--green)',
   TargetList: 'var(--amber)',
   Target: 'var(--ink-mute)',
 };
@@ -100,6 +109,9 @@ export function radarUri(name: string): string {
 export function weaponUri(name: string): string {
   return `urn:meridian:weapon:${slugify(name)}`;
 }
+export function geoFeatureUri(layerId: string, featureId: string | number): string {
+  return `urn:meridian:geofeature:${layerId}:${featureId}`;
+}
 
 export interface KgNode {
   '@id': string;
@@ -110,6 +122,14 @@ export interface KgNode {
   hasRadar?: string[];
   hasWeapon?: string[];
   memberOfList?: string[];
+  // A context layer's real, data-backed link to the specific OOB entities
+  // its features depict — e.g. the Tenth Fleet layer's GeoJSON features
+  // each carry an `oobId` (assets/tenthFleetLocations.ts); see
+  // deriveGraph.ts for how that's turned into this edge. Deliberately NOT
+  // populated by inference/guesswork (e.g. "this port is near that base")
+  // for layers with no such declared per-feature link — see deriveGraph.ts
+  // for which layers qualify and why the rest don't.
+  relatedTo?: string[];
   // Generic, user-created URI-to-URI edges (KB↔KB, or KB↔any external URI —
   // e.g. a GeoServer WFS GetFeature URL for a specific context-layer
   // feature). The graph doesn't require the target to resolve to a KG node

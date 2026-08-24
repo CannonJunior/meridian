@@ -42,6 +42,11 @@ export interface Target {
   status: string;
   bda: string | null;
   engagedAt: number | null;
+  // Real vertical position in feet, null for anything that isn't airborne.
+  // vsFtMin is the current climb/descend rate, also null when altFt is
+  // null — see the altitude display plan's Section 03 / Plan A.
+  altFt: number | null;
+  vsFtMin: number | null;
 }
 
 export interface Sensor {
@@ -56,6 +61,7 @@ export interface Sensor {
   lat: number;
   cov: SensorCoverage;
   covDir?: number;
+  altFt: number | null;
 }
 
 export interface Effector {
@@ -69,6 +75,7 @@ export interface Effector {
   suits: Category[];
   stealth: boolean;
   kinetic: boolean;
+  altFt: number | null;
 }
 
 export interface FriendlyUnit {

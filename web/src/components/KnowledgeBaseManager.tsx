@@ -13,9 +13,11 @@ import type { KgType } from '../kb/ontology';
 const FILTERS: { id: KgType | 'all'; label: string }[] = [
   { id: 'all', label: 'ALL' },
   { id: 'NavalVessel', label: 'VESSELS' },
+  { id: 'Unit', label: 'UNITS' },
   { id: 'Contact', label: 'CONTACTS' },
   { id: 'Command', label: 'COMMANDS' },
   { id: 'ContextLayer', label: 'CONTEXT LAYERS' },
+  { id: 'GeoFeature', label: 'GEO FEATURES' },
   { id: 'TargetList', label: 'TARGET LISTS' },
 ];
 

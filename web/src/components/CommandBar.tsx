@@ -16,7 +16,12 @@ export default function CommandBar() {
   const selectedId = useStore((s) => s.selectedId);
   const legendMode = useStore((s) => s.legendMode);
   const setLegendMode = useStore((s) => s.setLegendMode);
+  const showAltitude = useStore((s) => s.showAltitude);
+  const setShowAltitude = useStore((s) => s.setShowAltitude);
   const rightRailWidth = useStore((s) => s.rightRailWidth);
+  const activeManager = useStore((s) => s.activeManager);
+  const setActiveManager = useStore((s) => s.setActiveManager);
+  const openDrawingTool = useStore((s) => s.openDrawingTool);
 
   const sel = targets.find((x) => x.id === selectedId) ?? targets[0];
   const roe = ROES[roeIdx];
@@ -108,7 +113,38 @@ export default function CommandBar() {
           </div>
         ))}
 
-        <div className="command-bar-legend-picker" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end', marginLeft: 'auto', flexShrink: 0 }}>
+        <button
+          type="button"
+          className="command-bar-draw-tool-toggle"
+          onClick={() => (activeManager === 'draw' ? setActiveManager('isr') : openDrawingTool())}
+          aria-pressed={activeManager === 'draw'}
+          title="Drawing tool — trace and save a shape against a reference image"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 'auto',
+            width: 26,
+            height: 26,
+            flexShrink: 0,
+            background: activeManager === 'draw' ? 'rgba(63,210,230,.14)' : 'rgba(8,13,14,.82)',
+            border: `1px solid ${activeManager === 'draw' ? 'var(--cyan)' : 'var(--hairline-mid)'}`,
+            cursor: 'pointer',
+          }}
+        >
+          <svg className="command-bar-draw-tool-glyph" width="14" height="14" viewBox="0 0 20 20" fill="none">
+            <path
+              className="command-bar-draw-tool-glyph-pencil"
+              d="M13.5 2.5L17.5 6.5L7 17H3V13L13.5 2.5Z"
+              stroke={activeManager === 'draw' ? 'var(--cyan)' : 'var(--ink-mute)'}
+              strokeWidth="1.4"
+              strokeLinejoin="round"
+            />
+            <line className="command-bar-draw-tool-glyph-tip" x1="11" y1="5" x2="15" y2="9" stroke={activeManager === 'draw' ? 'var(--cyan)' : 'var(--ink-mute)'} strokeWidth="1.4" />
+          </svg>
+        </button>
+
+        <div className="command-bar-legend-picker" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-end', marginLeft: 10, flexShrink: 0 }}>
           <label className="command-bar-legend-picker-label" htmlFor="command-bar-legend-select" style={{ fontSize: 8, letterSpacing: '.18em', color: 'var(--ink-faint)', marginBottom: 3 }}>
             LEGEND
           </label>
@@ -137,6 +173,32 @@ export default function CommandBar() {
             </option>
           </select>
         </div>
+
+        <button
+          type="button"
+          className="command-bar-altitude-toggle"
+          onClick={() => setShowAltitude(!showAltitude)}
+          aria-pressed={showAltitude}
+          title="Toggle air-track altitude tags"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 10,
+            background: showAltitude ? 'rgba(63,210,230,.14)' : 'rgba(8,13,14,.82)',
+            border: `1px solid ${showAltitude ? 'var(--cyan)' : 'var(--hairline-mid)'}`,
+            color: showAltitude ? 'var(--cyan)' : 'var(--ink-mute)',
+            fontFamily: 'var(--font-display)',
+            fontSize: 9.5,
+            fontWeight: 700,
+            letterSpacing: '.08em',
+            padding: '3px 8px',
+            cursor: 'pointer',
+          }}
+        >
+          ALT
+        </button>
         <CommandBarMenu />
       </div>
 

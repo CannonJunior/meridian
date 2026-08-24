@@ -14,6 +14,7 @@ export default function CollectionTable() {
   const selectTarget = useStore((s) => s.selectTarget);
   const openCard = useStore((s) => s.openCard);
   const activeListId = useStore((s) => s.activeListId);
+  const resetNorth = useStore((s) => s.resetNorth);
 
   const activeList = TARGET_LISTS.find((l) => l.id === activeListId) ?? TARGET_LISTS[0];
   const listTargets = targetsForList(targets, activeListId);
@@ -33,6 +34,32 @@ export default function CollectionTable() {
         <span className="collection-table-summary" style={{ fontSize: 9, color: 'var(--ink-dim2)', letterSpacing: '.08em' }}>
           {tracksTotal} TRACKS · {hostileCount} HOSTILE · {execCount} IN EXECUTION
         </span>
+        <button
+          className="collection-table-reset-north-button"
+          type="button"
+          onClick={() => resetNorth()}
+          title="Reset map orientation to up-is-North"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 1,
+            padding: '2px 5px',
+            marginLeft: 8,
+            background: 'transparent',
+            border: '1px solid var(--hairline-mid)',
+            color: 'var(--ink-mute)',
+            cursor: 'pointer',
+          }}
+        >
+          <span className="collection-table-reset-north-caret" style={{ fontSize: 7, lineHeight: 1 }}>
+            ▲
+          </span>
+          <span className="collection-table-reset-north-label" style={{ fontFamily: 'var(--font-display)', fontSize: 9, fontWeight: 700, lineHeight: 1, letterSpacing: '.04em' }}>
+            N
+          </span>
+        </button>
       </div>
 
       <div className="collection-table-list-subtitle" style={{ fontSize: 9, color: 'var(--ink-faint)', padding: '5px 12px', borderBottom: '1px solid #131e1d', lineHeight: 1.4 }}>

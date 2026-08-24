@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { FeatureCollection, Polygon } from 'geojson';
 import { sendAction } from './wsClient';
 import type { Approvals, CardKind, State, Target, TargetListId, View } from './types';
 import { findOobNode } from './oobSelectors';
@@ -12,9 +13,49 @@ import { fmtLogTime } from './selectors';
 import { TUTORIALS } from './assets/tutorials';
 import type { PortFeature } from './portFeature';
 import type { AirfieldFeature } from './airfieldFeature';
+import type { MapMode } from './cesium3d';
 
-export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb';
+export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb' | 'draw';
 export type LegendMode = 'AFFILIATION' | 'OOB';
+
+// Layer/object association scope for the drawing tool (DrawingToolManager.tsx)
+// — the three things in this app with a real searchable name index a drawn
+// shape can be pinned to.
+export type DrawLayerId = 'maritime-ports' | 'airfields' | 'oob';
+export type DrawToolPhase = 'upload' | 'control-points' | 'polygon' | 'associate';
+
+// One correspondence between a pixel on the uploaded reference image and a
+// real lng/lat on the live map — imageWarp.ts's computeAffineTransform needs
+// >=3 of these to register the image onto the map.
+export interface DrawControlPoint {
+  imageX: number;
+  imageY: number;
+  lng: number;
+  lat: number;
+}
+
+export interface DrawToolState {
+  phase: DrawToolPhase;
+  imageDataUrl: string | null;
+  imageNaturalWidth: number;
+  imageNaturalHeight: number;
+  controlPoints: DrawControlPoint[];
+  // An image-space click awaiting its matching map click — set by
+  // addImageControlPoint, consumed (and cleared) by addMapControlPoint.
+  pendingImagePoint: { x: number; y: number } | null;
+  // The finished trace, in lng/lat — null while still being drawn.
+  polygonLngLat: [number, number][] | null;
+}
+
+const INITIAL_DRAW_TOOL: DrawToolState = {
+  phase: 'upload',
+  imageDataUrl: null,
+  imageNaturalWidth: 0,
+  imageNaturalHeight: 0,
+  controlPoints: [],
+  pendingImagePoint: null,
+  polygonLngLat: null,
+};
 
 export interface OobStyle {
   radarColor: string;
@@ -171,6 +212,26 @@ interface TutorialSnapshot {
   activeChatTargetId: string | null;
 }
 
+// A card the user has pinned open via the thumbtack button — pinning moves
+// a card out of the single transient cardKind/cardId/cardTab/cardX/cardY
+// slot (which stays exactly as it behaved before pinning existed: one
+// card, replaced whenever something new is opened) and into this list,
+// where it keeps rendering as its own independent floating card until
+// explicitly closed or unpinned. `key` is a stable identity for one
+// (kind, id) pair so the same entity can't end up pinned twice.
+export interface PinnedCard {
+  key: string;
+  kind: CardKind;
+  id: string;
+  tab: number;
+  x: number;
+  y: number;
+}
+
+export function cardKey(kind: CardKind, id: string): string {
+  return `${kind}:${id}`;
+}
+
 interface UiState {
   connected: boolean;
   cardKind: CardKind;
@@ -178,12 +239,25 @@ interface UiState {
   cardTab: number;
   cardX: number;
   cardY: number;
+  pinnedCards: PinnedCard[];
   basemapId: string;
   // EPSG code TacticalMap's OpenLayers View renders in — see
   // mapProjection.ts's PROJECTION_OPTIONS for the offered set.
   mapProjectionCode: string;
+  // Selects the ol-cesium perspective mode (altitude plan Plan C / Phase 3)
+  // — '3D' and '2.5D' both synchronize the existing OpenLayers 2D map into
+  // a Cesium globe rather than replacing it; '2.5D' additionally locks the
+  // camera to a fixed look angle/heading (see cesium3d.ts's MapMode).
+  // Cesium/olcs are dynamically imported on first activation into either
+  // mode, not at module load, since they're large and most sessions will
+  // never toggle off '2D'.
+  mapMode: MapMode;
   activeManager: Manager;
   legendMode: LegendMode;
+  // Gates the altitude tag/stem TrackSymbol draws for airborne targets —
+  // see the altitude display plan's Plan A / Risk 04. Off by default so
+  // the feature is opt-in rather than always-on clutter.
+  showAltitude: boolean;
   activeListId: TargetListId;
   // Last-observed list membership per target id, and the append-only log of
   // moments a target first qualified for a list — see targetLists.ts for why
@@ -205,6 +279,11 @@ interface UiState {
   ports: Record<string, PortFeature>;
   airfields: Record<string, AirfieldFeature>;
   flyToRequest: { lng: number; lat: number; zoom: number } | null;
+  // Bumped (never read for its value) to ask TacticalMap to reset the map's
+  // rotation back to "up is North" — needed because ol-cesium's Camera
+  // keeps the OL View's rotation synced to the Cesium camera heading while
+  // 3D mode is active, so leaving 3D can strand the 2D map rotated.
+  resetNorthRequest: number;
   oobStyle: OobStyle;
   // OOB contact id -> assigned VesselProfile id (assets/vesselProfiles.ts).
   // A client-side overlay on top of the static OOB tree — assigning an
@@ -229,6 +308,11 @@ interface UiState {
   tutorialStepIndex: number;
   tutorialSnapshot: TutorialSnapshot | null;
   tutorialScratch: Record<string, unknown>;
+  drawTool: DrawToolState;
+  // Persisted drawn shapes (drawnShapes.ts on the server), cached per
+  // layer+object key (`${layerId}:${objectId}`) so a shape only needs
+  // fetching once per object card visit — see loadDrawnShapes.
+  drawnShapes: Record<string, FeatureCollection>;
 }
 
 interface Actions {
@@ -262,10 +346,17 @@ interface Actions {
   closeCard: () => void;
   setCardTab: (i: number) => void;
   moveCardTo: (x: number, y: number) => void;
+  pinCurrentCard: () => void;
+  unpinCard: (key: string) => void;
+  closePinnedCard: (key: string) => void;
+  setPinnedCardTab: (key: string, i: number) => void;
+  movePinnedCardTo: (key: string, x: number, y: number) => void;
   setBasemap: (id: string) => void;
+  setMapMode: (m: MapMode) => void;
   setMapProjectionCode: (code: string) => void;
   setActiveManager: (m: Manager) => void;
   setLegendMode: (m: LegendMode) => void;
+  setShowAltitude: (v: boolean) => void;
   setActiveListId: (id: TargetListId) => void;
   selectOob: (id: string) => void;
   openOob: (id: string) => void;
@@ -273,6 +364,7 @@ interface Actions {
   openPort: (feature: PortFeature) => void;
   openAirfield: (feature: AirfieldFeature) => void;
   flyTo: (lng: number, lat: number, zoom?: number) => void;
+  resetNorth: () => void;
   setOobStyleColor: (key: keyof OobStyle, hex: string) => void;
   assignContactIdentity: (contactId: string, profileId: string) => void;
   clearContactIdentity: (contactId: string) => void;
@@ -285,6 +377,17 @@ interface Actions {
   advanceTutorial: () => void;
   fastForwardTutorial: () => void;
   exitTutorial: () => void;
+
+  openDrawingTool: () => void;
+  setDrawImage: (dataUrl: string, naturalWidth: number, naturalHeight: number) => void;
+  addImageControlPoint: (x: number, y: number) => void;
+  addMapControlPoint: (lng: number, lat: number) => void;
+  removeControlPoint: (index: number) => void;
+  confirmControlPoints: () => void;
+  setDrawnPolygon: (coords: [number, number][]) => void;
+  resetDrawTool: () => void;
+  saveDrawnShape: (args: { name: string; layerId: DrawLayerId; objectId: string; objectLabel: string }) => Promise<void>;
+  loadDrawnShapes: (layerId: DrawLayerId, objectId: string) => Promise<void>;
 }
 
 type Store = State & UiState & Actions;
@@ -310,10 +413,13 @@ export const useStore = create<Store>((set, get) => ({
   cardTab: 0,
   cardX: 330,
   cardY: 96,
+  pinnedCards: [],
   basemapId: 'tactical',
+  mapMode: '2D',
   mapProjectionCode: 'EPSG:3857',
   activeManager: 'isr',
   legendMode: 'AFFILIATION',
+  showAltitude: false,
   activeListId: 'hptl',
   targetListMembership: {},
   targetListTransitions: [],
@@ -327,6 +433,7 @@ export const useStore = create<Store>((set, get) => ({
   ports: {},
   airfields: {},
   flyToRequest: null,
+  resetNorthRequest: 0,
   oobStyle: { radarColor: '#3fd2e6', weaponColor: '#ffab38' },
   contactIdentityAssignments: {},
   kbAssociations: {},
@@ -336,6 +443,8 @@ export const useStore = create<Store>((set, get) => ({
   tutorialStepIndex: 0,
   tutorialSnapshot: null,
   tutorialScratch: {},
+  drawTool: INITIAL_DRAW_TOOL,
+  drawnShapes: {},
 
   setFromServer: (s) => {
     set((prev) => {
@@ -529,11 +638,57 @@ export const useStore = create<Store>((set, get) => ({
   closeCard: () => set({ cardId: null }),
   setCardTab: (i) => set({ cardTab: i }),
   moveCardTo: (x, y) => set({ cardX: Math.max(0, x), cardY: Math.max(0, y) }),
+  pinCurrentCard: () => {
+    const { cardKind, cardId, cardTab, cardX, cardY } = get();
+    if (cardId == null) return;
+    const key = cardKey(cardKind, cardId);
+    set((prev) => {
+      if (prev.pinnedCards.some((c) => c.key === key)) return { cardId: null };
+      // The card being pinned keeps its exact on-screen position (x, y) —
+      // it must not jump. What needs to change is where the *next* card
+      // opens: cardX/cardY is reused as-is by every open action unless the
+      // user drags, so without nudging it here, whatever opens next would
+      // spawn exactly on top of the card just pinned — same screen
+      // position — and its higher zIndex would block clicks on the pinned
+      // card underneath. 90px clears the header button cluster (~65px in
+      // from a card's right edge) past a same-width card's right edge, so
+      // the pinned card's controls stay reachable once something new opens.
+      const step = 90;
+      return {
+        pinnedCards: [...prev.pinnedCards, { key, kind: cardKind, id: cardId, tab: cardTab, x: cardX, y: cardY }],
+        cardId: null,
+        cardX: cardX + step,
+        cardY: cardY + step,
+      };
+    });
+  },
+  // Unpinning hands the card back to the single transient slot — same as
+  // opening it fresh — so it keeps behaving like a normal card again
+  // (replaceable by the next thing opened) rather than just vanishing.
+  unpinCard: (key) => {
+    set((prev) => {
+      const entry = prev.pinnedCards.find((c) => c.key === key);
+      if (!entry) return prev;
+      return {
+        pinnedCards: prev.pinnedCards.filter((c) => c.key !== key),
+        cardKind: entry.kind,
+        cardId: entry.id,
+        cardTab: entry.tab,
+        cardX: entry.x,
+        cardY: entry.y,
+      };
+    });
+  },
+  closePinnedCard: (key) => set((prev) => ({ pinnedCards: prev.pinnedCards.filter((c) => c.key !== key) })),
+  setPinnedCardTab: (key, i) => set((prev) => ({ pinnedCards: prev.pinnedCards.map((c) => (c.key === key ? { ...c, tab: i } : c)) })),
+  movePinnedCardTo: (key, x, y) => set((prev) => ({ pinnedCards: prev.pinnedCards.map((c) => (c.key === key ? { ...c, x: Math.max(0, x), y: Math.max(0, y) } : c)) })),
   setBasemap: (id) => set({ basemapId: id }),
+  setMapMode: (m) => set({ mapMode: m }),
   setMapProjectionCode: (code) => set({ mapProjectionCode: code }),
   setActiveManager: (m) => set({ activeManager: m }),
   setRightRailWidth: (w) => set({ rightRailWidth: Math.min(RIGHT_RAIL_MAX_WIDTH, Math.max(RIGHT_RAIL_MIN_WIDTH, w)) }),
   setLegendMode: (m) => set({ legendMode: m }),
+  setShowAltitude: (v) => set({ showAltitude: v }),
   setActiveListId: (id) => set({ activeListId: id }),
   selectOob: (id) => {
     const node = findOobNode(id);
@@ -551,6 +706,7 @@ export const useStore = create<Store>((set, get) => ({
     set({ flyToRequest: { lng, lat, zoom } });
     if (get().view !== 'MAP') get().setView('MAP');
   },
+  resetNorth: () => set((prev) => ({ resetNorthRequest: prev.resetNorthRequest + 1 })),
   setOobStyleColor: (key, hex) => set((prev) => ({ oobStyle: { ...prev.oobStyle, [key]: hex } })),
   assignContactIdentity: (contactId, profileId) => set((prev) => ({ contactIdentityAssignments: { ...prev.contactIdentityAssignments, [contactId]: profileId } })),
   clearContactIdentity: (contactId) =>
@@ -629,5 +785,48 @@ export const useStore = create<Store>((set, get) => ({
     tutorial?.cleanup?.();
     if (tutorialSnapshot) set(tutorialSnapshot);
     set({ activeTutorialId: null, tutorialStepIndex: 0, tutorialSnapshot: null, tutorialScratch: {} });
+  },
+
+  openDrawingTool: () => set({ activeManager: 'draw' }),
+  setDrawImage: (dataUrl, naturalWidth, naturalHeight) =>
+    set({
+      drawTool: { ...INITIAL_DRAW_TOOL, phase: 'control-points', imageDataUrl: dataUrl, imageNaturalWidth: naturalWidth, imageNaturalHeight: naturalHeight },
+    }),
+  addImageControlPoint: (x, y) => set((prev) => ({ drawTool: { ...prev.drawTool, pendingImagePoint: { x, y } } })),
+  addMapControlPoint: (lng, lat) =>
+    set((prev) => {
+      const pending = prev.drawTool.pendingImagePoint;
+      if (!pending) return prev;
+      const point: DrawControlPoint = { imageX: pending.x, imageY: pending.y, lng, lat };
+      return { drawTool: { ...prev.drawTool, controlPoints: [...prev.drawTool.controlPoints, point], pendingImagePoint: null } };
+    }),
+  removeControlPoint: (index) => set((prev) => ({ drawTool: { ...prev.drawTool, controlPoints: prev.drawTool.controlPoints.filter((_, i) => i !== index) } })),
+  confirmControlPoints: () =>
+    set((prev) => (prev.drawTool.controlPoints.length >= 3 ? { drawTool: { ...prev.drawTool, phase: 'polygon' } } : prev)),
+  setDrawnPolygon: (coords) => set((prev) => ({ drawTool: { ...prev.drawTool, polygonLngLat: coords, phase: 'associate' } })),
+  resetDrawTool: () => set({ drawTool: INITIAL_DRAW_TOOL }),
+  saveDrawnShape: async ({ name, layerId, objectId, objectLabel }) => {
+    const ring = get().drawTool.polygonLngLat;
+    if (!ring || ring.length < 3) return;
+    const closedRing = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring : [...ring, ring[0]];
+    const geometry: Polygon = { type: 'Polygon', coordinates: [closedRing] };
+    const res = await fetch('/api/drawn-shapes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, layerId, objectId, objectLabel, geometry }),
+    });
+    if (!res.ok) throw new Error(`Failed to save drawn shape: ${res.status}`);
+    get().resetDrawTool();
+    await get().loadDrawnShapes(layerId, objectId);
+  },
+  loadDrawnShapes: async (layerId, objectId) => {
+    const res = await fetch(`/api/drawn-shapes?layerId=${encodeURIComponent(layerId)}&objectId=${encodeURIComponent(objectId)}`);
+    if (!res.ok) return;
+    const shapes: { id: string; name: string; objectLabel: string; geometry: Polygon }[] = await res.json();
+    const fc: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: shapes.map((s) => ({ type: 'Feature', id: s.id, properties: { name: s.name, objectLabel: s.objectLabel }, geometry: s.geometry })),
+    };
+    set((prev) => ({ drawnShapes: { ...prev.drawnShapes, [`${layerId}:${objectId}`]: fc } }));
   },
 }));

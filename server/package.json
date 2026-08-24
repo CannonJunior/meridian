@@ -17,6 +17,7 @@
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/geojson": "^7946.0.16",
     "@types/node": "^22.10.5",
     "@types/ws": "^8.5.13",
     "tsx": "^4.19.2",

@@ -1,10 +1,29 @@
 import { useMemo, useState } from 'react';
 import { useStore } from '../../store';
-import { useKnowledgeGraph } from '../../kb/deriveGraph';
+import { buildIncomingIndex, useKnowledgeGraph } from '../../kb/deriveGraph';
+import type { IncomingEdge, IncomingRelation } from '../../kb/deriveGraph';
 import { moreLikeThis } from '../../kb/similarity';
 import { KG_TYPE_LABEL, kgTabKeys, kgTypeColor } from '../../kb/ontology';
 import type { KgNode } from '../../kb/ontology';
 import { EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
+
+// Labels for the reverse direction of each edge — "what points at me", as
+// opposed to the plain, already-existing outgoing labels below (PART OF,
+// RADAR SYSTEMS, etc.). See kb/deriveGraph.ts's buildIncomingIndex for why
+// this exists: without it, a RadarSystem/WeaponSystem/TargetList/root-org/
+// depicted-context-layer node reads as relationship-less even though it's
+// visibly connected in the graph view.
+const INCOMING_LABEL: Record<IncomingRelation, string> = {
+  partOf: 'MEMBERS',
+  hasRadar: 'EQUIPPED ON',
+  hasWeapon: 'EQUIPPED ON',
+  memberOfList: 'CURRENT LIST MEMBERS',
+  relatedTo: 'RELATED FEATURES',
+};
+
+function incomingUris(edges: IncomingEdge[], relations: IncomingRelation[]): string[] {
+  return edges.filter((e) => relations.includes(e.relation)).map((e) => e.from);
+}
 
 // Overview KVGrid rows are driven generically off whatever's in a node's
 // `properties` bag (kb/deriveGraph.ts) rather than a per-@type field list,
@@ -17,6 +36,10 @@ const PROPERTY_LABEL: Record<string, string> = {
   lat: 'LATITUDE',
   lng: 'LONGITUDE',
   rangeNm: 'RANGE (NM)',
+  areaKm2: 'AREA (KM²)',
+  isoTer: 'ISO TERRITORY CODE',
+  maxVesselSize: 'MAX VESSEL SIZE',
+  portSize: 'PORT SIZE',
 };
 
 function EdgeSection({ label, uris, byId, onClick }: { label: string; uris: string[] | undefined; byId: Map<string, KgNode>; onClick: (uri: string) => void }) {
@@ -53,8 +76,10 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
   const [showRaw, setShowRaw] = useState(false);
 
   const byId = useMemo(() => new Map(doc['@graph'].map((n) => [n['@id'], n] as const)), [doc]);
+  const incomingIndex = useMemo(() => buildIncomingIndex(doc), [doc]);
   const node = byId.get(uri);
   if (!node) return null;
+  const incoming = incomingIndex.get(uri) ?? [];
 
   const activeKey = kgTabKeys(node['@type'])[tab] ?? 'overview';
 
@@ -82,13 +107,23 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
   }
 
   if (activeKey === 'relationships') {
-    const hasAny = node.partOf || node.hasRadar || node.hasWeapon || node.memberOfList || node.associatedWith;
+    const equippedOn = incomingUris(incoming, ['hasRadar', 'hasWeapon']);
+    const members = incomingUris(incoming, ['partOf']);
+    const currentListMembers = incomingUris(incoming, ['memberOfList']);
+    const depictedBy = incomingUris(incoming, ['relatedTo']);
+    const hasAny =
+      node.partOf || node.hasRadar || node.hasWeapon || node.memberOfList || node.relatedTo || node.associatedWith || equippedOn.length || members.length || currentListMembers.length || depictedBy.length;
     return (
       <>
         <EdgeSection label="PART OF" uris={node.partOf} byId={byId} onClick={selectKbEntity} />
+        <EdgeSection label={INCOMING_LABEL.partOf} uris={members} byId={byId} onClick={selectKbEntity} />
         <EdgeSection label="RADAR SYSTEMS" uris={node.hasRadar} byId={byId} onClick={selectKbEntity} />
         <EdgeSection label="WEAPON SYSTEMS" uris={node.hasWeapon} byId={byId} onClick={selectKbEntity} />
+        <EdgeSection label={INCOMING_LABEL.hasRadar} uris={equippedOn} byId={byId} onClick={selectKbEntity} />
         <EdgeSection label="MEMBER OF LIST" uris={node.memberOfList} byId={byId} onClick={selectKbEntity} />
+        <EdgeSection label={INCOMING_LABEL.memberOfList} uris={currentListMembers} byId={byId} onClick={selectKbEntity} />
+        <EdgeSection label="RELATED ENTITIES" uris={node.relatedTo} byId={byId} onClick={selectKbEntity} />
+        <EdgeSection label={INCOMING_LABEL.relatedTo} uris={depictedBy} byId={byId} onClick={selectKbEntity} />
         <EdgeSection label="ASSOCIATED WITH" uris={node.associatedWith} byId={byId} onClick={selectKbEntity} />
         {!hasAny && <EmptyNote>No relationships on file for this entity.</EmptyNote>}
       </>
