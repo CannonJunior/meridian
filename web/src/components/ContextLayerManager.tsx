@@ -1,5 +1,59 @@
+import { useEffect, useRef, useState } from 'react';
+import type { MouseEvent } from 'react';
 import { useStore } from '../store';
 import { CONTEXT_LAYERS } from '../assets/contextLayers';
+import type { ContextLayer } from '../assets/contextLayers';
+
+const FILTER_DEBOUNCE_MS = 400;
+
+// Debounced per-layer search box (only rendered for layers with
+// layer.filterProperty set — see assets/contextLayers.ts) — local input
+// state updates immediately for a responsive feel, but the store (and so
+// the actual GeoServer CQL_FILTER refetch, see TacticalMap.tsx's
+// syncContextLayers) only updates after the user pauses typing, so a WFS
+// request isn't fired on every keystroke.
+function LayerFilterInput({ layer }: { layer: ContextLayer }) {
+  const storedValue = useStore((s) => s.contextLayerFilters[layer.id] ?? '');
+  const setContextLayerFilter = useStore((s) => s.setContextLayerFilter);
+  const [value, setValue] = useState(storedValue);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+  }, []);
+
+  function handleChange(text: string) {
+    setValue(text);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setContextLayerFilter(layer.id, text), FILTER_DEBOUNCE_MS);
+  }
+
+  // Typing/clicking into the box must not toggle the layer row's own
+  // onClick (visibility) handler underneath it.
+  function stopRowClick(e: MouseEvent) {
+    e.stopPropagation();
+  }
+
+  return (
+    <input
+      className="context-layer-row-filter-input"
+      value={value}
+      onChange={(e) => handleChange(e.target.value)}
+      onClick={stopRowClick}
+      placeholder={`FILTER BY ${layer.filterProperty!.toUpperCase()}…`}
+      style={{
+        width: '100%',
+        marginTop: 6,
+        background: 'var(--panel-1)',
+        border: '1px solid var(--hairline-mid)',
+        color: 'var(--ink-bright)',
+        fontSize: 9.5,
+        padding: '5px 7px',
+        fontFamily: 'var(--font-mono)',
+      }}
+    />
+  );
+}
 
 export default function ContextLayerManager() {
   const visibility = useStore((s) => s.contextLayerVisibility);
@@ -60,6 +114,7 @@ export default function ContextLayerManager() {
               <div className="context-layer-row-attribution" style={{ fontSize: 8.5, color: 'var(--ink-faint2)', marginTop: 5 }}>
                 SOURCE · {layer.attribution}
               </div>
+              {layer.filterProperty && <LayerFilterInput layer={layer} />}
             </div>
           );
         })}

@@ -22,39 +22,75 @@ export type LegendMode = 'AFFILIATION' | 'OOB';
 // — the three things in this app with a real searchable name index a drawn
 // shape can be pinned to.
 export type DrawLayerId = 'maritime-ports' | 'airfields' | 'oob';
-export type DrawToolPhase = 'upload' | 'control-points' | 'polygon' | 'associate';
-
-// One correspondence between a pixel on the uploaded reference image and a
-// real lng/lat on the live map — imageWarp.ts's computeAffineTransform needs
-// >=3 of these to register the image onto the map.
-export interface DrawControlPoint {
-  imageX: number;
-  imageY: number;
-  lng: number;
-  lat: number;
-}
+export type DrawToolPhase = 'capture' | 'polygon' | 'associate';
+export type DrawnShapeKind = 'outline' | 'reporting-point';
 
 export interface DrawToolState {
   phase: DrawToolPhase;
+  // Zoom level (Google Static Maps' own integer zoom scale) the next
+  // capture will request — continuously derived from the map's own live
+  // view zoom (rounded to an integer) by TacticalMap.tsx's preview-tracking
+  // effect, not user-editable directly: panning/zooming the map itself is
+  // the only way to change it.
+  captureZoom: number;
+  // Resolution multiplier for the captured image (Google Static Maps'
+  // `scale` parameter — see googleStaticMap.ts) — user-selectable via
+  // DrawingToolManager's resolution control. Doesn't affect the requested
+  // geographic extent, only pixel density (a 2x-scale image covers the
+  // same footprint as a 1x one, just sharper).
+  captureScale: number;
+  capturing: boolean;
+  captureError: string | null;
+  // The center (lng/lat) and EPSG:3857 extent of the capture-area rectangle
+  // currently shown on the map — kept continuously in sync with the map's
+  // live view by TacticalMap.tsx (see its preview-tracking effect) whenever
+  // drawTool.phase === 'capture', so what CAPTURE actually fetches always
+  // matches what's on screen, with no separate "confirm the area" step.
+  captureCenter: [number, number] | null;
+  captureExtent: [number, number, number, number] | null;
+  // Bumped (never read for its value) to ask TacticalMap.tsx to fetch a
+  // Google Static Maps image for the current view center — see
+  // googleStaticMap.ts and TacticalMap.tsx's capture effect.
+  captureRequestId: number;
   imageDataUrl: string | null;
-  imageNaturalWidth: number;
-  imageNaturalHeight: number;
-  controlPoints: DrawControlPoint[];
-  // An image-space click awaiting its matching map click — set by
-  // addImageControlPoint, consumed (and cleared) by addMapControlPoint.
-  pendingImagePoint: { x: number; y: number } | null;
+  // The captured image's exact geographic bounds in EPSG:3857 — computed
+  // directly from the same (center, zoom, size) parameters the image was
+  // requested with (see googleStaticMap.ts), not guessed at, which is what
+  // makes this georectified with no landmark-matching step.
+  imageExtent: [number, number, number, number] | null;
   // The finished trace, in lng/lat — null while still being drawn.
   polygonLngLat: [number, number][] | null;
+  // Set on a successful save, holding the shape's name — DrawingToolManager
+  // shows a confirmation instead of the associate form while this is set,
+  // and the map keeps showing the captured image + polygon (see
+  // saveDrawnShape) rather than clearing immediately, so there's an actual
+  // answer to "did that work" before the user does anything else. Cleared
+  // by resetDrawTool(), the explicit "draw another shape" action.
+  savedShapeName: string | null;
+}
+
+// Both saveDrawnShape and saveEditingShape need a closed ring (GeoJSON
+// Polygon requirement) from a Draw/Modify-interaction trace, which never
+// includes the closing point itself.
+function closeRing(ring: [number, number][]): [number, number][] {
+  const first = ring[0];
+  const last = ring[ring.length - 1];
+  return first[0] === last[0] && first[1] === last[1] ? ring : [...ring, first];
 }
 
 const INITIAL_DRAW_TOOL: DrawToolState = {
-  phase: 'upload',
+  phase: 'capture',
+  captureZoom: 18,
+  captureScale: 2, // matches googleStaticMap.ts's GOOGLE_STATIC_MAP_SCALE
+  capturing: false,
+  captureError: null,
+  captureCenter: null,
+  captureExtent: null,
+  captureRequestId: 0,
   imageDataUrl: null,
-  imageNaturalWidth: 0,
-  imageNaturalHeight: 0,
-  controlPoints: [],
-  pendingImagePoint: null,
+  imageExtent: null,
   polygonLngLat: null,
+  savedShapeName: null,
 };
 
 export interface OobStyle {
@@ -276,6 +312,11 @@ interface UiState {
   activeChatTargetId: string | null;
   oobSelectedId: string | null;
   contextLayerVisibility: Record<string, boolean>;
+  // Per-layer search text (ContextLayerManager.tsx), keyed by layer id —
+  // only meaningful for layers with a `filterProperty` set (see
+  // assets/contextLayers.ts); sent to GeoServer as a CQL_FILTER rather than
+  // filtered client-side (see contextLayerData.ts).
+  contextLayerFilters: Record<string, string>;
   ports: Record<string, PortFeature>;
   airfields: Record<string, AirfieldFeature>;
   flyToRequest: { lng: number; lat: number; zoom: number } | null;
@@ -313,6 +354,12 @@ interface UiState {
   // layer+object key (`${layerId}:${objectId}`) so a shape only needs
   // fetching once per object card visit — see loadDrawnShapes.
   drawnShapes: Record<string, FeatureCollection>;
+  // Set while an already-saved shape's geometry is being edited (see
+  // DrawingToolManager.tsx's Saved Shapes list / TacticalMap.tsx's Modify
+  // interaction). `ring` is the live-edited lng/lat ring, updated as the
+  // user drags vertices — null until the first modifyend, at which point
+  // SAVE CHANGES has something to PATCH.
+  shapeEditing: { shapeId: string; layerId: DrawLayerId; objectId: string; ring: [number, number][] | null } | null;
 }
 
 interface Actions {
@@ -361,6 +408,7 @@ interface Actions {
   selectOob: (id: string) => void;
   openOob: (id: string) => void;
   toggleContextLayer: (id: string) => void;
+  setContextLayerFilter: (id: string, text: string) => void;
   openPort: (feature: PortFeature) => void;
   openAirfield: (feature: AirfieldFeature) => void;
   flyTo: (lng: number, lat: number, zoom?: number) => void;
@@ -379,15 +427,21 @@ interface Actions {
   exitTutorial: () => void;
 
   openDrawingTool: () => void;
-  setDrawImage: (dataUrl: string, naturalWidth: number, naturalHeight: number) => void;
-  addImageControlPoint: (x: number, y: number) => void;
-  addMapControlPoint: (lng: number, lat: number) => void;
-  removeControlPoint: (index: number) => void;
-  confirmControlPoints: () => void;
+  setCaptureZoom: (zoom: number) => void;
+  setCaptureScale: (scale: number) => void;
+  setCapturePreview: (center: [number, number], extent: [number, number, number, number]) => void;
+  requestGoogleCapture: () => void;
+  setCapturedGoogleImage: (dataUrl: string, extent: [number, number, number, number]) => void;
+  setCaptureError: (message: string) => void;
   setDrawnPolygon: (coords: [number, number][]) => void;
   resetDrawTool: () => void;
-  saveDrawnShape: (args: { name: string; layerId: DrawLayerId; objectId: string; objectLabel: string }) => Promise<void>;
+  cancelDrawTool: () => void;
+  saveDrawnShape: (args: { name: string; layerId: DrawLayerId; objectId: string; objectLabel: string; kind: DrawnShapeKind }) => Promise<void>;
   loadDrawnShapes: (layerId: DrawLayerId, objectId: string) => Promise<void>;
+  deleteDrawnShape: (shapeId: string, layerId: DrawLayerId, objectId: string) => Promise<void>;
+  startEditingShape: (shapeId: string, layerId: DrawLayerId, objectId: string, initialRing: [number, number][]) => void;
+  setEditingShapeRing: (ring: [number, number][]) => void;
+  saveEditingShape: () => Promise<void>;
 }
 
 type Store = State & UiState & Actions;
@@ -430,6 +484,7 @@ export const useStore = create<Store>((set, get) => ({
   activeChatTargetId: null,
   oobSelectedId: null,
   contextLayerVisibility: Object.fromEntries(CONTEXT_LAYERS.map((l) => [l.id, l.defaultVisible])),
+  contextLayerFilters: {},
   ports: {},
   airfields: {},
   flyToRequest: null,
@@ -445,6 +500,7 @@ export const useStore = create<Store>((set, get) => ({
   tutorialScratch: {},
   drawTool: INITIAL_DRAW_TOOL,
   drawnShapes: {},
+  shapeEditing: null,
 
   setFromServer: (s) => {
     set((prev) => {
@@ -700,6 +756,7 @@ export const useStore = create<Store>((set, get) => ({
   },
   openOob: (id) => set({ oobSelectedId: id, activeManager: 'oob', cardKind: 'oobObject', cardId: id, cardTab: 0 }),
   toggleContextLayer: (id) => set((prev) => ({ contextLayerVisibility: { ...prev.contextLayerVisibility, [id]: !prev.contextLayerVisibility[id] } })),
+  setContextLayerFilter: (id, text) => set((prev) => ({ contextLayerFilters: { ...prev.contextLayerFilters, [id]: text } })),
   openPort: (feature) => set((prev) => ({ ports: { ...prev.ports, [feature.id]: feature }, cardKind: 'port', cardId: feature.id, cardTab: 0 })),
   openAirfield: (feature) => set((prev) => ({ airfields: { ...prev.airfields, [feature.id]: feature }, cardKind: 'airfield', cardId: feature.id, cardTab: 0 })),
   flyTo: (lng, lat, zoom = 13) => {
@@ -788,45 +845,72 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   openDrawingTool: () => set({ activeManager: 'draw' }),
-  setDrawImage: (dataUrl, naturalWidth, naturalHeight) =>
-    set({
-      drawTool: { ...INITIAL_DRAW_TOOL, phase: 'control-points', imageDataUrl: dataUrl, imageNaturalWidth: naturalWidth, imageNaturalHeight: naturalHeight },
-    }),
-  addImageControlPoint: (x, y) => set((prev) => ({ drawTool: { ...prev.drawTool, pendingImagePoint: { x, y } } })),
-  addMapControlPoint: (lng, lat) =>
-    set((prev) => {
-      const pending = prev.drawTool.pendingImagePoint;
-      if (!pending) return prev;
-      const point: DrawControlPoint = { imageX: pending.x, imageY: pending.y, lng, lat };
-      return { drawTool: { ...prev.drawTool, controlPoints: [...prev.drawTool.controlPoints, point], pendingImagePoint: null } };
-    }),
-  removeControlPoint: (index) => set((prev) => ({ drawTool: { ...prev.drawTool, controlPoints: prev.drawTool.controlPoints.filter((_, i) => i !== index) } })),
-  confirmControlPoints: () =>
-    set((prev) => (prev.drawTool.controlPoints.length >= 3 ? { drawTool: { ...prev.drawTool, phase: 'polygon' } } : prev)),
+  setCaptureZoom: (zoom) => set((prev) => ({ drawTool: { ...prev.drawTool, captureZoom: zoom } })),
+  setCaptureScale: (scale) => set((prev) => ({ drawTool: { ...prev.drawTool, captureScale: scale } })),
+  setCapturePreview: (center, extent) => set((prev) => ({ drawTool: { ...prev.drawTool, captureCenter: center, captureExtent: extent } })),
+  requestGoogleCapture: () =>
+    set((prev) => ({ drawTool: { ...prev.drawTool, capturing: true, captureError: null, captureRequestId: prev.drawTool.captureRequestId + 1 } })),
+  setCapturedGoogleImage: (dataUrl, extent) =>
+    set((prev) => ({ drawTool: { ...prev.drawTool, imageDataUrl: dataUrl, imageExtent: extent, capturing: false, captureError: null, phase: 'polygon' } })),
+  setCaptureError: (message) => set((prev) => ({ drawTool: { ...prev.drawTool, capturing: false, captureError: message } })),
   setDrawnPolygon: (coords) => set((prev) => ({ drawTool: { ...prev.drawTool, polygonLngLat: coords, phase: 'associate' } })),
   resetDrawTool: () => set({ drawTool: INITIAL_DRAW_TOOL }),
-  saveDrawnShape: async ({ name, layerId, objectId, objectLabel }) => {
-    const ring = get().drawTool.polygonLngLat;
+  cancelDrawTool: () => set({ drawTool: INITIAL_DRAW_TOOL, shapeEditing: null, activeManager: 'isr' }),
+  saveDrawnShape: async ({ name, layerId, objectId, objectLabel, kind }) => {
+    const { polygonLngLat: ring, imageDataUrl, imageExtent } = get().drawTool;
     if (!ring || ring.length < 3) return;
-    const closedRing = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring : [...ring, ring[0]];
-    const geometry: Polygon = { type: 'Polygon', coordinates: [closedRing] };
+    const geometry: Polygon = { type: 'Polygon', coordinates: [closeRing(ring)] };
     const res = await fetch('/api/drawn-shapes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, layerId, objectId, objectLabel, geometry }),
+      body: JSON.stringify({ name, layerId, objectId, objectLabel, kind, geometry, referenceImage: imageDataUrl, referenceImageExtent: imageExtent }),
     });
     if (!res.ok) throw new Error(`Failed to save drawn shape: ${res.status}`);
-    get().resetDrawTool();
+    set((prev) => ({ drawTool: { ...prev.drawTool, savedShapeName: name } }));
     await get().loadDrawnShapes(layerId, objectId);
   },
   loadDrawnShapes: async (layerId, objectId) => {
     const res = await fetch(`/api/drawn-shapes?layerId=${encodeURIComponent(layerId)}&objectId=${encodeURIComponent(objectId)}`);
     if (!res.ok) return;
-    const shapes: { id: string; name: string; objectLabel: string; geometry: Polygon }[] = await res.json();
+    const shapes: { id: string; name: string; objectLabel: string; kind: DrawnShapeKind; geometry: Polygon; referenceImageUrl: string | null; referenceImageExtent: [number, number, number, number] | null }[] =
+      await res.json();
     const fc: FeatureCollection = {
       type: 'FeatureCollection',
-      features: shapes.map((s) => ({ type: 'Feature', id: s.id, properties: { name: s.name, objectLabel: s.objectLabel }, geometry: s.geometry })),
+      features: shapes.map((s) => ({
+        type: 'Feature',
+        id: s.id,
+        properties: { name: s.name, objectLabel: s.objectLabel, kind: s.kind, referenceImageUrl: s.referenceImageUrl, referenceImageExtent: s.referenceImageExtent },
+        geometry: s.geometry,
+      })),
     };
     set((prev) => ({ drawnShapes: { ...prev.drawnShapes, [`${layerId}:${objectId}`]: fc } }));
+  },
+  // DELETE removes the whole row server-side (drawnShapes.ts's
+  // deleteDrawnShape), reference image included — it's stored inline on
+  // the same row (see 95-drawn-shapes.sql), not a separate record, so
+  // there's nothing extra to clean up client-side beyond refreshing the
+  // cache. If the deleted shape happened to be open in the Edit flow (see
+  // shapeEditing), drop that too rather than leaving it pointed at a shape
+  // that no longer exists.
+  deleteDrawnShape: async (shapeId, layerId, objectId) => {
+    const res = await fetch(`/api/drawn-shapes/${encodeURIComponent(shapeId)}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`Failed to delete shape: ${res.status}`);
+    await get().loadDrawnShapes(layerId, objectId);
+    if (get().shapeEditing?.shapeId === shapeId) set({ shapeEditing: null });
+  },
+  startEditingShape: (shapeId, layerId, objectId, initialRing) => set({ shapeEditing: { shapeId, layerId, objectId, ring: initialRing } }),
+  setEditingShapeRing: (ring) => set((prev) => (prev.shapeEditing ? { shapeEditing: { ...prev.shapeEditing, ring } } : prev)),
+  saveEditingShape: async () => {
+    const editing = get().shapeEditing;
+    if (!editing || !editing.ring || editing.ring.length < 3) return;
+    const geometry: Polygon = { type: 'Polygon', coordinates: [closeRing(editing.ring)] };
+    const res = await fetch(`/api/drawn-shapes/${encodeURIComponent(editing.shapeId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ geometry }),
+    });
+    if (!res.ok) throw new Error(`Failed to save shape edit: ${res.status}`);
+    await get().loadDrawnShapes(editing.layerId, editing.objectId);
+    set({ shapeEditing: null });
   },
 }));

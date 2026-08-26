@@ -19,10 +19,11 @@ import type Polygon from 'ol/geom/Polygon';
 import { defaults as defaultInteractions } from 'ol/interaction/defaults';
 import { defaults as defaultControls } from 'ol/control/defaults';
 import Draw from 'ol/interaction/Draw';
+import Modify from 'ol/interaction/Modify';
 import Attribution from 'ol/control/Attribution';
 import { useStore } from '../store';
 import type { DrawLayerId } from '../store';
-import { computeAffineTransform, renderWarpedCanvas } from '../imageWarp';
+import { computeStaticMapExtentWebMercator, fetchGoogleStaticMapDataUrl, GOOGLE_STATIC_MAP_SIZE } from '../googleStaticMap';
 import { affColor, altBand, geodesicCircleLngLat, geodesicSectorLngLat, geodesicEllipseLngLat } from '../selectors';
 import { statusMeta } from '../oobSelectors';
 import type { ObjectStatus } from '../assets/oob';
@@ -183,10 +184,23 @@ function lineStyleFor(layer: ContextLayer) {
   };
 }
 
-function syncContextLayers(map: OlMap, visibility: Record<string, boolean>, layerRefs: Map<string, BaseLayer>, radarUrlRef: { current: string | null }) {
+function syncContextLayers(
+  map: OlMap,
+  visibility: Record<string, boolean>,
+  filters: Record<string, string>,
+  layerRefs: Map<string, BaseLayer>,
+  appliedFilters: Map<string, string>,
+  radarUrlRef: { current: string | null },
+) {
   for (const layer of CONTEXT_LAYERS) {
     const shouldShow = !!visibility[layer.id];
     const hasLayer = layerRefs.has(layer.id);
+    // Only layers with a filterProperty (assets/contextLayers.ts) have a
+    // meaningful filter at all — everything else always resolves to '',
+    // which never diverges from its own applied value, so this is a no-op
+    // for every other layer.
+    const desiredFilter = layer.filterProperty ? (filters[layer.id] ?? '') : '';
+    const filterChanged = hasLayer && desiredFilter !== (appliedFilters.get(layer.id) ?? '');
 
     if (layer.geometryType === 'raster') {
       if (shouldShow && !hasLayer) {
@@ -214,8 +228,16 @@ function syncContextLayers(map: OlMap, visibility: Record<string, boolean>, laye
       continue;
     }
 
-    if (shouldShow && !hasLayer) {
-      loadContextLayerData(layer)
+    if (shouldShow && (!hasLayer || filterChanged)) {
+      if (filterChanged) {
+        // The layer's already showing, but under a different filter (or no
+        // filter) than what's now wanted — drop it and rebuild from a fresh
+        // fetch rather than trying to patch the existing VectorSource, same
+        // as any other "layer's on but its data changed" case in this app.
+        map.removeLayer(layerRefs.get(layer.id)!);
+        layerRefs.delete(layer.id);
+      }
+      loadContextLayerData(layer, desiredFilter)
         .then((geojson) => {
           if (!useStore.getState().contextLayerVisibility[layer.id] || layerRefs.has(layer.id)) return;
 
@@ -231,6 +253,7 @@ function syncContextLayers(map: OlMap, visibility: Record<string, boolean>, laye
               opacity: 0.7,
             });
             layerRefs.set(layer.id, olLayer);
+            appliedFilters.set(layer.id, desiredFilter);
             map.addLayer(olLayer);
             return;
           }
@@ -246,12 +269,14 @@ function syncContextLayers(map: OlMap, visibility: Record<string, boolean>, laye
             olLayer = new VectorLayer({ source, style: markerStyle });
           }
           layerRefs.set(layer.id, olLayer);
+          appliedFilters.set(layer.id, desiredFilter);
           map.addLayer(olLayer);
         })
         .catch((err) => console.error(`Failed to load context layer "${layer.id}"`, err));
     } else if (!shouldShow && hasLayer) {
       map.removeLayer(layerRefs.get(layer.id)!);
       layerRefs.delete(layer.id);
+      appliedFilters.delete(layer.id);
     }
   }
 }
@@ -645,6 +670,11 @@ export default function TacticalMap() {
   const mapRef = useRef<OlMap | null>(null);
   const baseLayerRef = useRef<TileLayer<XYZ> | null>(null);
   const layerRefs = useRef(new Map<string, BaseLayer>());
+  // The filter text each currently-rendered context layer was actually
+  // fetched with — compared against the store's live contextLayerFilters in
+  // syncContextLayers to detect "still visible, but the search box changed"
+  // and trigger a refetch, which plain visibility-toggle tracking wouldn't.
+  const appliedContextLayerFiltersRef = useRef(new Map<string, string>());
   const radarUrlRef = useRef<string | null>(null);
   // ol-cesium 3D/2.5D mode (Plan C / Phase 3) — populated by the mapMode
   // effect below, on first activation only (dynamic import, see cesium3d.ts).
@@ -660,14 +690,18 @@ export default function TacticalMap() {
   const is25D = mapMode === '2.5D';
   const targets = useStore((s) => s.targets);
   const sensors = useStore((s) => s.sensors);
-  const activeManager = useStore((s) => s.activeManager);
   const drawTool = useStore((s) => s.drawTool);
   const cardKind = useStore((s) => s.cardKind);
   const cardId = useStore((s) => s.cardId);
   const drawnShapes = useStore((s) => s.drawnShapes);
+  const shapeEditing = useStore((s) => s.shapeEditing);
   const drawImageLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
+  const capturePreviewLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawPolygonPreviewLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawnShapesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const persistedShapeImageLayersRef = useRef<ImageLayer<ImageStatic>[]>([]);
+  const shapeEditLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const shapeEditInteractionRef = useRef<Modify | null>(null);
   const [, bumpRender] = useState(0);
   const [size, setSize] = useState({ w: 0, h: 0 });
 
@@ -730,18 +764,6 @@ export default function TacticalMap() {
       if (hit.layer.id === 'airfields') useStore.getState().openAirfield(airfieldFeatureFromGeoJSON(hit.feature, FEATURE_STORAGE_PROJECTION));
       else if (hit.layer.id === 'tenth-fleet') useStore.getState().openOob(hit.feature.get('oobId') as string);
       else useStore.getState().openPort(portFeatureFromGeoJSON(hit.feature, FEATURE_STORAGE_PROJECTION));
-    });
-    // Drawing tool: while waiting for the map-side half of a control-point
-    // pair (see DrawingToolManager.tsx's image click handler), a plain
-    // singleclick anywhere on the map registers that real-world position —
-    // a second, independent listener rather than folding into the identify
-    // handler above, since it applies regardless of what (if anything) was
-    // hit.
-    map.on('singleclick', (evt) => {
-      const { drawTool: dt } = useStore.getState();
-      if (dt.phase !== 'control-points' || !dt.pendingImagePoint) return;
-      const [lng, lat] = toLonLat(evt.coordinate, map.getView().getProjection());
-      useStore.getState().addMapControlPoint(lng, lat);
     });
     map.on('pointermove', (evt) => {
       if (evt.dragging) return;
@@ -998,20 +1020,108 @@ export default function TacticalMap() {
   }, [mapMode, is25D, targets, sensors]);
 
   const contextLayerVisibility = useStore((s) => s.contextLayerVisibility);
+  const contextLayerFilters = useStore((s) => s.contextLayerFilters);
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    syncContextLayers(map, contextLayerVisibility, layerRefs.current, radarUrlRef);
-  }, [contextLayerVisibility]);
+    syncContextLayers(map, contextLayerVisibility, contextLayerFilters, layerRefs.current, appliedContextLayerFiltersRef.current, radarUrlRef);
+  }, [contextLayerVisibility, contextLayerFilters]);
 
-  // Drawing tool, step 2: once >=3 control-point pairs exist, warp the
-  // uploaded reference image (imageWarp.ts) onto the map so it lines up
-  // with real geography, using an axis-aligned canvas pre-rendered with the
-  // fitted affine transform as a plain ol/source/ImageStatic — see
-  // imageWarp.ts's header comment for why that avoids needing a custom OL
-  // source class. Recomputed whenever the point set or the view's
-  // projection changes; removed once there are too few points to fit a
-  // transform, or the tool is left/reset.
+  // Drawing tool, step 1a: while choosing where to capture, keep the
+  // preview rectangle continuously locked to the map's live view — recomputed
+  // (same math, computeStaticMapExtentWebMercator, the actual capture uses)
+  // on every 'moveend', i.e. whenever the user pans OR zooms, with no
+  // separate "confirm the area" click. The map's own zoom (rounded — Google
+  // Static Maps' zoom parameter is integer-only) becomes drawTool.captureZoom
+  // directly; there's no independent zoom control to keep in sync with it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || drawTool.phase !== 'capture') return;
+    const view = map.getView();
+    const updatePreview = () => {
+      const center = view.getCenter();
+      if (!center) return;
+      const [lng, lat] = toLonLat(center, view.getProjection());
+      const zoom = Math.round(view.getZoom() ?? useStore.getState().drawTool.captureZoom);
+      const extent = computeStaticMapExtentWebMercator(lng, lat, zoom, GOOGLE_STATIC_MAP_SIZE);
+      useStore.getState().setCaptureZoom(zoom);
+      useStore.getState().setCapturePreview([lng, lat], extent);
+    };
+    updatePreview();
+    map.on('moveend', updatePreview);
+    return () => {
+      map.un('moveend', updatePreview);
+    };
+  }, [drawTool.phase]);
+
+  // Drawing tool, step 1b: draws the dashed preview rectangle itself —
+  // "the outline of the area on the map where a Google image will be
+  // added." Only shown while still choosing where to capture; cleared once
+  // the phase moves on or the preview is stale (extent cleared by a reset).
+  const captureExtent = drawTool.captureExtent;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (capturePreviewLayerRef.current) {
+      map.removeLayer(capturePreviewLayerRef.current);
+      capturePreviewLayerRef.current = null;
+    }
+    if (drawTool.phase !== 'capture' || !captureExtent) return;
+    const [minX, minY, maxX, maxY] = captureExtent;
+    // captureExtent is EPSG:3857 meters (same as the actual capture's
+    // image extent) — converted to lng/lat corners here so it can go
+    // through geoJSONFormat like every other feature in this file, rather
+    // than importing raw ol Feature/Polygon constructors just for this.
+    const corners: [number, number][] = [
+      [minX, minY],
+      [maxX, minY],
+      [maxX, maxY],
+      [minX, maxY],
+    ];
+    const ring = [...corners.map((c) => toLonLat(c)), toLonLat(corners[0])];
+    const fc: FeatureCollection = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [ring] } }] };
+    const source = new VectorSource({ features: geoJSONFormat.readFeatures(fc) });
+    const layer = new VectorLayer({
+      source,
+      style: new Style({ stroke: new Stroke({ color: '#3fd2e6', width: 2, lineDash: [6, 6] }) }),
+    });
+    capturePreviewLayerRef.current = layer;
+    map.addLayer(layer);
+  }, [captureExtent, drawTool.phase]);
+
+  // Drawing tool, step 2: fetch a Google Static Maps image for the last-
+  // previewed center (see googleStaticMap.ts) whenever DrawingToolManager
+  // bumps captureRequestId. Deliberately uses drawTool.captureCenter (set
+  // by the preview step above), not the map's live view center, so what's
+  // actually captured always matches the rectangle the user just confirmed
+  // — even if they've since nudged the map without re-previewing.
+  const captureRequestId = drawTool.captureRequestId;
+  useEffect(() => {
+    const { captureCenter, captureZoom, captureScale } = useStore.getState().drawTool;
+    if (captureRequestId === 0 || !captureCenter) return;
+    const [lng, lat] = captureCenter;
+    let cancelled = false;
+    fetchGoogleStaticMapDataUrl(lng, lat, captureZoom, captureScale)
+      .then((dataUrl) => {
+        if (cancelled) return;
+        const extent = computeStaticMapExtentWebMercator(lng, lat, captureZoom, GOOGLE_STATIC_MAP_SIZE);
+        useStore.getState().setCapturedGoogleImage(dataUrl, extent);
+      })
+      .catch((err) => {
+        if (!cancelled) useStore.getState().setCaptureError(err instanceof Error ? err.message : 'Failed to capture Google imagery.');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [captureRequestId]);
+
+  // Places the captured Google image on the map at its exact, already-
+  // computed EPSG:3857 extent — no warping step (unlike the earlier
+  // uploaded-screenshot version, removed): a Static Maps image's bounds are
+  // fully determined by the parameters it was requested with, so this is
+  // just a plain axis-aligned ol/source/ImageStatic. OL reprojects it on
+  // the fly if the view's current projection isn't EPSG:3857 (see
+  // FEATURE_STORAGE_PROJECTION's header comment — same mechanism).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -1019,27 +1129,19 @@ export default function TacticalMap() {
       map.removeLayer(drawImageLayerRef.current);
       drawImageLayerRef.current = null;
     }
-    if (activeManager !== 'draw' || !drawTool.imageDataUrl || drawTool.controlPoints.length < 3) return;
-    const projection = map.getView().getProjection();
-    const image = new Image();
-    image.onload = () => {
-      if (mapRef.current !== map) return;
-      const pairs = drawTool.controlPoints.map((cp) => {
-        const [x, y] = fromLonLat([cp.lng, cp.lat], projection);
-        return { image: { x: cp.imageX, y: cp.imageY }, target: { x, y } };
-      });
-      try {
-        const matrix = computeAffineTransform(pairs);
-        const { canvas, extent } = renderWarpedCanvas(image, matrix);
-        const layer = new ImageLayer({ source: new ImageStatic({ url: canvas.toDataURL(), imageExtent: extent, projection }), opacity: 0.85 });
-        drawImageLayerRef.current = layer;
-        map.addLayer(layer);
-      } catch (err) {
-        console.error('Failed to register reference image onto the map', err);
-      }
-    };
-    image.src = drawTool.imageDataUrl;
-  }, [activeManager, drawTool.imageDataUrl, drawTool.controlPoints, mapProjectionCode]);
+    if (!drawTool.imageDataUrl || !drawTool.imageExtent) return;
+    const imageSource = new ImageStatic({ url: drawTool.imageDataUrl, imageExtent: drawTool.imageExtent, projection: 'EPSG:3857' });
+    // olcs's ImageStatic -> Cesium.SingleTileImageryProvider conversion
+    // (core.js's sourceToImageryProvider) doesn't pass tileWidth/tileHeight,
+    // which current Cesium's synchronous SingleTileImageryProvider
+    // constructor requires — throws a DeveloperError the moment this layer
+    // is added while in 2.5D/3D mode. olcs_skip opts the source out of that
+    // conversion; the image still renders fine in plain 2D.
+    imageSource.set('olcs_skip', true);
+    const layer = new ImageLayer({ source: imageSource, opacity: 0.9 });
+    drawImageLayerRef.current = layer;
+    map.addLayer(layer);
+  }, [drawTool.imageDataUrl, drawTool.imageExtent]);
 
   // Drawing tool, step 3: while tracing, attach a plain OL polygon-draw
   // interaction over a scratch source (live in-progress feedback only) —
@@ -1117,20 +1219,93 @@ export default function TacticalMap() {
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    for (const layer of persistedShapeImageLayersRef.current) map.removeLayer(layer);
+    persistedShapeImageLayersRef.current = [];
     if (drawnShapesLayerRef.current) {
       map.removeLayer(drawnShapesLayerRef.current);
       drawnShapesLayerRef.current = null;
     }
     const fc = drawnShapesKey ? drawnShapes[drawnShapesKey] : undefined;
     if (!fc || fc.features.length === 0) return;
-    const source = new VectorSource({ features: geoJSONFormat.readFeatures(fc) });
+
+    // Each shape's own captured reference image (if it has one — older
+    // shapes predate this and won't), added first so the polygon outline
+    // below draws on top of it rather than under it.
+    for (const f of fc.features) {
+      const props = f.properties as { referenceImageUrl?: string | null; referenceImageExtent?: [number, number, number, number] | null } | null;
+      if (!props?.referenceImageUrl || !props.referenceImageExtent) continue;
+      const imageSource = new ImageStatic({ url: props.referenceImageUrl, imageExtent: props.referenceImageExtent, projection: 'EPSG:3857' });
+      // See the drawing-tool capture effect above for why olcs_skip is set here.
+      imageSource.set('olcs_skip', true);
+      const imageLayer = new ImageLayer({ source: imageSource, opacity: 0.9 });
+      persistedShapeImageLayersRef.current.push(imageLayer);
+      map.addLayer(imageLayer);
+    }
+
+    // The shape currently open in the Edit flow (if any) gets its own
+    // editable layer + Modify interaction below — omitted here so it isn't
+    // rendered twice.
+    const editableFc: FeatureCollection = { ...fc, features: fc.features.filter((f) => f.id !== shapeEditing?.shapeId) };
+    const source = new VectorSource({ features: geoJSONFormat.readFeatures(editableFc) });
     const layer = new VectorLayer({
       source,
-      style: new Style({ fill: new Fill({ color: hexToRgba('#3fd2e6', 0.08) }), stroke: new Stroke({ color: '#3fd2e6', width: 1.2 }) }),
+      style: (feature) => {
+        const kind = (feature.get('kind') as string | undefined) ?? 'outline';
+        const color = kind === 'reporting-point' ? '#ffab38' : '#3fd2e6';
+        return new Style({ fill: new Fill({ color: hexToRgba(color, 0.08) }), stroke: new Stroke({ color, width: 1.2 }) });
+      },
     });
     drawnShapesLayerRef.current = layer;
     map.addLayer(layer);
-  }, [drawnShapesKey, drawnShapes]);
+  }, [drawnShapesKey, drawnShapes, shapeEditing?.shapeId]);
+
+  // Drawing tool, Edit flow: while a saved shape is being edited (see
+  // DrawingToolManager.tsx's Saved Shapes list / store.ts's shapeEditing),
+  // render it as a single editable feature with an OL Modify interaction
+  // attached — dragging an existing vertex moves it, dragging the ghost
+  // vertex at an edge's midpoint inserts a new one, both built into Modify
+  // with no custom hit-testing needed.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !shapeEditing) return;
+    const ring = shapeEditing.ring;
+    if (!ring) return;
+    const closedRing = [...ring, ring[0]];
+    const fc: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', id: shapeEditing.shapeId, properties: {}, geometry: { type: 'Polygon', coordinates: [closedRing] } }],
+    };
+    const source = new VectorSource({ features: geoJSONFormat.readFeatures(fc) });
+    const layer = new VectorLayer({
+      source,
+      style: new Style({ fill: new Fill({ color: hexToRgba('#5fe39a', 0.1) }), stroke: new Stroke({ color: '#5fe39a', width: 2 }) }),
+    });
+    map.addLayer(layer);
+    shapeEditLayerRef.current = layer;
+    const modify = new Modify({ source });
+    modify.on('modifyend', (evt) => {
+      const feature = evt.features.getArray()[0];
+      const geom = feature.getGeometry() as Polygon;
+      const projection = map.getView().getProjection();
+      const editedRing = geom
+        .getCoordinates()[0]
+        .slice(0, -1)
+        .map((c) => toLonLat(c, projection) as [number, number]);
+      useStore.getState().setEditingShapeRing(editedRing);
+    });
+    map.addInteraction(modify);
+    shapeEditInteractionRef.current = modify;
+    return () => {
+      map.removeInteraction(modify);
+      map.removeLayer(layer);
+      shapeEditLayerRef.current = null;
+      shapeEditInteractionRef.current = null;
+    };
+    // Only re-run when switching which shape is being edited, not on every
+    // in-flight ring update — this effect owns the interaction's lifecycle,
+    // modifyend already keeps the store in sync without a rebuild each drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shapeEditing?.shapeId]);
 
   // RainViewer's mosaic advances roughly every 10 minutes — re-poll on that
   // cadence and swap the live tile URL in place (no source/layer teardown)

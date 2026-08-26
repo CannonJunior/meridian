@@ -1,5 +1,8 @@
+import { useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { Approvals } from '../../types';
+import { useStore } from '../../store';
+import type { DrawLayerId } from '../../store';
 
 export const APPR_DEFS: { k: keyof Approvals; l: string }[] = [
   { k: 'pid', l: 'POSITIVE ID (PID)' },
@@ -93,6 +96,88 @@ export function LinkRow({
           {dist}
         </span>
       )}
+    </div>
+  );
+}
+
+// Surfaces any shapes traced with the drawing tool (DrawingToolManager.tsx)
+// and associated with this exact object — otherwise the only place they're
+// visible is the map itself (see TacticalMap.tsx's drawnShapesLayerRef
+// effect, which populates this same store.drawnShapes cache), which is
+// easy to miss entirely if the map isn't already centered there. Renders
+// nothing for the (overwhelming majority of) objects with no shapes.
+export function DrawnShapesNote({ layerId, objectId }: { layerId: DrawLayerId; objectId: string }) {
+  const shapes = useStore((s) => s.drawnShapes[`${layerId}:${objectId}`]);
+  const deleteDrawnShape = useStore((s) => s.deleteDrawnShape);
+  // Two-click confirm (click DELETE once to arm it, again to actually
+  // delete) rather than a browser confirm() dialog, which would clash with
+  // this app's own dark tactical chrome. deletingId tracks the in-flight
+  // request so the row can't be double-submitted; error is per-row since
+  // more than one row could plausibly fail independently.
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState<{ id: string; message: string } | null>(null);
+
+  if (!shapes || shapes.features.length === 0) return null;
+
+  async function handleDelete(shapeId: string) {
+    setDeletingId(shapeId);
+    setError(null);
+    try {
+      await deleteDrawnShape(shapeId, layerId, objectId);
+    } catch (err) {
+      setError({ id: shapeId, message: err instanceof Error ? err.message : 'Failed to delete shape.' });
+    } finally {
+      setDeletingId(null);
+      setPendingDeleteId(null);
+    }
+  }
+
+  return (
+    <div className="card-drawn-shapes-note" style={{ marginTop: 14, padding: '9px 10px', border: '1px solid var(--hairline-mid)', background: 'var(--panel-3)' }}>
+      <div className="card-drawn-shapes-note-label" style={{ fontSize: 9, letterSpacing: '.12em', color: 'var(--ink-faint)' }}>
+        DRAWN SHAPES · {shapes.features.length}
+      </div>
+      {shapes.features.map((f) => {
+        const shapeId = String(f.id);
+        const armed = pendingDeleteId === shapeId;
+        const deleting = deletingId === shapeId;
+        return (
+          <div key={shapeId} className="card-drawn-shapes-note-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
+            <span className="card-drawn-shapes-note-row-text" style={{ flex: 1, fontSize: 9.5, color: 'var(--ink-mute2)' }}>
+              {(f.properties as { name?: string } | null)?.name ?? 'Untitled shape'} — shown on the map, traced with the drawing tool
+            </span>
+            {error?.id === shapeId && (
+              <span className="card-drawn-shapes-note-row-error" style={{ fontSize: 8.5, color: 'var(--red)' }}>
+                {error.message}
+              </span>
+            )}
+            {armed && (
+              <span
+                className="card-drawn-shapes-note-row-cancel"
+                onClick={() => setPendingDeleteId(null)}
+                style={{ fontSize: 8.5, letterSpacing: '.06em', color: 'var(--ink-faint)', cursor: 'pointer' }}
+              >
+                CANCEL
+              </span>
+            )}
+            <span
+              className="card-drawn-shapes-note-row-delete"
+              onClick={() => (deleting ? undefined : armed ? handleDelete(shapeId) : setPendingDeleteId(shapeId))}
+              style={{
+                fontSize: 8.5,
+                letterSpacing: '.06em',
+                fontWeight: armed ? 700 : 400,
+                color: deleting ? 'var(--ink-faint)' : 'var(--red)',
+                cursor: deleting ? 'not-allowed' : 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {deleting ? 'DELETING…' : armed ? 'CONFIRM DELETE' : 'DELETE'}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

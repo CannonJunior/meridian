@@ -13,7 +13,10 @@
     "typecheck": "npm run typecheck -w server && npm run typecheck -w web",
     "geo:up": "docker compose -f geoserver/docker-compose.yml up -d",
     "geo:down": "docker compose -f geoserver/docker-compose.yml down",
-    "geo:logs": "docker compose -f geoserver/docker-compose.yml logs -f"
+    "geo:logs": "docker compose -f geoserver/docker-compose.yml logs -f",
+    "kafka:up": "docker compose -f kafka/docker-compose.yml up -d",
+    "kafka:down": "docker compose -f kafka/docker-compose.yml down",
+    "kafka:logs": "docker compose -f kafka/docker-compose.yml logs -f"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

@@ -1,5 +1,5 @@
 import { useStore } from '../../store';
-import { KV, KVGrid } from './shared';
+import { DrawnShapesNote, KV, KVGrid } from './shared';
 
 export default function PortCardBody({ id }: { id: string }) {
   const port = useStore((s) => s.ports[id]);
@@ -15,6 +15,7 @@ export default function PortCardBody({ id }: { id: string }) {
         <KV label="CARGO PIER DEPTH" value={port.cargoPierDepthMaxM != null ? `${port.cargoPierDepthMaxM} m` : '—'} color="var(--ink-mute)" />
         <KV label="POSITION" value={`${port.lat.toFixed(2)}°${port.lat >= 0 ? 'N' : 'S'} ${Math.abs(port.lng).toFixed(2)}°${port.lng >= 0 ? 'E' : 'W'}`} color="var(--ink-mute)" />
       </KVGrid>
+      <DrawnShapesNote layerId="maritime-ports" objectId={id} />
       <div className="port-card-source" style={{ marginTop: 14, padding: '9px 10px', border: '1px solid var(--hairline-mid)', background: 'var(--panel-3)' }}>
         <div className="port-card-source-label" style={{ fontSize: 9, letterSpacing: '.12em', color: 'var(--ink-faint)' }}>SOURCE</div>
         <div className="port-card-source-text" style={{ fontSize: 9.5, color: 'var(--ink-mute2)', marginTop: 4, lineHeight: 1.5 }}>

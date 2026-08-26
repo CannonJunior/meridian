@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../../store';
 import { effectiveStatus, formatLatLng, kindLabel, oobTabKeys, parentOf, pathNodes, siblingObjectsOf, statusMeta } from '../../oobSelectors';
 import { VESSEL_PROFILES } from '../../assets/vesselProfiles';
-import { EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
+import { DrawnShapesNote, EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
 
 const STATUS_NOTE: Record<string, string> = {
   VISIBLE: 'Positive custody held — track corroborated by current collection.',
@@ -180,6 +180,7 @@ export default function OobObjectCardBody({ id, tab }: { id: string; tab: number
             </div>
           </div>
         )}
+        <DrawnShapesNote layerId="oob" objectId={id} />
       </>
     );
   }

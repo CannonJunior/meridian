@@ -98,6 +98,15 @@ export interface ContextLayer {
   // heatmapWeightMap; features/vertices with no match get weight 1.
   heatmapWeightProperty?: string;
   heatmapWeightMap?: Record<string, number>;
+  // 'wfs' sourceType only — the feature property a user-typed search string
+  // (ContextLayerManager.tsx) is matched against, sent to GeoServer as a
+  // CQL_FILTER (`<filterProperty> ILIKE '%text%'`, see contextLayerData.ts)
+  // rather than filtered client-side after a full fetch. Undefined means no
+  // filter box for that layer — only set on layers with one obvious,
+  // meaningful free-text field (a name); layers keyed by an enumerated
+  // category (lane_type, depth_band, status) don't get one, a free-text
+  // search over those isn't a real feature.
+  filterProperty?: string;
 }
 
 export const GEOSERVER_URL = 'http://localhost:8600/geoserver';
@@ -114,6 +123,7 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
     attribution: 'NGA World Port Index',
     defaultVisible: false,
     identifiable: true,
+    filterProperty: 'name',
   },
   {
     id: 'airfields',
@@ -126,6 +136,7 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
     attribution: 'OpenStreetMap contributors',
     defaultVisible: false,
     identifiable: true,
+    filterProperty: 'name',
   },
   {
     id: 'eez',
@@ -143,6 +154,7 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
     polygonLineColor: '#5fc9ff',
     polygonLineWidth: 1.1,
     polygonLineDasharray: [6, 4],
+    filterProperty: 'geoname',
   },
   {
     id: 'shipping-lanes',
@@ -220,6 +232,24 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
     defaultVisible: false,
     identifiable: true,
     pointColor: '#5b9dff',
+  },
+  {
+    id: 'drawn-shapes',
+    name: 'Drawn Shapes',
+    description:
+      "User-traced polygons from the drawing tool, worldwide — each associated with a specific Maritime Ports/Airfields/Order-of-Battle object. A given object's shapes also render automatically on its own object card without needing this layer on; toggle it on to browse/search all of them at once, e.g. by port name.",
+    sourceType: 'wfs',
+    geometryType: 'polygon',
+    wfsBaseUrl: `${GEOSERVER_URL}/meridian/wfs`,
+    layerName: 'meridian:drawn_shapes',
+    attribution: 'Traced in-app via the drawing tool, against captured Google satellite imagery',
+    defaultVisible: false,
+    identifiable: false,
+    polygonFillColor: '#3fd2e6',
+    polygonFillOpacity: 0.08,
+    polygonLineColor: '#3fd2e6',
+    polygonLineWidth: 1.2,
+    filterProperty: 'object_label',
   },
   {
     id: 'weather-radar',

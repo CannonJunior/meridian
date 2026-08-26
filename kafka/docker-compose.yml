@@ -1,0 +1,98 @@
+name: meridian-kafka
+
+# Standalone from geoserver/docker-compose.yml on purpose (see kafka/README.md):
+# neither the producer nor server/src/kafkaHistoryConsumer.ts (Phase 1, host
+# process) need docker-network access to postgis — the consumer reaches it the
+# same way liveSync.ts already does, via the published host port. So unlike an
+# earlier draft of this plan, this compose project does NOT attach to
+# geoserver's network; the two stacks are independently up/down-able.
+services:
+  kafka:
+    image: apache/kafka:3.8.0
+    container_name: meridian-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      # Fixed dev-only cluster ID (generated once via `kafka-storage.sh
+      # random-uuid`, see kafka/README.md) so a restart against the same
+      # volume doesn't re-format storage. Not meant to survive contact with
+      # a real deployment any more than this stack's other dev defaults do.
+      CLUSTER_ID: "pDxs89whQuGpCnslR-atWw"
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      # Three listeners, not two — this is the piece the plan's review
+      # flagged as a well-known, easy-to-get-subtly-wrong dual-listener
+      # trap (works on first connect, hangs on the next reconnect if
+      # wrong). PLAINTEXT is for containers on this compose network
+      # (kafka-init below, and Phase 1's history-sim producer) resolving
+      # `kafka` by service name. EXTERNAL is for the consumer, which runs
+      # as a host process (server/src/kafkaHistoryConsumer.ts, mirroring
+      # how liveSync.ts already reaches postgis) and needs a listener
+      # advertised as something the host can actually resolve and connect
+      # to on its *second* connection too, not just the initial bootstrap.
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:${KAFKA_EXTERNAL_PORT:-9094}
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Single-node dev cluster — no replication to have factor > 1 for.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    ports:
+      - "${KAFKA_EXTERNAL_PORT:-9094}:9094"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    # Matches history-sim's restart policy below. Without this, a broker
+    # crash (e.g. the dockerd-restart-induced DNS hiccup this stack has hit
+    # in practice) leaves kafka dead permanently (Docker's implicit default
+    # is "no") while history-sim keeps retrying against it forever — an
+    # unbounded crash-loop that quietly burns CPU until someone notices and
+    # manually cycles the stack.
+    restart: unless-stopped
+
+  kafka-init:
+    image: apache/kafka:3.8.0
+    container_name: meridian-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092
+        --create --if-not-exists
+        --topic meridian.telemetry.history.v1
+        --partitions 6 --replication-factor 1 &&
+        echo "Topic meridian.telemetry.history.v1 ready."
+    restart: "no"
+
+  # Phase 1's simulated data store (R1: "an external dockerized service").
+  # Runs on this compose network, publishing via the PLAINTEXT (kafka:9092)
+  # listener — not the EXTERNAL one, which is for the host-run consumer.
+  # See kafka/producer/src/produce.ts's header comment for the SEED/
+  # event_id design (fresh UUID per publish, never derived from SEED —
+  # fixes a collision bug caught during planning review).
+  history-sim:
+    build: ./producer
+    container_name: meridian-history-sim
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER: kafka:9092
+      KAFKA_HISTORY_TOPIC: meridian.telemetry.history.v1
+      SEED: ${HISTORY_SIM_SEED:-42}
+      ENTITY_COUNT: ${HISTORY_SIM_ENTITY_COUNT:-6}
+      BACKFILL_HOURS: ${HISTORY_SIM_BACKFILL_HOURS:-6}
+      TICK_SECONDS: ${HISTORY_SIM_TICK_SECONDS:-300}
+      BACKFILL_COMPRESSION: ${HISTORY_SIM_BACKFILL_COMPRESSION:-300}
+    restart: unless-stopped
+
+volumes:
+  kafka-data:

@@ -70,6 +70,63 @@ GeoServer-hosted WFS — no PostGIS table, nothing in this directory:
 layer) alongside the pre-existing **Weather Radar** (RainViewer). See
 `ContextLayer.rasterTileUrl` in `contextLayers.ts`.
 
+## Entity Track History (timelapse capability)
+
+`meridian:entity_track_history` — historical entity-position events fed by
+the `kafka/` stack (see `kafka/README.md`) and ingested by
+`server/src/kafkaHistoryConsumer.ts` (Phase 1; not built yet — this layer
+exists and is queryable, but nothing is populating it beyond Phase 0's
+fixtures until then). Different from every layer above in two ways:
+
+- **Published through its own datastore, `history_ro_pg`**, not `ports_pg`.
+  `history_ro_pg` connects as `meridian_history_ro`, a Postgres role
+  GRANTed `SELECT` only (`postgis-init/100-history.sql`) — confirmed by
+  attempting `INSERT`/`UPDATE`/`DELETE` directly against it (all rejected
+  with `permission denied`) and by attempting a WFS-T `Insert` against the
+  layer itself, which GeoServer rejects with `{...}entity_track_history is
+  read-only` rather than a raw database error. This is the chosen fix for
+  this workspace's WFS-T service level being "Complete" (see
+  `90-live-entities-triggers.sql`): that setting is workspace-wide, so a
+  per-layer toggle isn't available, and a second datastore backed by a
+  read-only role was chosen over GeoServer's Security ACL subsystem.
+- **`affiliation` and `speed_kn` are real columns**, not buried in the
+  `attrs` JSONB catch-all — specifically so plain `CQL_FILTER` can reach
+  them. If you add a new promoted column here, it must also be added to
+  the query API's field whitelist (Phase 2) and the Kafka message schema
+  (`kafka/README.md`) — nothing enforces these three staying in sync.
+
+**Axis order — read before writing any BBOX query against this layer.**
+Verified live during Phase 0: this GeoServer instance requires **lat,lon
+(northing, easting) order** for EPSG:4326 BBOX filtering — both the raw
+WFS `BBOX` KVP parameter and CQL's `BBOX()` function — regardless of WFS
+version (1.1.0 and 2.0.0 both behave this way here). The intuitive
+`west,south,east,north` (lon,lat) order silently returns **zero results**,
+not an error:
+
+```
+# Wrong — lon,lat order, returns nothing, no error:
+BBOX=-6.05,35.75,-5.6,36.25
+
+# Right — lat,lon order:
+BBOX=35.75,-6.05,36.25,-5.6
+
+# Also right — CQL, same lat,lon order:
+CQL_FILTER=BBOX(geom,35.75,-6.05,36.25,-5.6)
+```
+
+No layer in this workspace issued a BBOX-filtered WFS query before Phase
+0 (the app fetches whole layers and filters client-side), so this hadn't
+surfaced until now. Phase 2's `/api/history/query` must build its
+CQL_FILTER in this order, and its test suite must include a query
+narrow enough that getting the order wrong produces a visibly wrong
+(non-empty-but-incomplete, or empty) result rather than passing by
+accident on a query broad enough to match everything either way.
+
+Time-dimension metadata (`event_time`, `presentation=LIST`) is also
+enabled on this layer as a standards-based `TIME=` alternative to
+CQL_FILTER — offered in addition to it, not instead; CQL_FILTER remains
+the primary, tested query path.
+
 ## Run
 
 ```
@@ -77,13 +134,17 @@ docker compose -f geoserver/docker-compose.yml up -d
 ```
 
 Brings up, in order: PostGIS (auto-seeded from `postgis-init/*.sql` on first
-start), GeoServer, then a one-shot `geoserver-init` container that
-provisions the `meridian` workspace, the PostGIS datastore, the
+start — this now includes `entity_track_history`'s schema, read-only role,
+and Phase 0 fixtures), GeoServer, then a one-shot `geoserver-init`
+container that provisions the `meridian` workspace, the PostGIS
+datastores (`ports_pg` for every reference/live layer, `history_ro_pg` for
+`entity_track_history` — see "Entity Track History" above), the
 `meridian:ports`, `meridian:airfields`, `meridian:eez`,
-`meridian:shipping_lanes`, `meridian:submarine_cables` and
-`meridian:bathymetry_contours` layers, and their styles via the GeoServer
-REST API. Re-running `up` is safe — provisioning is idempotent and the
-seed scripts only run once per fresh volume.
+`meridian:shipping_lanes`, `meridian:submarine_cables`,
+`meridian:bathymetry_contours` and `meridian:entity_track_history` layers,
+and their styles via the GeoServer REST API. Re-running `up` is safe —
+provisioning is idempotent and the seed scripts only run once per fresh
+volume.
 
 - GeoServer admin UI: http://localhost:8600/geoserver (`admin` / `meridian`)
 - WFS endpoint used by the app: http://localhost:8600/geoserver/meridian/wfs
