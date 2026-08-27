@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import type { FeatureCollection, Polygon } from 'geojson';
 import { sendAction } from './wsClient';
-import type { Approvals, CardKind, State, Target, TargetListId, View } from './types';
+import type { Approvals, AtoDay, CardKind, SortieMissionType, State, Target, TargetListId, View } from './types';
 import { findOobNode } from './oobSelectors';
 import { deepEqual } from './deepEqual';
 import { CONTEXT_LAYERS } from './assets/contextLayers';
 import { RIGHT_RAIL_MAX_WIDTH, RIGHT_RAIL_MIN_WIDTH } from './layout';
-import { listsForTarget, TARGET_LISTS } from './assets/targetLists';
+import { indexSortiesByBdaTarget, listsForTargetIndexed, TARGET_LISTS } from './assets/targetLists';
 import type { TargetListTransition } from './assets/targetLists';
 import { ACTION_ROUTING, entityForRole, ORGANIZATIONS, orgById, roleLabel } from './assets/staff';
 import { fmtLogTime } from './selectors';
@@ -15,7 +15,7 @@ import type { PortFeature } from './portFeature';
 import type { AirfieldFeature } from './airfieldFeature';
 import type { MapMode } from './cesium3d';
 
-export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb' | 'draw';
+export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb' | 'draw' | 'ato';
 export type LegendMode = 'AFFILIATION' | 'OOB';
 
 // Layer/object association scope for the drawing tool (DrawingToolManager.tsx)
@@ -294,7 +294,22 @@ interface UiState {
   // see the altitude display plan's Plan A / Risk 04. Off by default so
   // the feature is opt-in rather than always-on clutter.
   showAltitude: boolean;
+  // Sortie flight lines / ACO overlay (Phase C of the "Rolling Air
+  // Picture" plan) — both default OFF. The design brief's RT-06 finding
+  // specifically flagged an always-on flight layer as a map-clutter risk
+  // on top of everything else already drawn; opt-in, same as showAltitude
+  // already is for the same reason.
+  showFlightLines: boolean;
+  showAcoOverlay: boolean;
   activeListId: TargetListId;
+  // Which D-day band the AIR TASKING manager (AtoManager.tsx) and the
+  // rolling timeline strip are scoped to — Phase B of the "Rolling Air
+  // Picture" plan. Defaults to 'D0' (today's executing ATO), not derived
+  // from anything else, since it's a UI selection, not server state.
+  selectedAtoDay: AtoDay;
+  // 'ALL' or one SortieMissionType — the AIR TASKING manager's mission-type
+  // filter chip row, scoped within the selected day.
+  sortieMissionTypeFilter: SortieMissionType | 'ALL';
   // Last-observed list membership per target id, and the append-only log of
   // moments a target first qualified for a list — see targetLists.ts for why
   // this exists (it's what makes "state transitions" real, not just the
@@ -363,7 +378,10 @@ interface UiState {
 }
 
 interface Actions {
-  setFromServer: (s: State) => void;
+  // A Partial<State> on every tick after the first (server/src/ws.ts now
+  // broadcasts deltas, not the full state) — only ever a full State on the
+  // very first message after connecting, which a Partial trivially accepts.
+  setFromServer: (s: Partial<State>) => void;
   setConnected: (v: boolean) => void;
 
   selectTarget: (id: string) => void;
@@ -404,7 +422,11 @@ interface Actions {
   setActiveManager: (m: Manager) => void;
   setLegendMode: (m: LegendMode) => void;
   setShowAltitude: (v: boolean) => void;
+  setShowFlightLines: (v: boolean) => void;
+  setShowAcoOverlay: (v: boolean) => void;
   setActiveListId: (id: TargetListId) => void;
+  setSelectedAtoDay: (day: AtoDay) => void;
+  setSortieMissionTypeFilter: (f: SortieMissionType | 'ALL') => void;
   selectOob: (id: string) => void;
   openOob: (id: string) => void;
   toggleContextLayer: (id: string) => void;
@@ -457,6 +479,7 @@ const EMPTY_STATE: State = {
   units: [],
   nais: [],
   log: [],
+  sorties: [],
 };
 
 export const useStore = create<Store>((set, get) => ({
@@ -474,7 +497,11 @@ export const useStore = create<Store>((set, get) => ({
   activeManager: 'isr',
   legendMode: 'AFFILIATION',
   showAltitude: false,
+  showFlightLines: false,
+  showAcoOverlay: false,
   activeListId: 'hptl',
+  selectedAtoDay: 'D0',
+  sortieMissionTypeFilter: 'ALL',
   targetListMembership: {},
   targetListTransitions: [],
   toasts: [],
@@ -520,8 +547,19 @@ export const useStore = create<Store>((set, get) => ({
       const nextMembership: Record<string, TargetListId[]> = {};
       const newTransitions: TargetListTransition[] = [];
       const newToasts: Toast[] = [];
+      // patch.sorties only exists on a tick where sorties actually changed
+      // (rare) — prev.sorties (already-known, up to date) is what every
+      // other tick needs, not an empty array. Using `s.sorties` directly
+      // here would have silently dropped the reattack->HPTL exception
+      // (assets/targetLists.ts) on almost every tick once broadcasts
+      // became deltas instead of full state.
+      const currentSorties = patch.sorties ?? prev.sorties;
+      // Built once for every target in this tick's patch, not once per
+      // target (listsForTarget would otherwise re-scan currentSorties from
+      // scratch for each one) — see targetLists.ts's listsForTargetIndexed.
+      const reattackIndex = indexSortiesByBdaTarget(currentSorties);
       for (const target of patch.targets) {
-        const lists = listsForTarget(target);
+        const lists = listsForTargetIndexed(target, reattackIndex);
         nextMembership[target.id] = lists;
         if (!isFirstHydration) {
           const prevLists = prev.targetListMembership[target.id] ?? [];
@@ -745,7 +783,11 @@ export const useStore = create<Store>((set, get) => ({
   setRightRailWidth: (w) => set({ rightRailWidth: Math.min(RIGHT_RAIL_MAX_WIDTH, Math.max(RIGHT_RAIL_MIN_WIDTH, w)) }),
   setLegendMode: (m) => set({ legendMode: m }),
   setShowAltitude: (v) => set({ showAltitude: v }),
+  setShowFlightLines: (v) => set({ showFlightLines: v }),
+  setShowAcoOverlay: (v) => set({ showAcoOverlay: v }),
   setActiveListId: (id) => set({ activeListId: id }),
+  setSelectedAtoDay: (day) => set({ selectedAtoDay: day }),
+  setSortieMissionTypeFilter: (f) => set({ sortieMissionTypeFilter: f }),
   selectOob: (id) => {
     const node = findOobNode(id);
     set({

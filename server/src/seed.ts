@@ -1,4 +1,4 @@
-import type { Effector, FriendlyUnit, LogEntry, Nai, Sensor, State, Target } from './types.js';
+import type { AtoDay, Effector, FriendlyUnit, LogEntry, Nai, Sensor, Sortie, State, Target } from './types.js';
 
 // Transcribed verbatim from design_handoff_meridian_fires_c2/Meridian Fires C2.dc.html
 // (constructor of `class Component extends DCLogic`, lines ~744-807) — with
@@ -81,6 +81,178 @@ export const SEED_LOG: LogEntry[] = [
   { t: 0, tag: 'DET', text: 'VIPER classified SA-21 GROWLER, conf 96%, HAWK-01 EO/IR.', tag2: 'det' },
 ];
 
+// Phase A fixtures for the "Rolling Air Picture" plan — one AO's worth of
+// packages spanning D-1 (assessing) through D+2 (planning), across the
+// full ATO's mission-type spread, not just strike/SEAD. Cross-references
+// existing SEED_TARGETS/SEED_EFFECTORS/SEED_SENSORS ids where a real
+// platform or DMPI already exists in this fixture set, rather than
+// inventing parallel data.
+//
+// Timestamps are computed relative to *server startup*, not hardcoded —
+// per the design brief's resolved RT-01 finding, a Sortie's clock is real
+// UTC time, never Meridian's abstract sim tick. That does mean these
+// fixtures only look like "today" until the DB that seeded them is reset
+// (resetToSeed()) — acceptable for a Phase A fixture; Phase B's timeline
+// strip is what actually needs to reason about elapsed real time, not
+// this seed data staying evergreen indefinitely.
+//
+// originAirfield/recoveryAirfield are real ICAO codes (Phase C) for
+// airfields this AO's `airfields` GeoServer layer actually carries an
+// `icao` property for: LXGB (Royal Air Force Gibraltar), LEMO (Base Aérea
+// de Morón), LERT (Aeropuerto de la Base Naval de Rota) — see
+// web/src/airfieldIcaoIndex.ts for the resolver.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const SEED_EPOCH = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate());
+function atoTime(offsetDays: number, hh: number, mm: number): string {
+  return new Date(SEED_EPOCH + offsetDays * DAY_MS + hh * 3_600_000 + mm * 60_000).toISOString();
+}
+function atoDayLabel(offsetDays: number): AtoDay {
+  return (offsetDays === 0 ? 'D0' : offsetDays > 0 ? `D+${offsetDays}` : `D${offsetDays}`) as AtoDay;
+}
+
+export const SEED_SORTIES: Sortie[] = [
+  // D-1 — assessing. Struck FORGE (T2198), which SEED_TARGETS still
+  // carries as NEUTRALIZED/stage 4 with a free-text bda written before
+  // Phase F existed ('DESTROYED · 2 SECONDARIES'). Deliberately left
+  // divergent from this sortie's own, later, more careful assessment
+  // below (PDA confirms the hit, but FDA is INCONCLUSIVE — the aimpoint
+  // was struck but functional loss isn't confirmed) rather than patched
+  // to match: reconciling Target.bda's free-text field with a sortie's
+  // structured ladder was explicitly out of Phase F's scope (see the
+  // design brief's §III.6), and a unit-level "still reads NEUTRALIZED"
+  // status lagging a more careful follow-up assessment is realistic, not
+  // a bug to hide.
+  {
+    id: 'BRAVO-01', packageId: 'BRAVO', callsign: 'VIPER-19', platform: 'F-35A', linkedPlatformId: null,
+    missionType: 'STRIKE', originAirfield: 'LXGB', recoveryAirfield: 'LXGB',
+    targetIds: ['T2198'], supportedSortieIds: [], collectionRequirementIds: [],
+    totWindowStart: atoTime(-1, 6, 10), totWindowEnd: atoTime(-1, 6, 25), status: 'COMPLETE', atoDay: atoDayLabel(-1),
+    bda: { T2198: { pda: 'ASSESSED', fda: 'INCONCLUSIVE', tsa: 'PENDING', reattackRecommended: true, note: 'Aimpoint hit confirmed (PDA). Radar van intact in follow-up imagery — TEL functional status unconfirmed. Reattack recommended next ATO cycle.' } },
+  },
+
+  // D0 — execution. Package ALPHA: SEAD + strike + non-kinetic jamming
+  // escort + tanker support + AEW, all in the same package, tasked
+  // against the two live HOS tracks already staged for strike (VIPER,
+  // ANVIL) in SEED_TARGETS.
+  {
+    id: 'ALPHA-01', packageId: 'ALPHA', callsign: 'HORNET-21', platform: 'F/A-18E', linkedPlatformId: 'HORNET21',
+    missionType: 'SEAD', originAirfield: 'LEMO', recoveryAirfield: 'LEMO',
+    targetIds: ['T2201'], supportedSortieIds: [], collectionRequirementIds: [],
+    totWindowStart: atoTime(0, 8, 47), totWindowEnd: atoTime(0, 9, 2), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    bda: null,
+  },
+  {
+    id: 'ALPHA-02', packageId: 'ALPHA', callsign: 'VENOM-1', platform: 'F-35A', linkedPlatformId: 'VENOM1',
+    missionType: 'STRIKE', originAirfield: 'LXGB', recoveryAirfield: 'LXGB',
+    targetIds: ['T2202'], supportedSortieIds: [], collectionRequirementIds: [],
+    totWindowStart: atoTime(0, 9, 2), totWindowEnd: atoTime(0, 9, 17), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    bda: null,
+  },
+  {
+    id: 'ALPHA-03', packageId: 'ALPHA', callsign: 'WIDOW-3', platform: 'EA-18G', linkedPlatformId: 'WIDOW3',
+    missionType: 'SEAD', originAirfield: 'LEMO', recoveryAirfield: 'LEMO',
+    targetIds: [], supportedSortieIds: ['ALPHA-01', 'ALPHA-02'], collectionRequirementIds: [],
+    totWindowStart: atoTime(0, 8, 40), totWindowEnd: atoTime(0, 9, 25), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    bda: null,
+  },
+  {
+    id: 'ALPHA-04', packageId: 'ALPHA', callsign: 'TEXACO-3', platform: 'KC-135R', linkedPlatformId: null,
+    missionType: 'AAR', originAirfield: 'LERT', recoveryAirfield: 'LERT',
+    targetIds: [], supportedSortieIds: ['ALPHA-01', 'ALPHA-02', 'ALPHA-03'], collectionRequirementIds: [],
+    totWindowStart: atoTime(0, 8, 15), totWindowEnd: atoTime(0, 10, 15), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    bda: null,
+  },
+  {
+    id: 'ALPHA-05', packageId: 'ALPHA', callsign: 'SENTRY-3', platform: 'E-3G SENTRY', linkedPlatformId: 'SENTRY3',
+    missionType: 'AEW', originAirfield: 'LEMO', recoveryAirfield: 'LEMO',
+    targetIds: [], supportedSortieIds: ['ALPHA-01', 'ALPHA-02', 'ALPHA-03'], collectionRequirementIds: [],
+    totWindowStart: atoTime(0, 7, 30), totWindowEnd: atoTime(0, 11, 30), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    bda: null,
+  },
+  // D0 — independent (unpackaged) ISR and CSAR lines running alongside
+  // package ALPHA rather than inside it.
+  {
+    id: 'ISR-D0-1', packageId: null, callsign: 'HAWK-01', platform: 'MQ-9A REAPER', linkedPlatformId: 'HAWK01',
+    missionType: 'ISR', originAirfield: 'LXGB', recoveryAirfield: 'LXGB',
+    targetIds: [], supportedSortieIds: [], collectionRequirementIds: ['CPCL-03'],
+    totWindowStart: atoTime(0, 4, 0), totWindowEnd: atoTime(0, 14, 0), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    bda: null,
+  },
+  {
+    id: 'CSAR-D0-1', packageId: null, callsign: 'PEDRO-1', platform: 'HH-60W', linkedPlatformId: null,
+    missionType: 'CSAR', originAirfield: 'LERT', recoveryAirfield: 'LERT',
+    targetIds: [], supportedSortieIds: [], collectionRequirementIds: [],
+    totWindowStart: atoTime(0, 6, 0), totWindowEnd: atoTime(0, 18, 0), status: 'FRAGGED', atoDay: atoDayLabel(0),
+    bda: null,
+  },
+
+  // D+1 — in production. Fragged, not yet airborne.
+  {
+    id: 'ISR-D1-1', packageId: null, callsign: 'SENTRY-06', platform: 'E-3G SENTRY', linkedPlatformId: null,
+    missionType: 'ISR', originAirfield: 'LEMO', recoveryAirfield: 'LEMO',
+    targetIds: [], supportedSortieIds: [], collectionRequirementIds: ['CPCL-04'],
+    totWindowStart: atoTime(1, 11, 30), totWindowEnd: atoTime(1, 19, 30), status: 'FRAGGED', atoDay: atoDayLabel(1),
+    bda: null,
+  },
+  {
+    id: 'AIRLIFT-D1-1', packageId: null, callsign: 'REACH-210', platform: 'C-17A', linkedPlatformId: null,
+    missionType: 'AIRLIFT', originAirfield: 'LERT', recoveryAirfield: 'LXGB',
+    targetIds: [], supportedSortieIds: [], collectionRequirementIds: [],
+    totWindowStart: atoTime(1, 4, 0), totWindowEnd: atoTime(1, 5, 10), status: 'FRAGGED', atoDay: atoDayLabel(1),
+    bda: null,
+  },
+
+  // D+2 — in planning (MAAP shell, not yet a hardened ATO line). Tentative
+  // strike against BASTION (T2205), still only stage 1 / not yet cleared
+  // in SEED_TARGETS — consistent with the target not having cleared
+  // approvals this far out.
+  {
+    id: 'CHARLIE-01', packageId: 'CHARLIE', callsign: 'VIPER-20', platform: 'F-35A', linkedPlatformId: null,
+    missionType: 'STRIKE', originAirfield: 'LXGB', recoveryAirfield: 'LXGB',
+    targetIds: ['T2205'], supportedSortieIds: [], collectionRequirementIds: [],
+    totWindowStart: atoTime(2, 9, 0), totWindowEnd: atoTime(2, 9, 15), status: 'FRAGGED', atoDay: atoDayLabel(2),
+    bda: null,
+  },
+];
+
+// Phase D — a real historical track for the one sortie in SEED_SORTIES
+// that's actually COMPLETE (BRAVO-01/VIPER-19), seeded into
+// entity_track_history under the 'history-air-tracks' layer_id
+// (historyQuery.ts) so Phase C's flight-line rendering has real data to
+// source an executed leg from instead of its straight-line approximation.
+// Every other sortie (AIRBORNE or FRAGGED) has no history yet, correctly —
+// it hasn't happened. Seven points, LXGB (RAF Gibraltar) out to FORGE
+// (T2198's real coordinates) and back, centered on BRAVO-01's own TOT
+// window rather than a second, independently-chosen time range, so the
+// two stay consistent by construction.
+export interface HistoryFixturePoint {
+  eventId: string;
+  entityId: string;
+  entityKind: string;
+  layerId: string;
+  affiliation: string;
+  speedKn: number;
+  eventTime: string;
+  lng: number;
+  lat: number;
+  attrs: Record<string, unknown>;
+}
+
+const LXGB = { lng: -5.349512196179749, lat: 36.15121 };
+const FORGE_TARGET = { lng: -5.708, lat: 36.18 };
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const legPoint = (t: number) => ({ lng: lerp(LXGB.lng, FORGE_TARGET.lng, t), lat: lerp(LXGB.lat, FORGE_TARGET.lat, t) });
+
+export const SEED_AIR_TRACK_HISTORY: HistoryFixturePoint[] = [
+  { eventId: '20000000-0000-4000-8000-000000000001', entityId: 'VIPER-19', entityKind: 'aircraft', layerId: 'history-air-tracks', affiliation: 'FRD', speedKn: 180, eventTime: atoTime(-1, 5, 58), ...LXGB, attrs: { sortieId: 'BRAVO-01', altFt: 200, phase: 'departure' } },
+  { eventId: '20000000-0000-4000-8000-000000000002', entityId: 'VIPER-19', entityKind: 'aircraft', layerId: 'history-air-tracks', affiliation: 'FRD', speedKn: 420, eventTime: atoTime(-1, 6, 2), ...legPoint(0.25), attrs: { sortieId: 'BRAVO-01', altFt: 22000, phase: 'ingress' } },
+  { eventId: '20000000-0000-4000-8000-000000000003', entityId: 'VIPER-19', entityKind: 'aircraft', layerId: 'history-air-tracks', affiliation: 'FRD', speedKn: 480, eventTime: atoTime(-1, 6, 6), ...legPoint(0.6), attrs: { sortieId: 'BRAVO-01', altFt: 28000, phase: 'ingress' } },
+  { eventId: '20000000-0000-4000-8000-000000000004', entityId: 'VIPER-19', entityKind: 'aircraft', layerId: 'history-air-tracks', affiliation: 'FRD', speedKn: 350, eventTime: atoTime(-1, 6, 10), ...FORGE_TARGET, attrs: { sortieId: 'BRAVO-01', altFt: 500, phase: 'tot' } },
+  { eventId: '20000000-0000-4000-8000-000000000005', entityId: 'VIPER-19', entityKind: 'aircraft', layerId: 'history-air-tracks', affiliation: 'FRD', speedKn: 480, eventTime: atoTime(-1, 6, 14), ...legPoint(0.6), attrs: { sortieId: 'BRAVO-01', altFt: 28000, phase: 'egress' } },
+  { eventId: '20000000-0000-4000-8000-000000000006', entityId: 'VIPER-19', entityKind: 'aircraft', layerId: 'history-air-tracks', affiliation: 'FRD', speedKn: 420, eventTime: atoTime(-1, 6, 18), ...legPoint(0.25), attrs: { sortieId: 'BRAVO-01', altFt: 22000, phase: 'egress' } },
+  { eventId: '20000000-0000-4000-8000-000000000007', entityId: 'VIPER-19', entityKind: 'aircraft', layerId: 'history-air-tracks', affiliation: 'FRD', speedKn: 160, eventTime: atoTime(-1, 6, 22), ...LXGB, attrs: { sortieId: 'BRAVO-01', altFt: 200, phase: 'recovery' } },
+];
+
 export function freshState(): State {
   return {
     t: 0,
@@ -93,5 +265,6 @@ export function freshState(): State {
     units: SEED_UNITS.map((u) => ({ ...u })),
     nais: SEED_NAIS.map((n) => ({ ...n })),
     log: SEED_LOG.map((l) => ({ ...l })),
+    sorties: SEED_SORTIES.map((so) => ({ ...so, bda: so.bda ? { ...so.bda } : null })),
   };
 }

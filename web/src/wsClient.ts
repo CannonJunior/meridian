@@ -30,7 +30,10 @@ export function connect(): void {
   };
 
   socket.onmessage = (ev: MessageEvent) => {
-    const msg = JSON.parse(ev.data as string) as { type: string; payload: State };
+    // Full State on initial connect, a Partial<State> delta on every
+    // subsequent tick (server/src/ws.ts) — setFromServer merges whichever
+    // it gets the same way either way.
+    const msg = JSON.parse(ev.data as string) as { type: string; payload: Partial<State> };
     if (msg.type === 'state') useStore.getState().setFromServer(msg.payload);
   };
 }

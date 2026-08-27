@@ -113,6 +113,84 @@ export interface LogEntry {
   tag2: string;
 }
 
+// Phase A of the "Rolling Air Picture" plan (see the design brief) — the
+// Sortie entity, scoped to the full ATO per the locked decision, not just
+// strike/SEAD. Deliberately its own entity rather than a new field on
+// Target or Effector: a real ATO line is many-to-many with both (one
+// sortie can service several DMPIs, one target can need several sorties'
+// reattack), and most mission types here (AAR, AIRLIFT, AEW, CSAR) carry
+// no target at all.
+export type SortieMissionType = 'STRIKE' | 'SEAD' | 'CAS' | 'OCA' | 'DCA' | 'ISR' | 'AAR' | 'AIRLIFT' | 'AEW' | 'CSAR';
+export type SortieStatus = 'FRAGGED' | 'AIRBORNE' | 'TOT' | 'RTB' | 'COMPLETE' | 'CANCELLED';
+// D-3..D+3 — the rolling-timeline band a sortie belongs to. Derived at
+// seed/fixture time from totWindowStart relative to "now," not stored
+// independently of it, but kept as its own field since Phase B's timeline
+// strip and AIR TASKING manager filter by day far more often than they'd
+// want to recompute the offset from a raw timestamp on every render.
+export type AtoDay = 'D-3' | 'D-2' | 'D-1' | 'D0' | 'D+1' | 'D+2' | 'D+3';
+export type BdaPhaseStatus = 'PENDING' | 'ASSESSED' | 'INCONCLUSIVE';
+
+// One (sortie, target) pair's combat-assessment ladder (CJCSI 3162.02A) —
+// keyed by targetId on Sortie.bda rather than living on Target, since a
+// target under simultaneous reattack by more than one sortie needs one of
+// these per sortie that struck it, not one shared status (see the design
+// brief's RT-04 finding). Target.bda's existing free-text field is
+// untouched here — Phase F is what reconciles the two.
+export interface SortieBda {
+  pda: BdaPhaseStatus;
+  fda: BdaPhaseStatus;
+  tsa: BdaPhaseStatus;
+  reattackRecommended: boolean;
+  note: string | null;
+}
+
+export interface Sortie {
+  id: string;
+  // Shared by every sortie flying as part of the same strike package —
+  // null for independent lines (a standing ISR orbit, a scheduled airlift
+  // run) that were never packaged with anything else.
+  packageId: string | null;
+  callsign: string;
+  platform: string;
+  // Set only when this sortie's airframe is *also* tracked as a live
+  // Effector or Sensor elsewhere in State (e.g. an ISR sortie flown by the
+  // same MQ-9 that's already a Sensor) — Phase B resolves it against
+  // whichever of the two arrays actually contains the id. null for
+  // mission types (AAR, AIRLIFT, CSAR) Meridian doesn't otherwise model.
+  linkedPlatformId: string | null;
+  missionType: SortieMissionType;
+  // ICAO code, uppercased (e.g. 'LXGB') — resolved client-side against the
+  // real `airfields` GeoServer layer by web/src/airfieldIcaoIndex.ts (Phase
+  // C), not a GeoServer feature id directly, since that's the one stable
+  // identifier both this fixture data and that layer's OSM-derived `icao`
+  // property agree on. A code with no match in the layer (or no code at
+  // all) simply doesn't resolve to a map location — see the design
+  // brief's RT-08 finding.
+  originAirfield: string;
+  recoveryAirfield: string;
+  // Populated for strike/SEAD/CAS lines; empty for everything else.
+  targetIds: string[];
+  // What an AAR/tanker or AEW sortie is in support of — its "target" is
+  // other sorties, not a Target. Empty for strike lines.
+  supportedSortieIds: string[];
+  // What an ISR sortie is tasked against — ids into the CPCL/JIPCL list
+  // Phase E adds to the ISR manager (§III.7 of the design brief); these
+  // ids don't resolve to anything yet in Phase A, only strike/SEAD lines
+  // ever have both this and targetIds empty simultaneously.
+  collectionRequirementIds: string[];
+  // ISO 8601 UTC — always real wall-clock time, anchored to the same
+  // clock CommandBar.tsx renders. Never derived from or compared against
+  // State.t, which is Meridian's abstract, pausable/speedable sim tick —
+  // conflating the two was the design brief's RT-01 finding.
+  totWindowStart: string;
+  totWindowEnd: string;
+  status: SortieStatus;
+  atoDay: AtoDay;
+  // Keyed by targetId — see SortieBda's doc comment. null for sorties
+  // with no targetIds.
+  bda: Record<string, SortieBda> | null;
+}
+
 export interface Stage {
   key: string;
   name: string;
@@ -149,6 +227,7 @@ export interface State {
   units: FriendlyUnit[];
   nais: Nai[];
   log: LogEntry[];
+  sorties: Sortie[];
 }
 
 export type ActionMessage =

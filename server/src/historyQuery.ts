@@ -18,12 +18,20 @@ import type { Feature, FeatureCollection } from 'geojson';
 const GEOSERVER_WFS_URL = process.env.GEOSERVER_WFS_URL ?? 'http://localhost:8600/geoserver/meridian/wfs';
 const TYPE_NAME = 'meridian:entity_track_history';
 
-// The only layerId the query builder can ask for today (matches the one
-// layer entity_track_history's layer_id column ever holds — see
-// geoserver/postgis-init/101-history-fixtures.sql). A real allowlist, not a
-// stand-in: adding a second historical layer means adding it here AND to
-// the producer/consumer schema (kafka/README.md), not just to the UI.
-const ALLOWED_LAYER_IDS = new Set(['history-vessel-tracks']);
+// The layerIds the query builder can ask for — matches the layer_id values
+// entity_track_history's rows actually hold. A real allowlist, not a
+// stand-in: adding a layer means adding it here AND to the producer/
+// consumer schema (kafka/README.md), not just to the UI.
+// 'history-vessel-tracks' is seeded by geoserver/postgis-init/
+// 101-history-fixtures.sql (Phase 0) and, in production, the Kafka
+// pipeline (kafka/README.md, Phase 1). 'history-air-tracks' (Phase D of
+// the "Rolling Air Picture" plan) is fixture-only today, seeded by
+// server/src/seed.ts's SEED_AIR_TRACK_HISTORY via db.ts's seedFresh() —
+// deliberately not a static postgis-init SQL file, since its timestamps
+// have to land inside whichever Sortie it belongs to's real, dynamically-
+// computed TOT window (see seed.ts's atoTime()), and not through the
+// Kafka pipeline either, since there's no live air-track producer yet.
+const ALLOWED_LAYER_IDS = new Set(['history-vessel-tracks', 'history-air-tracks']);
 
 // Hard cap on features returned by a single page — mirrors the
 // "pre-simplify so the browser can hold it" discipline contextLayers.ts

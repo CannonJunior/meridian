@@ -271,3 +271,122 @@ export function toCytoscapeElements(doc: KgDocument): CytoscapeElement[] {
   }
   return elements;
 }
+
+// OOB-only view for the "org chart" layout: Command nodes (organizations —
+// countries/branches/fleets/task forces/squadrons/bases) and the object
+// nodes that sit in their command chain (NavalVessel/Unit/Contact) — the
+// same organization/object split oob.ts's OobEntityType already draws.
+// Everything else the KG tracks (radar/weapon systems, context layers,
+// target lists, live targets, associations) is out of scope for this view,
+// same as the concentric layout's depth walk only following partOf.
+const ORG_CHART_TYPES: ReadonlySet<KgType> = new Set(['Command', 'NavalVessel', 'Unit', 'Contact']);
+
+export interface OrgChartPosition {
+  x: number;
+  y: number;
+}
+
+export interface OrgChartLayout {
+  elements: CytoscapeElement[];
+  positions: Record<string, OrgChartPosition>;
+}
+
+// Box geometry used both to compute positions here and to size the actual
+// cytoscape node boxes in KnowledgeGraphView (kept in sync manually — this
+// module has no rendering concerns of its own).
+export const ORG_CHART_BOX_W = 132;
+export const ORG_CHART_BOX_H = 34;
+const H_GAP = 16;
+const V_GAP = 10;
+const LEVEL_GAP = 64;
+
+interface Subtree {
+  width: number;
+  height: number;
+  positions: Map<string, OrgChartPosition>;
+}
+
+// A hand-rolled tidy-tree, not one of cytoscape's built-in layouts (unlike
+// every other mode in the dropdown) — see the comment on layoutForMode in
+// KnowledgeGraphView.tsx for why: cytoscape's breadthfirst puts every node
+// at a given depth on one shared rank, and a rank layout can't help this
+// data's shape (a squadron's ~15-20 ships all land in the one deepest
+// rank alongside every *other* squadron's ships, forcing a ~90-wide row
+// that starves every other rank of the container's height). Wrapping each
+// leaf-heavy sibling group into its own compact grid — the way the
+// referenced numbered-fleet composition charts actually draw a squadron's
+// hull list — fixes it structurally: a subtree's width is its own
+// children's, not the whole tree's deepest rank.
+function layoutNode(id: string, childrenOf: Map<string, string[]>): Subtree {
+  const children = childrenOf.get(id) ?? [];
+  if (children.length === 0) {
+    return { width: ORG_CHART_BOX_W, height: ORG_CHART_BOX_H, positions: new Map([[id, { x: 0, y: 0 }]]) };
+  }
+
+  const positions = new Map<string, OrgChartPosition>();
+  const allLeaves = children.every((c) => !(childrenOf.get(c)?.length));
+  if (allLeaves && children.length > 6) {
+    const cols = Math.max(3, Math.ceil(Math.sqrt(children.length * 1.8)));
+    const rows = Math.ceil(children.length / cols);
+    const gridWidth = cols * (ORG_CHART_BOX_W + H_GAP) - H_GAP;
+    children.forEach((c, i) => {
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      positions.set(c, {
+        x: col * (ORG_CHART_BOX_W + H_GAP) - gridWidth / 2 + ORG_CHART_BOX_W / 2,
+        y: LEVEL_GAP + row * (ORG_CHART_BOX_H + V_GAP),
+      });
+    });
+    positions.set(id, { x: 0, y: 0 });
+    return { width: Math.max(gridWidth, ORG_CHART_BOX_W), height: LEVEL_GAP + rows * (ORG_CHART_BOX_H + V_GAP), positions };
+  }
+
+  // Standard tidy-tree case: children side by side, each occupying exactly
+  // its own subtree's width, so a small branch doesn't waste the space a
+  // wide sibling branch needs.
+  const subtrees = children.map((c) => ({ id: c, sub: layoutNode(c, childrenOf) }));
+  const totalWidth = subtrees.reduce((sum, s) => sum + s.sub.width, 0) + H_GAP * (subtrees.length - 1);
+  let cursor = -totalWidth / 2;
+  let maxChildBottom = 0;
+  for (const { sub } of subtrees) {
+    const centerX = cursor + sub.width / 2;
+    for (const [cid, p] of sub.positions) positions.set(cid, { x: centerX + p.x, y: LEVEL_GAP + p.y });
+    maxChildBottom = Math.max(maxChildBottom, LEVEL_GAP + sub.height);
+    cursor += sub.width + H_GAP;
+  }
+  positions.set(id, { x: 0, y: 0 });
+  return { width: Math.max(totalWidth, ORG_CHART_BOX_W), height: maxChildBottom, positions };
+}
+
+export function buildOrgChart(doc: KgDocument): OrgChartLayout {
+  const nodes = doc['@graph'].filter((n) => ORG_CHART_TYPES.has(n['@type']));
+  const nodeIds = new Set(nodes.map((n) => n['@id']));
+  const elements: CytoscapeElement[] = nodes.map((n) => ({ data: { id: n['@id'], label: n.name, type: n['@type'] } }));
+
+  const childrenOf = new Map<string, string[]>();
+  const roots: string[] = [];
+  for (const n of nodes) {
+    const parent = n.partOf?.[0];
+    if (parent && nodeIds.has(parent)) {
+      elements.push({ data: { id: `${parent}->${n['@id']}:partOf`, source: parent, target: n['@id'], label: 'partOf' } });
+      const list = childrenOf.get(parent);
+      if (list) list.push(n['@id']);
+      else childrenOf.set(parent, [n['@id']]);
+    } else {
+      roots.push(n['@id']);
+    }
+  }
+
+  const rootTrees = roots.map((id) => ({ id, sub: layoutNode(id, childrenOf) }));
+  const rootGap = H_GAP * 3; // extra breathing room between unrelated top-level orgs (separate countries/branches)
+  const totalWidth = rootTrees.reduce((sum, r) => sum + r.sub.width, 0) + rootGap * Math.max(0, rootTrees.length - 1);
+  const positions: Record<string, OrgChartPosition> = {};
+  let cursor = -totalWidth / 2;
+  for (const { sub } of rootTrees) {
+    const centerX = cursor + sub.width / 2;
+    for (const [id, p] of sub.positions) positions[id] = { x: centerX + p.x, y: p.y };
+    cursor += sub.width + rootGap;
+  }
+
+  return { elements, positions };
+}

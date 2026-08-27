@@ -2,7 +2,54 @@
 // re-purposed here as selectable views over the same `targets` array — the
 // collection-table (components/CollectionTable.tsx) renders whichever list
 // is currently selected (store.activeListId).
-import type { Target, TargetListId } from '../types';
+import type { Sortie, Target, TargetListId } from '../types';
+
+// Phase F of the "Rolling Air Picture" plan — a target with an open
+// reattack recommendation on any sortie that struck it stays eligible for
+// the HPTL even after it's otherwise complete, rather than sitting inert
+// once its own priority rank is cleared. Checked across every sortie that
+// hit the target, not just the most recent one, since an earlier strike's
+// unresolved reattack call doesn't stop being true just because a later
+// one also struck it.
+export function hasActiveReattackRecommendation(targetId: string, sorties: Sortie[]): boolean {
+  return sorties.some((s) => s.bda?.[targetId]?.reattackRecommended === true);
+}
+
+// Every sortie that carries a bda entry for a given target, indexed once
+// (a single pass over sorties) rather than each target in a list doing
+// its own O(sorties) scan via hasActiveReattackRecommendation above.
+// targetsForList/listsForTarget below build one of these per call instead
+// of calling hasActiveReattackRecommendation per target — the same fix
+// CollectionTable.tsx applies for its own per-row reattack badge, so the
+// two don't each re-scan sorties separately for the same answer.
+export function indexSortiesByBdaTarget(sorties: Sortie[]): Map<string, Sortie[]> {
+  const index = new Map<string, Sortie[]>();
+  for (const s of sorties) {
+    if (!s.bda) continue;
+    for (const targetId of Object.keys(s.bda)) {
+      const list = index.get(targetId);
+      if (list) list.push(s);
+      else index.set(targetId, [s]);
+    }
+  }
+  return index;
+}
+
+export function hasActiveReattackRecommendationIndexed(targetId: string, index: Map<string, Sortie[]>): boolean {
+  return (index.get(targetId) ?? []).some((s) => s.bda?.[targetId]?.reattackRecommended === true);
+}
+
+// The note attached to whichever sortie actually raised the recommendation
+// — for display alongside the HPTL-eligibility fact above, not a second
+// source of truth for it (a target with no such note can still be
+// reattack-eligible if a sortie flagged it with note: null).
+export function reattackNoteFor(targetId: string, sorties: Sortie[]): string | null {
+  for (const s of sorties) {
+    const b = s.bda?.[targetId];
+    if (b?.reattackRecommended) return b.note;
+  }
+  return null;
+}
 
 export interface TargetListDef {
   id: TargetListId;
@@ -21,7 +68,7 @@ export const TARGET_LISTS: TargetListDef[] = [
     accent: 'var(--amber)',
     description: 'Targets ranked by payoff toward current objectives — the working prioritized list.',
     detail:
-      "Targets ranked by payoff toward current objectives — the ones whose loss to the enemy would most directly contribute to the mission. Built each targeting cycle from target value analysis, then filtered to only targets the force can actually acquire and engage within the decision window. Priority order drives sensor/effector pairing and shifts as objectives and target behavior change. Every target with an assigned priority rank sits on this list; unranked no-strike or already-neutralized entries fall off it.",
+      "Targets ranked by payoff toward current objectives — the ones whose loss to the enemy would most directly contribute to the mission. Built each targeting cycle from target value analysis, then filtered to only targets the force can actually acquire and engage within the decision window. Priority order drives sensor/effector pairing and shifts as objectives and target behavior change. Every target with an assigned priority rank sits on this list; unranked no-strike or already-neutralized entries fall off it — unless a sortie's combat assessment flagged an open reattack recommendation against it, which keeps it eligible regardless of rank.",
   },
   {
     id: 'jtl',
@@ -72,21 +119,36 @@ export const TARGET_LISTS: TargetListDef[] = [
 //
 // One predicate map drives both directions (which targets are on a list, and
 // which lists a given target is on) so the two views can't drift apart.
-const LIST_MEMBERSHIP: Record<TargetListId, (t: Target) => boolean> = {
+// Takes `sorties` alongside the target so `hptl`'s reattack exception can
+// look across sortie-level BDA — every other predicate ignores it.
+const LIST_MEMBERSHIP: Record<TargetListId, (t: Target, reattackIndex: Map<string, Sortie[]>) => boolean> = {
   jtl: () => true,
   jiptl: (t) => t.pri != null && t.appr.strike,
   rtl: (t) => t.stage < 4 && (t.cde === 'CDE-2' || t.cde === 'CDE-3'),
   nsl: (t) => t.nsl,
-  hptl: (t) => t.pri != null,
+  hptl: (t, reattackIndex) => t.pri != null || hasActiveReattackRecommendationIndexed(t.id, reattackIndex),
 };
 
-export function targetsForList(targets: Target[], listId: TargetListId): Target[] {
-  return targets.filter(LIST_MEMBERSHIP[listId]);
+export function targetsForList(targets: Target[], listId: TargetListId, sorties: Sortie[] = []): Target[] {
+  // One index build for every target being filtered here, not one
+  // hasActiveReattackRecommendation scan (itself O(sorties)) per target —
+  // this is exactly the O(targets × sorties) CollectionTable.tsx was
+  // paying every render once its list included the hptl predicate.
+  const reattackIndex = indexSortiesByBdaTarget(sorties);
+  return targets.filter((t) => LIST_MEMBERSHIP[listId](t, reattackIndex));
 }
 
 // Every list a given target currently belongs to, in TARGET_LISTS order.
-export function listsForTarget(t: Target): TargetListId[] {
-  return TARGET_LISTS.map((l) => l.id).filter((id) => LIST_MEMBERSHIP[id](t));
+// Builds its own index — fine for a single-target call (TargetCardBody.tsx),
+// but store.ts's setFromServer checks this for every target that changed
+// in one tick, so it uses listsForTargetIndexed with a hoisted index
+// instead of calling this in a loop.
+export function listsForTarget(t: Target, sorties: Sortie[] = []): TargetListId[] {
+  return listsForTargetIndexed(t, indexSortiesByBdaTarget(sorties));
+}
+
+export function listsForTargetIndexed(t: Target, reattackIndex: Map<string, Sortie[]>): TargetListId[] {
+  return TARGET_LISTS.map((l) => l.id).filter((id) => LIST_MEMBERSHIP[id](t, reattackIndex));
 }
 
 // A named-list state transition: doctrinally, a target moving onto the JTL,

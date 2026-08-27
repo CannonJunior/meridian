@@ -41,6 +41,17 @@ services:
       GEOSERVER_ADMIN_PASSWORD: ${GEOSERVER_ADMIN_PASSWORD:-meridian}
       SKIP_DEMO_DATA: "true"
       CORS_ENABLED: "true"
+      # kartoza/geoserver defaults to -Xms2G -Xmx4G (see its
+      # /scripts/lib/env-data.sh) regardless of what's actually being
+      # served — generous for a production tile-serving deployment, way
+      # more than this single-tenant dev instance needs for a handful of
+      # small vector layers (ports/airfields/EEZ/shipping-lanes/cables/
+      # bathymetry/live-entities/drawn-shapes). Capped down so it isn't
+      # reserving multiple GB of heap it'll never use, stacked alongside
+      # Kafka's own JVM and everything else `npm run dev` + `geo:up` +
+      # `kafka:up` already run concurrently on the same dev machine.
+      INITIAL_MEMORY: ${GEOSERVER_INITIAL_MEMORY:-512M}
+      MAXIMUM_MEMORY: ${GEOSERVER_MAXIMUM_MEMORY:-1G}
     volumes:
       - geoserver-data:/opt/geoserver/data_dir
     ports:

@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { forward as mgrsForward } from 'mgrs';
 import { STAGES } from './types';
-import type { Affiliation, Category, Effector, Sensor, State, Target, Threat } from './types';
+import type { Affiliation, AtoDay, Category, Effector, Sensor, Sortie, SortieStatus, State, Target, Threat } from './types';
 
 // Pure derived-value helpers, ported 1:1 from the `Component` class methods
 // in Meridian Fires C2.dc.html (renderVals/renderMap section, lines ~920-1113).
@@ -447,6 +447,84 @@ export function stageForF2T2EA(stage: number): number {
   // stageToPhase mapping from the source: [1,2,3,3,5][sel.stage]
   const map = [1, 2, 3, 3, 5];
   return map[stage] ?? 0;
+}
+
+// Rolling ATO timeline strip (design brief §III.1) — Phase B.
+export const ATO_DAYS: AtoDay[] = ['D-3', 'D-2', 'D-1', 'D0', 'D+1', 'D+2', 'D+3'];
+
+// Which BDA phase would be maturing that far back (PDA→FDA→TSA) — an
+// illustrative day-band label per the design brief's hero diagram, not a
+// computed aggregate of that day's actual sorties' bda fields. A day with
+// no strike sorties at all still gets a phase label; it just has nothing
+// to show under it.
+const ATO_DAY_PHASE: Record<AtoDay, string> = {
+  'D-3': 'TSA',
+  'D-2': 'FDA',
+  'D-1': 'PDA',
+  D0: 'EXECUTION',
+  'D+1': 'ATO PRODUCTION',
+  'D+2': 'MAAP / PLANNING',
+  'D+3': 'GUIDANCE',
+};
+export function atoDayPhaseLabel(day: AtoDay): string {
+  return ATO_DAY_PHASE[day];
+}
+export function atoDayPhaseColor(day: AtoDay): string {
+  if (day === 'D0') return C.amber;
+  if (day === 'D+1') return C.cyan;
+  if (day === 'D+2' || day === 'D+3') return C.dim;
+  return C.green; // D-1..D-3, assessing
+}
+
+export function sortieStatusColor(status: SortieStatus): string {
+  if (status === 'AIRBORNE' || status === 'TOT') return C.amber;
+  if (status === 'COMPLETE') return C.green;
+  if (status === 'CANCELLED') return C.red;
+  return '#9fb2ae'; // FRAGGED, RTB
+}
+
+// Sorties carry real UTC timestamps (design brief RT-01), not the sim's
+// DTG_BASE-relative tick clock fmtDTG/fmtLogTime above render — a separate
+// formatter on purpose, not a variant of fmtRealDTG (which takes a Date
+// already, not an ISO string, and includes seconds a TOT window doesn't
+// need).
+export function fmtSortieTime(iso: string): string {
+  const d = new Date(iso);
+  return `${pad2(d.getUTCDate())}${pad2(d.getUTCHours())}${pad2(d.getUTCMinutes())}Z`;
+}
+
+// Phase E — every sortie currently tasked against a CPCL requirement
+// (assets/collectionRequirements.ts), not stored on the requirement
+// itself, so a sortie ceasing to be tasked (or a new one picking it up)
+// never needs a second place updated to match.
+export function sortiesForCollectionRequirement(sorties: Sortie[], requirementId: string): Sortie[] {
+  return sorties.filter((s) => s.collectionRequirementIds.includes(requirementId));
+}
+
+// A requirement reads as "being collected" only while something is
+// actually on station/airborne against it — a FRAGGED (not yet launched)
+// or COMPLETE (already recovered) sortie doesn't currently satisfy it,
+// even if one's tasked for later or already flew earlier.
+export function isCollectionRequirementSatisfied(sorties: Sortie[], requirementId: string): boolean {
+  return sortiesForCollectionRequirement(sorties, requirementId).some((s) => s.status === 'AIRBORNE' || s.status === 'TOT');
+}
+
+// Indexes sorties by every collectionRequirementId they carry, once, for
+// callers checking many requirements against the same sortie list — the
+// CPCL panel (LeftRail.tsx) was otherwise having each of its rows filter
+// the whole sorties array for itself via sortiesForCollectionRequirement
+// above, an O(requirements × sorties) scan for what a single Map build
+// answers in one pass.
+export function indexSortiesByCollectionRequirement(sorties: Sortie[]): Map<string, Sortie[]> {
+  const index = new Map<string, Sortie[]>();
+  for (const s of sorties) {
+    for (const reqId of s.collectionRequirementIds) {
+      const list = index.get(reqId);
+      if (list) list.push(s);
+      else index.set(reqId, [s]);
+    }
+  }
+  return index;
 }
 
 export { STAGES };

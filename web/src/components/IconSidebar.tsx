@@ -84,9 +84,22 @@ function ChatIcon({ color }: { color: string }) {
   );
 }
 
+function AtoIcon({ color }: { color: string }) {
+  return (
+    <svg className="icon-sidebar-glyph icon-sidebar-glyph-ato" width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <line className="icon-sidebar-ato-glyph-baseline" x1="2" y1="15" x2="18" y2="15" stroke={color} strokeWidth="1.3" />
+      <line className="icon-sidebar-ato-glyph-tick-1" x1="6" y1="12.5" x2="6" y2="15" stroke={color} strokeWidth="1.2" opacity="0.6" />
+      <line className="icon-sidebar-ato-glyph-tick-2" x1="14" y1="12.5" x2="14" y2="15" stroke={color} strokeWidth="1.2" opacity="0.6" />
+      <path className="icon-sidebar-ato-glyph-plane" d="M10 3L13.5 10.5L10 9L6.5 10.5L10 3Z" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+      <line className="icon-sidebar-ato-glyph-now" x1="10" y1="10.5" x2="10" y2="15" stroke={color} strokeWidth="1.3" />
+    </svg>
+  );
+}
+
 const MANAGERS: { id: Manager; label: string; accent: string; icon: (c: string) => ReactNode }[] = [
   { id: 'context', label: 'CONTEXT LAYERS', accent: 'var(--green)', icon: (c) => <ContextIcon color={c} /> },
   { id: 'isr', label: 'ISR COLLECTION', accent: 'var(--cyan)', icon: (c) => <IsrIcon color={c} /> },
+  { id: 'ato', label: 'AIR TASKING', accent: 'var(--amber)', icon: (c) => <AtoIcon color={c} /> },
   { id: 'oob', label: 'ORDER OF BATTLE', accent: 'var(--blue)', icon: (c) => <OobIcon color={c} /> },
   { id: 'kb', label: 'KNOWLEDGE BASE', accent: 'var(--violet)', icon: (c) => <KbIcon color={c} /> },
   { id: 'lists', label: 'TARGET LISTS', accent: 'var(--yellow)', icon: (c) => <ListsIcon color={c} /> },

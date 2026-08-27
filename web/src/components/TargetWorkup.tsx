@@ -19,8 +19,9 @@ import {
   threatColor,
   trkColorFor,
 } from '../selectors';
-import type { Approvals, Target } from '../types';
+import type { Approvals, Sortie, Target } from '../types';
 import { orgById } from '../assets/staff';
+import { hasActiveReattackRecommendation, reattackNoteFor } from '../assets/targetLists';
 import RightRailResizeHandle from './RightRailResizeHandle';
 
 const APPR_DEFS: { k: keyof Approvals; l: string }[] = [
@@ -30,11 +31,28 @@ const APPR_DEFS: { k: keyof Approvals; l: string }[] = [
   { k: 'tea', l: 'TARGET ENGAGEMENT AUTH' },
 ];
 
-function engageButtonProps(sel: Target, effCallsign: string) {
+function engageButtonProps(sel: Target, effCallsign: string, sorties: Sortie[]) {
   const ready = isEngageReady(sel);
   const engaged = sel.engagedAt != null;
   const done = sel.stage === 4;
   if (done) {
+    // Phase F — an open reattack recommendation (from a sortie's own BDA,
+    // not this field) keeps a "complete" target reading as unfinished
+    // rather than closed out, mirroring the same fact that keeps it on
+    // the HPTL (assets/targetLists.ts). Acting on it is the existing
+    // REGRESS control below, not a new re-engagement path — this button
+    // stays informational either way, the same as the plain-complete case.
+    if (hasActiveReattackRecommendation(sel.id, sorties)) {
+      return {
+        label: '⚠ REATTACK RECOMMENDED',
+        sub: reattackNoteFor(sel.id, sorties) || 'Open reattack call — see linked sortie BDA',
+        color: C.amber,
+        bg: 'rgba(255,171,56,.1)',
+        border: C.amber,
+        subColor: 'var(--ink-dim2)',
+        cursor: 'default',
+      };
+    }
     return { label: 'TARGET COMPLETE', sub: sel.bda || 'BDA LOGGED', color: C.green, bg: 'rgba(95,227,154,.08)', border: '#244536', subColor: 'var(--ink-dim2)', cursor: 'default' };
   }
   if (engaged) {
@@ -54,6 +72,7 @@ export default function TargetWorkup() {
   const targets = useStore((s) => s.targets);
   const sensors = useStore((s) => s.sensors);
   const effectors = useStore((s) => s.effectors);
+  const sorties = useStore((s) => s.sorties);
   const selectedId = useStore((s) => s.selectedId);
   const advanceStage = useStore((s) => s.advanceStage);
   const retreatStage = useStore((s) => s.retreatStage);
@@ -75,7 +94,7 @@ export default function TargetWorkup() {
   const di = decayInfo(sel.decay);
   const candidates = effFor(sel, effectors);
   const effCallsign = effName(effectors, sel.effector);
-  const btn = engageButtonProps(sel, effCallsign);
+  const btn = engageButtonProps(sel, effCallsign, sorties);
 
   const affWash = sel.aff === 'HOS' ? 'rgba(255,90,71,.07)' : sel.aff === 'UNK' ? 'rgba(255,210,63,.06)' : 'rgba(95,227,154,.05)';
   const nsl = nslDistFor(sel);

@@ -95,6 +95,18 @@ fixtures until then). Different from every layer above in two ways:
   the query API's field whitelist (Phase 2) and the Kafka message schema
   (`kafka/README.md`) — nothing enforces these three staying in sync.
 
+**`layer_id` values.** `history-vessel-tracks` is Phase 0/1's — seeded by
+`postgis-init/101-history-fixtures.sql` and, once built, the Kafka
+pipeline. `history-air-tracks` (added for the "Rolling Air Picture" ATO
+plan's Phase D) is fixture-only: seeded by `server/src/seed.ts`'s
+`SEED_AIR_TRACK_HISTORY`, inserted directly by `server/src/db.ts`'s
+`seedFresh()` rather than through `postgis-init/` or Kafka, because its
+event times have to land inside whichever `Sortie` fixture it belongs to's
+own dynamically-computed TOT window — a static SQL file can't know that
+at Docker-init time, and there's no live air-track Kafka producer yet.
+Both values are whitelisted in `server/src/historyQuery.ts`'s
+`ALLOWED_LAYER_IDS`; adding a third layer means adding it there too.
+
 **Axis order — read before writing any BBOX query against this layer.**
 Verified live during Phase 0: this GeoServer instance requires **lat,lon
 (northing, easting) order** for EPSG:4326 BBOX filtering — both the raw

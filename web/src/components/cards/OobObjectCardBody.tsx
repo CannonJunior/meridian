@@ -146,14 +146,14 @@ export default function OobObjectCardBody({ id, tab }: { id: string; tab: number
   const oobStyle = useStore((s) => s.oobStyle);
   const contactIdentityAssignments = useStore((s) => s.contactIdentityAssignments);
 
-  const node = pathNodes(id).at(-1);
+  const path = pathNodes(id);
+  const node = path.at(-1);
   if (!node) return null;
 
   const isObject = node.entityType === 'object';
   const status = effectiveStatus(node, contactIdentityAssignments);
   const meta = statusMeta(status);
   const parent = parentOf(id);
-  const path = pathNodes(id);
   const siblings = siblingObjectsOf(id);
   const activeKey = oobTabKeys(node)[tab] ?? 'overview';
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import 'ol/ol.css';
 import 'olcs/css/olcs.css';
 import OlMap from 'ol/Map';
@@ -24,12 +24,16 @@ import Attribution from 'ol/control/Attribution';
 import { useStore } from '../store';
 import type { DrawLayerId } from '../store';
 import { computeStaticMapExtentWebMercator, fetchGoogleStaticMapDataUrl, GOOGLE_STATIC_MAP_SIZE } from '../googleStaticMap';
-import { affColor, altBand, geodesicCircleLngLat, geodesicSectorLngLat, geodesicEllipseLngLat } from '../selectors';
+import { affColor, altBand, geodesicCircleLngLat, geodesicSectorLngLat, geodesicEllipseLngLat, sortieStatusColor } from '../selectors';
 import { statusMeta } from '../oobSelectors';
 import type { ObjectStatus } from '../assets/oob';
 import { hexToRgba } from '../assets/palette';
 import { AO_BOUNDS, AO_CENTER, BASEMAP_STYLES, PROJECTION_OPTIONS, registerProjections } from '../mapProjection';
-import type { Sensor, Target } from '../types';
+import type { CardKind, Nai, Sensor, Sortie, Target } from '../types';
+import { AIRSPACE_CONTROL_MEASURES } from '../assets/airspaceControlMeasures';
+import { loadAirfieldIcaoIndex } from '../airfieldIcaoIndex';
+import type { AirfieldLocation } from '../airfieldIcaoIndex';
+import { loadSortieHistoryTrack } from '../airTrackHistory';
 import { buildAirborneEntities, exaggeratedMeters, logAltitudeMeters, ALTITUDE_EXAGGERATION, MODE_25D_LOOK_ANGLE_DEG } from '../cesium3d';
 import type { MapMode } from '../cesium3d';
 import type OLCesiumType from 'olcs';
@@ -46,6 +50,19 @@ import type { Feature, FeatureCollection, Point } from 'geojson';
 type ProjectFn = (lng: number, lat: number) => { x: number; y: number };
 
 registerProjections();
+
+// Fixed reference points on the picture, not tied to any live entity — real
+// lng/lat equivalent to the old abstract grid's (12,86) and (50,46), see
+// seed.ts's header comment for how every other fixed seed position was
+// converted the same way. Their geodesic rings (MapOverlaySvg, below) never
+// move, so — unlike every other shape that component draws — the lng/lat
+// point set is computed once here at module scope rather than recomputed
+// every render (each ring is 72 destinationPoint/trig calls; 7 rings, every
+// second, forever, for geometry that's provably static was pure waste).
+const OWNSHIP_LNG_LAT: [number, number] = [-5.942, 35.82];
+const BULLSEYE_LNG_LAT: [number, number] = [-5.6, 36.02];
+const OWNSHIP_RINGS_LNGLAT = [10, 20, 30, 40].map((nm) => ({ nm, points: geodesicCircleLngLat(OWNSHIP_LNG_LAT[0], OWNSHIP_LNG_LAT[1], nm) }));
+const BULLSEYE_RINGS_LNGLAT = [5, 10, 15].map((nm) => ({ nm, points: geodesicCircleLngLat(BULLSEYE_LNG_LAT[0], BULLSEYE_LNG_LAT[1], nm) }));
 
 const OOB_LEGEND_ROWS: { status: ObjectStatus; glyph?: string }[] = [
   { status: 'VISIBLE' },
@@ -294,7 +311,16 @@ const SENSOR_WIDE_MAJOR_NM = 35;
 const SENSOR_WIDE_MINOR_NM = 18;
 const SENSOR_AREA_RADIUS_NM = 30;
 
-function SensorCoverage({ s, project }: { s: Sensor; project: ProjectFn }) {
+// Memoized: a sensor's coverage shape is 30-70+ geodesic vertices of trig
+// math (geodesicSectorLngLat/EllipseLngLat/CircleLngLat), recomputed from
+// scratch on every call. Sensor coverage practically never changes
+// (retasking touches status/tasking, not lng/lat/cov/covDir), but
+// MapOverlaySvg re-renders every sim tick because it also reads `targets`
+// — without this, all 6 sensors' shapes were being rebuilt every second
+// regardless. Skipped whenever `s` and `project` are both referentially
+// unchanged, which is now the common case for both (see this file's
+// `project` useCallback and store.ts's deepEqual-gated patching).
+const SensorCoverage = memo(function SensorCoverage({ s, project }: { s: Sensor; project: ProjectFn }) {
   if (s.cov === 'cone') {
     const points = geodesicSectorLngLat(s.lng, s.lat, SENSOR_CONE_RADIUS_NM, s.covDir ?? 120, SENSOR_CONE_HALF_ANGLE_DEG);
     return <GeodesicShape className="sensor-coverage-cone" points={points} project={project} fill="rgba(63,210,230,.045)" stroke="rgba(63,210,230,.18)" strokeDasharray="4 4" />;
@@ -312,7 +338,7 @@ function SensorCoverage({ s, project }: { s: Sensor; project: ProjectFn }) {
     return <GeodesicShape className="sensor-coverage-area" points={points} project={project} fill="rgba(91,157,255,.03)" stroke="rgba(91,157,255,.12)" strokeDasharray="3 6" />;
   }
   return null;
-}
+});
 
 function TrackSymbol({ t, selected, project, onSelect, onOpen }: { t: Target; selected: boolean; project: ProjectFn; onSelect: () => void; onOpen: () => void }) {
   const showAltitude = useStore((s) => s.showAltitude);
@@ -444,58 +470,122 @@ function GeodesicShape({
   return <polygon className={className} points={points} fill={fill} stroke={stroke} strokeWidth={strokeWidth} strokeDasharray={strokeDasharray} style={{ pointerEvents: 'none' }} />;
 }
 
-function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: number; height: number }) {
-  const cesiumActive = useStore((s) => s.mapMode !== '2D');
-  const nais = useStore((s) => s.nais);
-  const sensors = useStore((s) => s.sensors);
-  const units = useStore((s) => s.units);
-  const targets = useStore((s) => s.targets);
-  const selectedId = useStore((s) => s.selectedId);
-  const selectTarget = useStore((s) => s.selectTarget);
-  const openCard = useStore((s) => s.openCard);
-  const openEntity = useStore((s) => s.openEntity);
+// Phase C of the "Rolling Air Picture" plan. A sortie's flight line is
+// origin airfield -> (its first linked target, if it has one) -> recovery
+// airfield — not a plain origin-to-recovery line, because most sorties in
+// this AO launch and recover at the same base (a combat air patrol/strike
+// round-trip, not a transit), which would otherwise draw a zero-length
+// line. A sortie with neither a linked target nor a different recovery
+// airfield (an on-station AAR/AEW/ISR orbit) has no resolvable route at
+// all yet — see the design brief's RT-08 finding — and is skipped rather
+// than drawn with invented geometry.
+function sortieRoutePoints(s: Sortie, airfields: Record<string, AirfieldLocation>, targets: Target[]): [number, number][] | null {
+  const origin = airfields[s.originAirfield];
+  const recovery = airfields[s.recoveryAirfield];
+  if (!origin || !recovery) return null;
+  if (s.targetIds.length > 0) {
+    const t = targets.find((x) => x.id === s.targetIds[0]);
+    if (t) return [[origin.lng, origin.lat], [t.lng, t.lat], [recovery.lng, recovery.lat]];
+  }
+  if (s.originAirfield !== s.recoveryAirfield) return [[origin.lng, origin.lat], [recovery.lng, recovery.lat]];
+  return null;
+}
 
-  const drift = targets.find((t) => t.id === 'T2210');
-  // Fixed reference points on the picture, not tied to any live entity —
-  // real lng/lat equivalent to the old abstract grid's (12,86) and
-  // (50,46), computed once via the AO's linear stretch (see seed.ts's
-  // header comment for how every other fixed seed position was converted
-  // the same way).
-  const ownshipLngLat: [number, number] = [-5.942, 35.82];
-  const bullseyeLngLat: [number, number] = [-5.6, 36.02];
-  const bullseye = project(...bullseyeLngLat);
-
+function FlightLine({ sortie, points, project }: { sortie: Sortie; points: [number, number][]; project: ProjectFn }) {
+  const proj = points.map(([lng, lat]) => project(lng, lat)).filter((p) => p.x !== -9999 && p.y !== -9999);
+  if (proj.length < 2) return null;
+  const mid = proj[Math.floor(proj.length / 2)];
+  const color = sortieStatusColor(sortie.status);
+  // Dashed for a sortie not yet airborne (a planned/fragged future leg,
+  // per the design brief's §III.4) — solid for anything currently or
+  // already flown. Phase D is what eventually replaces the solid case
+  // with a real historical track from entity_track_history instead of
+  // this straight-line approximation.
+  const dashed = sortie.status === 'FRAGGED';
   return (
-    <svg className="map-overlay-svg" viewBox={`0 0 ${width} ${height}`} width={width} height={height} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-      {/* Doctrinal-spacing NM values (no prior real-world radius existed —
-          these were flat 120/230/340/460px circles) rather than a reverse-
-          engineered match to that arbitrary pixel sizing. */}
-      {[10, 20, 30, 40].map((nm) => (
-        <GeodesicShape
-          key={`ring${nm}`}
-          className="map-overlay-ownship-ring"
-          points={geodesicCircleLngLat(ownshipLngLat[0], ownshipLngLat[1], nm)}
-          project={project}
-          stroke="rgba(63,210,230,.10)"
-          strokeDasharray="2 7"
-        />
-      ))}
-
-      {[5, 10, 15].map((nm) => (
-        <GeodesicShape
-          key={`bulls${nm}`}
-          className="map-overlay-bullseye-ring"
-          points={geodesicCircleLngLat(bullseyeLngLat[0], bullseyeLngLat[1], nm)}
-          project={project}
-          stroke="rgba(255,171,56,.18)"
-        />
-      ))}
-      <line className="map-overlay-bullseye-line-v" x1={bullseye.x} y1={bullseye.y - 72} x2={bullseye.x} y2={bullseye.y + 72} stroke="rgba(255,171,56,.16)" strokeWidth={1} style={{ pointerEvents: 'none' }} />
-      <line className="map-overlay-bullseye-line-h" x1={bullseye.x - 72} y1={bullseye.y} x2={bullseye.x + 72} y2={bullseye.y} stroke="rgba(255,171,56,.16)" strokeWidth={1} style={{ pointerEvents: 'none' }} />
-      <text className="map-overlay-bullseye-label" x={bullseye.x + 70} y={bullseye.y - 50} fill="#7a5e24" fontSize={9} fontFamily="IBM Plex Mono" letterSpacing={1} style={{ pointerEvents: 'none' }}>
-        BULLSEYE
+    <g className="map-overlay-flight-line-group" style={{ pointerEvents: 'none' }}>
+      <polyline
+        className="map-overlay-flight-line"
+        points={proj.map((p) => `${p.x},${p.y}`).join(' ')}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeDasharray={dashed ? '5 4' : undefined}
+        opacity={0.8}
+      />
+      <text className="map-overlay-flight-line-label" x={mid.x + 6} y={mid.y - 6} fill={color} fontSize={8.5} fontFamily="IBM Plex Mono" letterSpacing={0.4}>
+        {sortie.callsign}
       </text>
+    </g>
+  );
+}
+const MemoFlightLine = memo(FlightLine);
 
+// Memoized: AIRSPACE_CONTROL_MEASURES is fixed reference data (not even a
+// prop), so with `project` now stable (see this file's project
+// useCallback), this renders once and then never again on a plain sim
+// tick — versus rebuilding these polylines/boxes from scratch every
+// second, unconditionally, before.
+const AcoOverlayLayer = memo(function AcoOverlayLayer({ project }: { project: ProjectFn }) {
+  return (
+    <>
+      {AIRSPACE_CONTROL_MEASURES.map((acm) => {
+        if (acm.kind === 'ROZ' && acm.box) {
+          const p1 = project(acm.box.lngMin, acm.box.latMax);
+          const p2 = project(acm.box.lngMax, acm.box.latMin);
+          const rx = Math.min(p1.x, p2.x);
+          const ry = Math.min(p1.y, p2.y);
+          const rw = Math.abs(p2.x - p1.x);
+          const rh = Math.abs(p2.y - p1.y);
+          return (
+            <g key={acm.id} className="map-overlay-acm-roz" style={{ pointerEvents: 'none' }}>
+              <rect className="map-overlay-acm-roz-box" x={rx} y={ry} width={rw} height={rh} fill={hexToRgba(acm.color, 0.05)} stroke={acm.color} strokeWidth={1.2} strokeDasharray="3 5" />
+              <text className="map-overlay-acm-roz-label" x={rx + 4} y={ry + 13} fill={acm.color} fontSize={9.5} fontFamily="Chakra Petch" fontWeight={700}>
+                {acm.name}
+              </text>
+              <text className="map-overlay-acm-roz-alt-label" x={rx + 4} y={ry + 25} fill={acm.color} fontSize={8} fontFamily="IBM Plex Mono" opacity={0.85}>
+                {acm.altitudeBlock}
+              </text>
+            </g>
+          );
+        }
+        if (acm.kind === 'CORRIDOR' && acm.line) {
+          const proj = acm.line.map(([lng, lat]) => project(lng, lat)).filter((p) => p.x !== -9999 && p.y !== -9999);
+          if (proj.length < 2) return null;
+          const mid = proj[Math.floor(proj.length / 2)];
+          return (
+            <g key={acm.id} className="map-overlay-acm-corridor" style={{ pointerEvents: 'none' }}>
+              <polyline
+                className="map-overlay-acm-corridor-line"
+                points={proj.map((p) => `${p.x},${p.y}`).join(' ')}
+                fill="none"
+                stroke={acm.color}
+                strokeWidth={2}
+                strokeDasharray="1 6"
+                strokeLinecap="round"
+                opacity={0.65}
+              />
+              <text className="map-overlay-acm-corridor-label" x={mid.x + 6} y={mid.y - 6} fill={acm.color} fontSize={8.5} fontFamily="IBM Plex Mono">
+                {acm.name} · {acm.altitudeBlock}
+              </text>
+            </g>
+          );
+        }
+        return null;
+      })}
+    </>
+  );
+});
+
+// Memoized: nais rarely changes (no live sim mutation touches it), and
+// with `project`/`openEntity` both stable now (see this file's project
+// useCallback; Zustand actions are stable by construction), this skips
+// re-rendering the NAI boxes/labels on the sim ticks that don't touch any
+// of the three — versus recomputing every box's screen rect from scratch
+// every second regardless, before.
+const NaiLayer = memo(function NaiLayer({ nais, project, openEntity }: { nais: Nai[]; project: ProjectFn; openEntity: (kind: CardKind, id: string) => void }) {
+  return (
+    <>
       {nais.map((n) => {
         const p1 = project(n.lngMin, n.latMax);
         const p2 = project(n.lngMax, n.latMin);
@@ -515,6 +605,102 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
           </g>
         );
       })}
+    </>
+  );
+});
+
+function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: number; height: number }) {
+  const cesiumActive = useStore((s) => s.mapMode !== '2D');
+  const nais = useStore((s) => s.nais);
+  const sensors = useStore((s) => s.sensors);
+  const units = useStore((s) => s.units);
+  const targets = useStore((s) => s.targets);
+  const selectedId = useStore((s) => s.selectedId);
+  const selectTarget = useStore((s) => s.selectTarget);
+  const openCard = useStore((s) => s.openCard);
+  const openEntity = useStore((s) => s.openEntity);
+  const sorties = useStore((s) => s.sorties);
+  const selectedAtoDay = useStore((s) => s.selectedAtoDay);
+  const showFlightLines = useStore((s) => s.showFlightLines);
+  const showAcoOverlay = useStore((s) => s.showAcoOverlay);
+
+  // Fetched lazily (only once FLT is actually toggled on) via the same
+  // cached WFS loader every context layer uses — see airfieldIcaoIndex.ts.
+  // Not fetched at all if the toggle is never touched this session.
+  const [airfieldIndex, setAirfieldIndex] = useState<Record<string, AirfieldLocation>>({});
+  useEffect(() => {
+    if (!showFlightLines) return;
+    let cancelled = false;
+    loadAirfieldIcaoIndex().then((idx) => {
+      if (!cancelled) setAirfieldIndex(idx);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [showFlightLines]);
+
+  // Phase D — a COMPLETE sortie's real historical track, once fetched,
+  // replaces sortieRoutePoints()'s straight-line approximation for that
+  // one sortie below. Only fetched for COMPLETE sorties on the day
+  // currently in view, not the whole fixture set, since that's the only
+  // status this app models as having a track to fetch at all.
+  const [historyTracks, setHistoryTracks] = useState<Record<string, [number, number][]>>({});
+  useEffect(() => {
+    if (!showFlightLines) return;
+    const completed = sorties.filter((s) => s.atoDay === selectedAtoDay && s.status === 'COMPLETE' && !historyTracks[s.id]);
+    if (completed.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      completed.map((s) =>
+        loadSortieHistoryTrack(s).then((points) => [s.id, points.map((p) => [p.lng, p.lat] as [number, number])] as const),
+      ),
+    ).then((entries) => {
+      if (cancelled) return;
+      const withTracks = entries.filter(([, points]) => points.length >= 2);
+      if (withTracks.length === 0) return;
+      setHistoryTracks((prev) => ({ ...prev, ...Object.fromEntries(withTracks) }));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showFlightLines, selectedAtoDay, sorties]);
+
+  const drift = targets.find((t) => t.id === 'T2210');
+  const bullseye = project(...BULLSEYE_LNG_LAT);
+
+  return (
+    <svg className="map-overlay-svg" viewBox={`0 0 ${width} ${height}`} width={width} height={height} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
+      {/* Doctrinal-spacing NM values (no prior real-world radius existed —
+          these were flat 120/230/340/460px circles) rather than a reverse-
+          engineered match to that arbitrary pixel sizing. */}
+      {OWNSHIP_RINGS_LNGLAT.map(({ nm, points }) => (
+        <GeodesicShape className="map-overlay-ownship-ring" key={`ring${nm}`} points={points} project={project} stroke="rgba(63,210,230,.10)" strokeDasharray="2 7" />
+      ))}
+
+      {BULLSEYE_RINGS_LNGLAT.map(({ nm, points }) => (
+        <GeodesicShape className="map-overlay-bullseye-ring" key={`bulls${nm}`} points={points} project={project} stroke="rgba(255,171,56,.18)" />
+      ))}
+      <line className="map-overlay-bullseye-line-v" x1={bullseye.x} y1={bullseye.y - 72} x2={bullseye.x} y2={bullseye.y + 72} stroke="rgba(255,171,56,.16)" strokeWidth={1} style={{ pointerEvents: 'none' }} />
+      <line className="map-overlay-bullseye-line-h" x1={bullseye.x - 72} y1={bullseye.y} x2={bullseye.x + 72} y2={bullseye.y} stroke="rgba(255,171,56,.16)" strokeWidth={1} style={{ pointerEvents: 'none' }} />
+      <text className="map-overlay-bullseye-label" x={bullseye.x + 70} y={bullseye.y - 50} fill="#7a5e24" fontSize={9} fontFamily="IBM Plex Mono" letterSpacing={1} style={{ pointerEvents: 'none' }}>
+        BULLSEYE
+      </text>
+
+      <NaiLayer nais={nais} project={project} openEntity={openEntity} />
+
+      {showAcoOverlay && <AcoOverlayLayer project={project} />}
+
+      {showFlightLines &&
+        sorties
+          .filter((s) => s.atoDay === selectedAtoDay)
+          .map((s) => {
+            // A real historical track (Phase D), once fetched, replaces
+            // the straight-line approximation for that one sortie — see
+            // the historyTracks effect above.
+            const points = historyTracks[s.id] ?? sortieRoutePoints(s, airfieldIndex, targets);
+            return points ? <MemoFlightLine key={s.id} sortie={s} points={points} project={project} /> : null;
+          })}
 
       {sensors.map((s) => (
         <SensorCoverage key={`cov-${s.id}`} s={s} project={project} />
@@ -691,6 +877,7 @@ export default function TacticalMap() {
   const targets = useStore((s) => s.targets);
   const sensors = useStore((s) => s.sensors);
   const drawTool = useStore((s) => s.drawTool);
+  const drawingToolActive = useStore((s) => s.activeManager === 'draw');
   const cardKind = useStore((s) => s.cardKind);
   const cardId = useStore((s) => s.cardId);
   const drawnShapes = useStore((s) => s.drawnShapes);
@@ -702,7 +889,13 @@ export default function TacticalMap() {
   const persistedShapeImageLayersRef = useRef<ImageLayer<ImageStatic>[]>([]);
   const shapeEditLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const shapeEditInteractionRef = useRef<Modify | null>(null);
-  const [, bumpRender] = useState(0);
+  // The value itself was previously discarded (`[, bumpRender]`) — this was
+  // purely a "force a re-render" counter. Now also read by project's
+  // useCallback below, so a camera/view change (the only thing this is
+  // bumped for — postrender, 3D mode switches, the throttled Cesium camera
+  // listener) is exactly what gives `project` a new identity, and nothing
+  // else does.
+  const [renderTick, bumpRender] = useState(0);
   const [size, setSize] = useState({ w: 0, h: 0 });
 
   useEffect(() => {
@@ -1036,7 +1229,7 @@ export default function TacticalMap() {
   // directly; there's no independent zoom control to keep in sync with it.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || drawTool.phase !== 'capture') return;
+    if (!map || !drawingToolActive || drawTool.phase !== 'capture') return;
     const view = map.getView();
     const updatePreview = () => {
       const center = view.getCenter();
@@ -1052,7 +1245,7 @@ export default function TacticalMap() {
     return () => {
       map.un('moveend', updatePreview);
     };
-  }, [drawTool.phase]);
+  }, [drawingToolActive, drawTool.phase]);
 
   // Drawing tool, step 1b: draws the dashed preview rectangle itself —
   // "the outline of the area on the map where a Google image will be
@@ -1066,7 +1259,7 @@ export default function TacticalMap() {
       map.removeLayer(capturePreviewLayerRef.current);
       capturePreviewLayerRef.current = null;
     }
-    if (drawTool.phase !== 'capture' || !captureExtent) return;
+    if (!drawingToolActive || drawTool.phase !== 'capture' || !captureExtent) return;
     const [minX, minY, maxX, maxY] = captureExtent;
     // captureExtent is EPSG:3857 meters (same as the actual capture's
     // image extent) — converted to lng/lat corners here so it can go
@@ -1087,7 +1280,7 @@ export default function TacticalMap() {
     });
     capturePreviewLayerRef.current = layer;
     map.addLayer(layer);
-  }, [captureExtent, drawTool.phase]);
+  }, [captureExtent, drawTool.phase, drawingToolActive]);
 
   // Drawing tool, step 2: fetch a Google Static Maps image for the last-
   // previewed center (see googleStaticMap.ts) whenever DrawingToolManager
@@ -1355,18 +1548,38 @@ export default function TacticalMap() {
   // targets, sensor coverage, NAIs, ownship/bullseye) keeps tracking
   // correctly under the Cesium camera while 3D mode is active, with zero
   // changes to the symbology itself.
-  const project: ProjectFn = (lng, lat) => {
-    if (cesiumActive && ol3dRef.current?.getEnabled() && cesiumRef.current) {
-      const scene = ol3dRef.current.getCesiumScene();
-      const c = scene.cartesianToCanvasCoordinates(cesiumRef.current.Cartesian3.fromDegrees(lng, lat, 0));
-      return c ? { x: c.x, y: c.y } : { x: -9999, y: -9999 };
-    }
-    const map = mapRef.current;
-    if (!map) return { x: -9999, y: -9999 };
-    const projection = map.getView().getProjection();
-    const p = map.getPixelFromCoordinate(fromLonLat([lng, lat], projection));
-    return p ? { x: p[0], y: p[1] } : { x: -9999, y: -9999 };
-  };
+  // useCallback'd on cesiumActive alone (its only non-ref dependency) so
+  // this keeps one stable identity across the many renders per second
+  // TacticalMap goes through from live target updates — mapRef/ol3dRef/
+  // cesiumRef are refs, so reading .current inside always sees the latest
+  // map/camera regardless of when this closure was created. A fresh
+  // `project` reference every render was invalidating React.memo on every
+  // overlay sub-layer that receives it as a prop (MapOverlaySvg's
+  // NaiLayer/SensorCoverage/AcoOverlayLayer/FlightLine below), forcing all
+  // of them to recompute their geometry every tick even when nothing they
+  // actually draw had changed.
+  const project: ProjectFn = useCallback(
+    (lng, lat) => {
+      if (cesiumActive && ol3dRef.current?.getEnabled() && cesiumRef.current) {
+        const scene = ol3dRef.current.getCesiumScene();
+        const c = scene.cartesianToCanvasCoordinates(cesiumRef.current.Cartesian3.fromDegrees(lng, lat, 0));
+        return c ? { x: c.x, y: c.y } : { x: -9999, y: -9999 };
+      }
+      const map = mapRef.current;
+      if (!map) return { x: -9999, y: -9999 };
+      const projection = map.getView().getProjection();
+      const p = map.getPixelFromCoordinate(fromLonLat([lng, lat], projection));
+      return p ? { x: p[0], y: p[1] } : { x: -9999, y: -9999 };
+    },
+    // renderTick isn't read in the body above — it's deliberately listed
+    // anyway so this callback gets a new identity exactly when the camera/
+    // view actually changed (postrender, 3D mode switch, the throttled
+    // Cesium camera listener — the only things that ever bump it), which
+    // is the one case a memoized overlay layer *must* re-render despite
+    // every other prop being unchanged.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [cesiumActive, renderTick],
+  );
 
   // Sensor-imaging convention (this app's EO/IR/SAR context): look angle
   // measured from nadir, 0° = camera pointed straight down, 90° = level

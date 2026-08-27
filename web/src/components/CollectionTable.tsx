@@ -1,7 +1,8 @@
+import { useMemo } from 'react';
 import { useStore } from '../store';
 import { affColor, affShapeStyle, C, effName, sensorName, statusColorFor, STAGES, confColor } from '../selectors';
 import type { Target } from '../types';
-import { TARGET_LISTS, targetsForList } from '../assets/targetLists';
+import { hasActiveReattackRecommendationIndexed, indexSortiesByBdaTarget, TARGET_LISTS, targetsForList } from '../assets/targetLists';
 
 const GRID_COLS = '34px 96px 1fr 64px 96px 52px 70px 100px 58px';
 const AFF_FULL: Record<Target['aff'], string> = { HOS: 'HOSTILE', UNK: 'UNKNOWN', FRD: 'FRIENDLY', NEU: 'NEUTRAL' };
@@ -10,6 +11,7 @@ export default function CollectionTable() {
   const targets = useStore((s) => s.targets);
   const sensors = useStore((s) => s.sensors);
   const effectors = useStore((s) => s.effectors);
+  const sorties = useStore((s) => s.sorties);
   const selectedId = useStore((s) => s.selectedId);
   const selectTarget = useStore((s) => s.selectTarget);
   const openCard = useStore((s) => s.openCard);
@@ -17,7 +19,12 @@ export default function CollectionTable() {
   const resetNorth = useStore((s) => s.resetNorth);
 
   const activeList = TARGET_LISTS.find((l) => l.id === activeListId) ?? TARGET_LISTS[0];
-  const listTargets = targetsForList(targets, activeListId);
+  const listTargets = targetsForList(targets, activeListId, sorties);
+  // Built once per render, reused per row below — replaces each row
+  // calling hasActiveReattackRecommendation (an O(sorties) scan) for
+  // itself, and replaces the second such scan targetsForList already did
+  // internally for the exact same fact.
+  const reattackIndex = useMemo(() => indexSortiesByBdaTarget(sorties), [sorties]);
 
   const tracksTotal = listTargets.filter((t) => t.stage < 4).length;
   const hostileCount = listTargets.filter((t) => t.aff === 'HOS' && t.stage < 4).length;
@@ -89,7 +96,8 @@ export default function CollectionTable() {
           const priColor = t.pri && t.pri <= 3 ? C.amber : '#7a8d8a';
           const stage = STAGES[t.stage];
           const effLabel = t.effector ? effName(effectors, t.effector) : '— UNPAIRED';
-          const statusColor = statusColorFor(t);
+          const reattack = hasActiveReattackRecommendationIndexed(t.id, reattackIndex);
+          const statusColor = reattack ? C.amber : statusColorFor(t);
           return (
             <div
               key={t.id}
@@ -136,7 +144,7 @@ export default function CollectionTable() {
                 {effLabel}
               </span>
               <span className="collection-table-cell-status" style={{ fontSize: 8, letterSpacing: '.04em', color: statusColor, fontWeight: 600 }}>
-                {t.status}
+                {reattack ? '⚠ REATTACK' : t.status}
               </span>
             </div>
           );

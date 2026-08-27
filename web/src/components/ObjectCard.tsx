@@ -1,10 +1,11 @@
 import { useRef } from 'react';
 import { useStore } from '../store';
-import { affColor, affFull, affShapeStyle, threatColor } from '../selectors';
+import { affColor, affFull, affShapeStyle, sortieStatusColor, threatColor } from '../selectors';
 import { effectiveStatus, findOobNode, kindLabel, oobTabNames, statusMeta } from '../oobSelectors';
 import { VESSEL_PROFILES } from '../assets/vesselProfiles';
 import { useKnowledgeGraph } from '../kb/deriveGraph';
 import { KG_TYPE_LABEL, kgTabNames, kgTypeColor } from '../kb/ontology';
+import type { KgDocument } from '../kb/ontology';
 import TargetCardBody from './cards/TargetCardBody';
 import SensorUnitCardBody from './cards/SensorUnitCardBody';
 import NaiCardBody from './cards/NaiCardBody';
@@ -13,6 +14,7 @@ import OobObjectCardBody from './cards/OobObjectCardBody';
 import PortCardBody from './cards/PortCardBody';
 import AirfieldCardBody from './cards/AirfieldCardBody';
 import KbEntityCardBody from './cards/KbEntityCardBody';
+import SortieCardBody from './cards/SortieCardBody';
 import type { CardKind } from '../types';
 
 function CrosshairsIcon({ color }: { color: string }) {
@@ -46,14 +48,14 @@ function ThumbtackIcon({ color, pinned }: { color: string; pinned: boolean }) {
   );
 }
 
-function useCardLocation(kind: CardKind, id: string | null): { lng: number; lat: number } | null {
+function useCardLocation(kind: CardKind, id: string | null, kg: KgDocument): { lng: number; lat: number } | null {
   const targets = useStore((s) => s.targets);
   const sensors = useStore((s) => s.sensors);
   const units = useStore((s) => s.units);
   const nais = useStore((s) => s.nais);
   const ports = useStore((s) => s.ports);
   const airfields = useStore((s) => s.airfields);
-  const kg = useKnowledgeGraph();
+  const sorties = useStore((s) => s.sorties);
 
   if (kind === 'kbEntity') {
     if (id == null) return null;
@@ -98,6 +100,19 @@ function useCardLocation(kind: CardKind, id: string | null): { lng: number; lat:
     const a = airfields[id];
     return a ? { lng: a.lng, lat: a.lat } : null;
   }
+  if (kind === 'sortie') {
+    // Per the design brief's RT-08 finding, a sortie doesn't reduce to one
+    // point the way a target/sensor/unit does — an AAR orbit or an
+    // airlift route isn't a coordinate. The only honest position Phase B
+    // can offer is a linked live Sensor's current position (e.g. an ISR
+    // sortie flown by an MQ-9 that's also a tracked Sensor); Effector
+    // entities carry no lng/lat in this app at all, and airfield-only
+    // sorties (AAR, AIRLIFT, unlinked ISR/AEW) resolve to null until
+    // Phase C gives airfields/orbits/routes real geometry.
+    const so = sorties.find((x) => x.id === id);
+    const sn = so?.linkedPlatformId ? sensors.find((x) => x.id === so.linkedPlatformId) : null;
+    return sn ? { lng: sn.lng, lat: sn.lat } : null;
+  }
   return null;
 }
 
@@ -115,15 +130,15 @@ interface HeaderInfo {
   tabNames: string[];
 }
 
-function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
+function useHeaderInfo(kind: CardKind, id: string | null, kg: KgDocument): HeaderInfo | null {
   const targets = useStore((s) => s.targets);
   const sensors = useStore((s) => s.sensors);
   const units = useStore((s) => s.units);
   const nais = useStore((s) => s.nais);
   const ports = useStore((s) => s.ports);
   const airfields = useStore((s) => s.airfields);
+  const sorties = useStore((s) => s.sorties);
   const contactIdentityAssignments = useStore((s) => s.contactIdentityAssignments);
-  const kg = useKnowledgeGraph();
 
   if (id == null) return null;
 
@@ -295,6 +310,25 @@ function useHeaderInfo(kind: CardKind, id: string | null): HeaderInfo | null {
     };
   }
 
+  if (kind === 'sortie') {
+    const so = sorties.find((x) => x.id === id);
+    if (!so) return null;
+    const color = sortieStatusColor(so.status);
+    return {
+      idShort: so.callsign,
+      name: so.platform,
+      affColor: color,
+      affShapeStyle: {},
+      affFull: 'FRIENDLY',
+      affGlow: color,
+      affWash: 'rgba(63,210,230,.08)',
+      typePillLabel: so.missionType,
+      typePillColor: 'var(--cyan)',
+      typePillBorder: 'var(--cyan)',
+      tabNames: ['OVERVIEW', 'LINKAGE', 'ROUTE', 'BDA'],
+    };
+  }
+
   // zone
   return {
     idShort: 'NSZ-01',
@@ -336,8 +370,14 @@ function ObjectCardShell({ cardKind, cardId, cardTab, cardX, cardY, pinned, zInd
   const flyTo = useStore((s) => s.flyTo);
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
 
-  const info = useHeaderInfo(cardKind, cardId);
-  const location = useCardLocation(cardKind, cardId);
+  // Computed once here and threaded into both hooks below — each used to
+  // call useKnowledgeGraph() independently, rebuilding the graph (staticNodes
+  // + live targets, keyed on targets so it reruns every sim tick) twice
+  // every render of every open card, regardless of whether the card is even
+  // a kbEntity card that reads it.
+  const kg = useKnowledgeGraph();
+  const info = useHeaderInfo(cardKind, cardId, kg);
+  const location = useCardLocation(cardKind, cardId, kg);
 
   // Listeners live only for the duration of an actual drag (attached on
   // pointer down, removed on pointer up) rather than for the component's
@@ -453,6 +493,7 @@ function ObjectCardShell({ cardKind, cardId, cardTab, cardX, cardY, pinned, zInd
         {cardKind === 'port' && <PortCardBody id={cardId} />}
         {cardKind === 'airfield' && <AirfieldCardBody id={cardId} />}
         {cardKind === 'kbEntity' && <KbEntityCardBody uri={cardId} tab={cardTab} />}
+        {cardKind === 'sortie' && <SortieCardBody id={cardId} tab={cardTab} />}
       </div>
     </div>
   );

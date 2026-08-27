@@ -38,18 +38,27 @@ export interface BasemapStyle {
   attribution: string;
 }
 
+// Previously CARTO's free basemap CDN (basemaps.cartocdn.com) — CARTO
+// started gating that endpoint behind an API key/account, so hotlinked
+// tiles started rendering as "API KEY REQUIRED" placeholder images with no
+// warning here. Replaced with Esri's ArcGIS Online world basemap services —
+// the same no-key-required, same-domain pattern the 'satellite' entry below
+// already used successfully, just different service names. Esri tiles have
+// no retina-tile convention (unlike CARTO's `{r}`), so these templates omit
+// it — resolveTileUrls' `{r}` replace is a no-op when the placeholder isn't
+// present, same as it already was for 'satellite'.
 export const BASEMAP_STYLES: BasemapStyle[] = [
   {
     id: 'tactical',
     label: 'TAC',
-    attribution: '© CARTO © OpenStreetMap contributors',
-    tileUrlTemplates: ['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'],
+    attribution: 'Esri, HERE, Garmin, FAO, NOAA, USGS',
+    tileUrlTemplates: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
   },
   {
     id: 'light',
     label: 'LIGHT',
-    attribution: '© CARTO © OpenStreetMap contributors',
-    tileUrlTemplates: ['https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png'],
+    attribution: 'Esri, HERE, Garmin, FAO, NOAA, USGS',
+    tileUrlTemplates: ['https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}'],
   },
   {
     id: 'satellite',
@@ -60,8 +69,8 @@ export const BASEMAP_STYLES: BasemapStyle[] = [
   {
     id: 'streets',
     label: 'STR',
-    attribution: '© CARTO © OpenStreetMap contributors',
-    tileUrlTemplates: ['https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', 'https://b.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', 'https://c.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'],
+    attribution: 'Esri, HERE, Garmin, © OpenStreetMap contributors',
+    tileUrlTemplates: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}'],
   },
 ];
 

@@ -1,6 +1,6 @@
 import pg from 'pg';
-import { freshState } from './seed.js';
-import type { Approvals, Effector, FriendlyUnit, LogEntry, Nai, Sensor, State, Target, View } from './types.js';
+import { freshState, SEED_AIR_TRACK_HISTORY } from './seed.js';
+import type { Approvals, Effector, FriendlyUnit, LogEntry, Nai, Sensor, Sortie, State, Target, View } from './types.js';
 
 // Backed by the same PostGIS instance geoserver/docker-compose.yml's
 // `postgis` service runs and GeoServer's own `ports_pg` datastore already
@@ -53,13 +53,28 @@ function rowToNai(r: any): Nai {
 function rowToLog(r: any): LogEntry {
   return { t: r.t, tag: r.tag, text: r.text, tag2: r.tag2 };
 }
+// totWindowStart/End come back from node-postgres as JS Date objects
+// (its default TIMESTAMPTZ parsing) — re-serialized to ISO 8601 strings
+// here so Sortie's field type (string, per the design brief's RT-01
+// resolution) holds all the way from Postgres to the client, not just in
+// the seed fixtures.
+function rowToSortie(r: any): Sortie {
+  return {
+    id: r.id, packageId: r.packageid, callsign: r.callsign, platform: r.platform,
+    linkedPlatformId: r.linkedplatformid, missionType: r.missiontype,
+    originAirfield: r.originairfield, recoveryAirfield: r.recoveryairfield,
+    targetIds: r.targetids, supportedSortieIds: r.supportedsortieids, collectionRequirementIds: r.collectionrequirementids,
+    totWindowStart: r.totwindowstart.toISOString(), totWindowEnd: r.totwindowend.toISOString(),
+    status: r.status, atoDay: r.atoday, bda: r.bda,
+  };
+}
 
 async function seedFresh(): Promise<void> {
   const s = freshState();
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM targets; DELETE FROM sensors; DELETE FROM effectors; DELETE FROM friendly_units; DELETE FROM nais; DELETE FROM log; DELETE FROM meta;');
+    await client.query('DELETE FROM targets; DELETE FROM sensors; DELETE FROM effectors; DELETE FROM friendly_units; DELETE FROM nais; DELETE FROM log; DELETE FROM meta; DELETE FROM sorties;');
     for (const t of s.targets) {
       await client.query(
         `INSERT INTO targets (id,name,type,cat,aff,threat,stage,pri,conf,trkQ,geom,course,speed,elev,custody,decay,sidc,effector,method,cde,nsl,appr_pid,appr_jag,appr_strike,appr_tea,status,bda,engagedAt,altFt,vsFtMin)
@@ -97,6 +112,36 @@ async function seedFresh(): Promise<void> {
     for (const l of s.log.slice().reverse()) {
       await client.query(`INSERT INTO log (t,tag,text,tag2) VALUES ($1,$2,$3,$4)`, [l.t, l.tag, l.text, l.tag2]);
     }
+    for (const so of s.sorties) {
+      await client.query(
+        `INSERT INTO sorties (id,packageId,callsign,platform,linkedPlatformId,missionType,originAirfield,recoveryAirfield,targetIds,supportedSortieIds,collectionRequirementIds,totWindowStart,totWindowEnd,status,atoDay,bda)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        [
+          so.id, so.packageId, so.callsign, so.platform, so.linkedPlatformId, so.missionType,
+          so.originAirfield, so.recoveryAirfield, JSON.stringify(so.targetIds), JSON.stringify(so.supportedSortieIds),
+          JSON.stringify(so.collectionRequirementIds), so.totWindowStart, so.totWindowEnd, so.status, so.atoDay,
+          so.bda ? JSON.stringify(so.bda) : null,
+        ],
+      );
+    }
+    // Phase D — entity_track_history lives in a different table than every
+    // other seed-fresh write above (it's the timelapse capability's store,
+    // not a live-entity one — see geoserver/postgis-init/100-history.sql),
+    // but SEED_AIR_TRACK_HISTORY's timestamps are only meaningful relative
+    // to the Sortie fixtures seeded just above, so it's seeded in the same
+    // transaction rather than a separate postgis-init file. Scoped to this
+    // one layer_id so a re-seed never touches 101-history-fixtures.sql's
+    // vessel-track rows or anything a real Kafka pipeline later writes
+    // under a different layer_id.
+    await client.query(`DELETE FROM entity_track_history WHERE layer_id = 'history-air-tracks'`);
+    for (const p of SEED_AIR_TRACK_HISTORY) {
+      await client.query(
+        `INSERT INTO entity_track_history (event_id,entity_id,entity_kind,layer_id,affiliation,speed_kn,event_time,geom,attrs)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,ST_SetSRID(ST_MakePoint($8,$9),4326),$10)
+         ON CONFLICT (event_id) DO NOTHING`,
+        [p.eventId, p.entityId, p.entityKind, p.layerId, p.affiliation, p.speedKn, p.eventTime, p.lng, p.lat, JSON.stringify(p.attrs)],
+      );
+    }
     await client.query(`INSERT INTO meta (id,t,selectedId,view,roeIdx) VALUES (1,$1,$2,$3,$4)`, [s.t, s.selectedId, s.view, s.roeIdx]);
     await client.query('COMMIT');
   } catch (err) {
@@ -113,13 +158,16 @@ export async function loadState(): Promise<State> {
     await seedFresh();
     return loadState();
   }
-  const [targets, sensors, effectors, units, nais, log] = await Promise.all([
+  const [targets, sensors, effectors, units, nais, log, sorties] = await Promise.all([
     pool.query('SELECT id,name,type,cat,aff,threat,stage,pri,conf,trkQ,ST_X(geom) AS lng,ST_Y(geom) AS lat,course,speed,elev,custody,decay,sidc,effector,method,cde,nsl,appr_pid,appr_jag,appr_strike,appr_tea,status,bda,engagedAt,altFt,vsFtMin FROM targets'),
     pool.query('SELECT id,callsign,platform,intType,status,tasking,endur,ST_X(geom) AS lng,ST_Y(geom) AS lat,cov,covDir,altFt FROM sensors'),
     pool.query('SELECT id,callsign,platform,weapon,status,tot,rng,suits,stealth,kinetic,altFt FROM effectors'),
     pool.query('SELECT id,callsign,platform,type,role,status,ST_X(geom) AS lng,ST_Y(geom) AS lat,weapon,endur,effId FROM friendly_units'),
     pool.query('SELECT id,description,pir,color,ST_XMin(geom) AS lng_min,ST_YMin(geom) AS lat_min,ST_XMax(geom) AS lng_max,ST_YMax(geom) AS lat_max FROM nais'),
     pool.query('SELECT t,tag,text,tag2 FROM log ORDER BY seq DESC LIMIT 60'),
+    pool.query(
+      'SELECT id,packageId,callsign,platform,linkedPlatformId,missionType,originAirfield,recoveryAirfield,targetIds,supportedSortieIds,collectionRequirementIds,totWindowStart,totWindowEnd,status,atoDay,bda FROM sorties',
+    ),
   ]);
   return {
     t: meta.t,
@@ -132,6 +180,7 @@ export async function loadState(): Promise<State> {
     units: units.rows.map(rowToUnit),
     nais: nais.rows.map(rowToNai),
     log: log.rows.map(rowToLog),
+    sorties: sorties.rows.map(rowToSortie),
   };
 }
 
@@ -190,10 +239,15 @@ export async function persistTick(state: State, prev: State): Promise<void> {
         );
       }
     }
-    // Sensors only change on a retask action (sim ticks never touch them) —
-    // skip the write entirely when the array is untouched.
+    // Sensors only change on a retask action (sim ticks never touch them),
+    // and retaskSensor (actions.ts) returns the same reference for every
+    // sensor it didn't touch, same as targets above — so this was
+    // rewriting every sensor row on any single retask, not just the one
+    // that changed, unlike the per-index check targets already got.
     if (state.sensors !== prev.sensors) {
-      for (const s of state.sensors) {
+      for (let i = 0; i < state.sensors.length; i++) {
+        const s = state.sensors[i];
+        if (s === prev.sensors[i]) continue;
         await client.query(`UPDATE sensors SET status=$1, tasking=$2 WHERE id=$3`, [s.status, s.tasking, s.id]);
       }
     }

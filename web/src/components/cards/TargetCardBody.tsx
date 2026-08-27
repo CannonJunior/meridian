@@ -30,6 +30,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
   const targets = useStore((s) => s.targets);
   const sensors = useStore((s) => s.sensors);
   const effectors = useStore((s) => s.effectors);
+  const sorties = useStore((s) => s.sorties);
   const log = useStore((s) => s.log);
   const tick = useStore((s) => s.t);
   const listTransitions = useStore((s) => s.targetListTransitions);
@@ -48,7 +49,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
 
   if (tab === 0) {
     const stage = STAGES[t.stage];
-    const currentLists = listsForTarget(t);
+    const currentLists = listsForTarget(t, sorties);
     const history = listTransitions.filter((tr) => tr.targetId === t.id).slice(0, 6);
     const adjudications = pendingActions
       .filter((p) => p.targetId === t.id && p.status !== 'pending')

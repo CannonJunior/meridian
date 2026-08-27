@@ -3,7 +3,7 @@ export type Threat = 'CRIT' | 'HIGH' | 'MED' | 'LOW' | null;
 export type Category = 'TEL' | 'SAM' | 'C2' | 'SHIP' | 'BOAT' | 'RADAR' | 'UAS' | 'TROOP' | 'EMIT';
 export type SensorCoverage = 'cone' | 'wide' | 'area' | 'none';
 export type View = 'MAP' | 'BOARD';
-export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone' | 'oobObject' | 'port' | 'airfield' | 'kbEntity';
+export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone' | 'oobObject' | 'port' | 'airfield' | 'kbEntity' | 'sortie';
 // Which target list is currently driving the collection-table's contents —
 // see assets/targetLists.ts for each list's definition and membership rule.
 export type TargetListId = 'hptl' | 'jtl' | 'jiptl' | 'rtl' | 'nsl';
@@ -113,6 +113,46 @@ export interface LogEntry {
   tag2: string;
 }
 
+// Phase A of the "Rolling Air Picture" plan (see the design brief) — the
+// Sortie entity, scoped to the full ATO per the locked decision, not just
+// strike/SEAD. Deliberately its own entity rather than a new field on
+// Target or Effector: a real ATO line is many-to-many with both (one
+// sortie can service several DMPIs, one target can need several sorties'
+// reattack), and most mission types here (AAR, AIRLIFT, AEW, CSAR) carry
+// no target at all. Mirrors server/src/types.ts exactly, same as every
+// other shared type in this file.
+export type SortieMissionType = 'STRIKE' | 'SEAD' | 'CAS' | 'OCA' | 'DCA' | 'ISR' | 'AAR' | 'AIRLIFT' | 'AEW' | 'CSAR';
+export type SortieStatus = 'FRAGGED' | 'AIRBORNE' | 'TOT' | 'RTB' | 'COMPLETE' | 'CANCELLED';
+export type AtoDay = 'D-3' | 'D-2' | 'D-1' | 'D0' | 'D+1' | 'D+2' | 'D+3';
+export type BdaPhaseStatus = 'PENDING' | 'ASSESSED' | 'INCONCLUSIVE';
+
+export interface SortieBda {
+  pda: BdaPhaseStatus;
+  fda: BdaPhaseStatus;
+  tsa: BdaPhaseStatus;
+  reattackRecommended: boolean;
+  note: string | null;
+}
+
+export interface Sortie {
+  id: string;
+  packageId: string | null;
+  callsign: string;
+  platform: string;
+  linkedPlatformId: string | null;
+  missionType: SortieMissionType;
+  originAirfield: string;
+  recoveryAirfield: string;
+  targetIds: string[];
+  supportedSortieIds: string[];
+  collectionRequirementIds: string[];
+  totWindowStart: string;
+  totWindowEnd: string;
+  status: SortieStatus;
+  atoDay: AtoDay;
+  bda: Record<string, SortieBda> | null;
+}
+
 export interface Stage {
   key: string;
   name: string;
@@ -149,4 +189,5 @@ export interface State {
   units: FriendlyUnit[];
   nais: Nai[];
   log: LogEntry[];
+  sorties: Sortie[];
 }

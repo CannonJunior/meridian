@@ -18,6 +18,10 @@ export default function CommandBar() {
   const setLegendMode = useStore((s) => s.setLegendMode);
   const showAltitude = useStore((s) => s.showAltitude);
   const setShowAltitude = useStore((s) => s.setShowAltitude);
+  const showFlightLines = useStore((s) => s.showFlightLines);
+  const setShowFlightLines = useStore((s) => s.setShowFlightLines);
+  const showAcoOverlay = useStore((s) => s.showAcoOverlay);
+  const setShowAcoOverlay = useStore((s) => s.setShowAcoOverlay);
   const rightRailWidth = useStore((s) => s.rightRailWidth);
   const activeManager = useStore((s) => s.activeManager);
   const setActiveManager = useStore((s) => s.setActiveManager);
@@ -198,6 +202,56 @@ export default function CommandBar() {
           }}
         >
           ALT
+        </button>
+        <button
+          type="button"
+          className="command-bar-flight-lines-toggle"
+          onClick={() => setShowFlightLines(!showFlightLines)}
+          aria-pressed={showFlightLines}
+          title="Toggle sortie flight lines for the selected ATO day"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 6,
+            background: showFlightLines ? 'rgba(255,171,56,.14)' : 'rgba(8,13,14,.82)',
+            border: `1px solid ${showFlightLines ? 'var(--amber)' : 'var(--hairline-mid)'}`,
+            color: showFlightLines ? 'var(--amber)' : 'var(--ink-mute)',
+            fontFamily: 'var(--font-display)',
+            fontSize: 9.5,
+            fontWeight: 700,
+            letterSpacing: '.08em',
+            padding: '3px 8px',
+            cursor: 'pointer',
+          }}
+        >
+          FLT
+        </button>
+        <button
+          type="button"
+          className="command-bar-aco-overlay-toggle"
+          onClick={() => setShowAcoOverlay(!showAcoOverlay)}
+          aria-pressed={showAcoOverlay}
+          title="Toggle Airspace Control Order overlay (ROZ / corridors)"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 6,
+            background: showAcoOverlay ? 'rgba(255,171,56,.14)' : 'rgba(8,13,14,.82)',
+            border: `1px solid ${showAcoOverlay ? 'var(--amber)' : 'var(--hairline-mid)'}`,
+            color: showAcoOverlay ? 'var(--amber)' : 'var(--ink-mute)',
+            fontFamily: 'var(--font-display)',
+            fontSize: 9.5,
+            fontWeight: 700,
+            letterSpacing: '.08em',
+            padding: '3px 8px',
+            cursor: 'pointer',
+          }}
+        >
+          ACO
         </button>
         <CommandBarMenu />
       </div>

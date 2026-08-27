@@ -109,6 +109,16 @@ producer wants to emit belongs in `attrs`, not as a new top-level field,
 without also updating the table schema and the query API's field
 whitelist to match.
 
+**A second `layer_id`, `history-air-tracks`, exists** (added for the
+"Rolling Air Picture" ATO plan's Phase D, whitelisted in
+`server/src/historyQuery.ts`) but this producer does not emit it — it's
+seeded directly into Postgres by `server/src/seed.ts` /
+`server/src/db.ts`, not through this topic, since there's no live
+air-track simulator yet. A future producer for it would follow this exact
+same message shape with `entity_kind: "aircraft"` and
+`layer_id: "history-air-tracks"`; nothing about the schema above is
+vessel-specific.
+
 **`SEED`/idempotency — resolved in `kafka/producer/src/produce.ts`**: the
 consumer's ingest is idempotent via `event_id` (`ON CONFLICT DO NOTHING`),
 which protects against replay after a crash (the *same* Kafka message

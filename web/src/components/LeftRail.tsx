@@ -1,6 +1,8 @@
+import { useMemo, useState } from 'react';
 import { useStore } from '../store';
-import { C } from '../selectors';
-import type { Sensor } from '../types';
+import { C, indexSortiesByCollectionRequirement } from '../selectors';
+import { COLLECTION_REQUIREMENTS, naiForRequirement } from '../assets/collectionRequirements';
+import type { Sensor, Sortie } from '../types';
 
 function sensorColors(s: Sensor) {
   const statusColor = s.status === 'ON STATION' ? C.green : s.status === 'TASKED' ? C.amber : s.status === 'DEGRADED' ? C.red : C.dim;
@@ -58,10 +60,99 @@ function SensorCard({ s }: { s: Sensor }) {
   );
 }
 
+// Phase E — one CPCL row. `dimmed` is true while an NAI is focused and
+// this requirement isn't tied to it, rather than removing the row
+// outright: the point of the NAI→CPCL link is "what does this NAI need,"
+// not "hide everything else," so the rest of the list stays visible but
+// recedes.
+function CollectionRequirementRow({ requirementId, priority, pir, description, naiName, naiColor, dimmed, tasked, onFocusNai }: {
+  requirementId: string;
+  priority: number;
+  pir: string;
+  description: string;
+  naiName: string | null;
+  naiColor: string | null;
+  dimmed: boolean;
+  // Precomputed by the parent from one indexSortiesByCollectionRequirement
+  // build (see LeftRail below) rather than each row filtering the full
+  // sorties array for itself.
+  tasked: Sortie[];
+  onFocusNai: () => void;
+}) {
+  const openEntity = useStore((s) => s.openEntity);
+  const satisfied = tasked.some((s) => s.status === 'AIRBORNE' || s.status === 'TOT');
+  const statusColor = satisfied ? C.green : tasked.length > 0 ? C.amber : C.red;
+  const statusLabel = satisfied ? 'COLLECTING' : tasked.length > 0 ? 'TASKED' : 'UNTASKED';
+
+  return (
+    <div
+      className="left-rail-cpcl-row"
+      style={{
+        borderTop: '1px solid var(--hairline-mid)',
+        borderRight: '1px solid var(--hairline-mid)',
+        borderBottom: '1px solid var(--hairline-mid)',
+        borderLeft: `2px solid ${statusColor}`,
+        background: 'var(--panel-3)',
+        padding: '7px 9px',
+        opacity: dimmed ? 0.4 : 1,
+      }}
+    >
+      <div className="left-rail-cpcl-row-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span className="left-rail-cpcl-row-id" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700, letterSpacing: '.06em', color: 'var(--ink-brighter)' }}>
+          {requirementId}
+        </span>
+        <span className="left-rail-cpcl-row-priority" style={{ fontSize: 8.5, letterSpacing: '.08em', color: 'var(--ink-faint)' }}>
+          PRI #{priority}
+        </span>
+        <span className="left-rail-cpcl-row-spacer" style={{ flex: 1 }} />
+        {naiName && (
+          <span
+            className="left-rail-cpcl-row-nai-tag"
+            onClick={onFocusNai}
+            style={{ fontSize: 8, letterSpacing: '.06em', padding: '1px 5px', border: `1px solid ${naiColor}`, color: naiColor ?? undefined, cursor: 'pointer' }}
+          >
+            {naiName}
+          </span>
+        )}
+        <span className="left-rail-cpcl-row-status" style={{ fontSize: 8, letterSpacing: '.06em', color: statusColor, fontWeight: 700 }}>
+          {statusLabel}
+        </span>
+      </div>
+      <div className="left-rail-cpcl-row-desc" style={{ fontSize: 9.5, color: 'var(--ink-mute2)', marginTop: 5, lineHeight: 1.4 }}>
+        {description}
+      </div>
+      <div className="left-rail-cpcl-row-pir" style={{ fontSize: 8.5, letterSpacing: '.08em', color: 'var(--ink-faint)', marginTop: 5 }}>
+        {pir}
+      </div>
+      {tasked.length > 0 && (
+        <div className="left-rail-cpcl-row-tasked-sorties" style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+          {tasked.map((s) => (
+            <span
+              key={s.id}
+              className="left-rail-cpcl-row-tasked-sortie-chip"
+              onClick={() => openEntity('sortie', s.id)}
+              style={{ fontSize: 8.5, letterSpacing: '.04em', padding: '2px 6px', border: '1px solid var(--hairline-mid)', color: 'var(--cyan)', cursor: 'pointer' }}
+            >
+              {s.callsign} · {s.status}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function LeftRail() {
   const sensors = useStore((s) => s.sensors);
   const nais = useStore((s) => s.nais);
+  const sorties = useStore((s) => s.sorties);
   const sensorsOn = sensors.filter((s) => s.status === 'ON STATION' || s.status === 'TASKED').length;
+  // Local to this panel, not global store state — purely a within-panel
+  // "what does this NAI need" affordance (design brief §III.7), not
+  // something any other view needs to read. Clicking the same NAI again
+  // clears it rather than being a one-way drill-down.
+  const [focusedNaiId, setFocusedNaiId] = useState<string | null>(null);
+  const requirementIndex = useMemo(() => indexSortiesByCollectionRequirement(sorties), [sorties]);
 
   return (
     <div className="left-rail" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
@@ -87,19 +178,67 @@ export default function LeftRail() {
         <div className="left-rail-section-label" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', padding: '6px 2px 0' }}>
           NAMED AREAS OF INTEREST
         </div>
-        {nais.map((n) => (
-          <div key={n.id} className="left-rail-nai-row" style={{ border: '1px solid var(--hairline-mid)', borderLeft: `2px solid ${n.color}`, background: 'var(--panel-3)', padding: '7px 9px', display: 'flex', alignItems: 'center', gap: 9 }}>
-            <span className="left-rail-nai-id" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, letterSpacing: '.08em', color: n.color }}>
-              {n.id}
+        {nais.map((n) => {
+          const focused = focusedNaiId === n.id;
+          return (
+            <div
+              key={n.id}
+              className="left-rail-nai-row"
+              onClick={() => setFocusedNaiId((prev) => (prev === n.id ? null : n.id))}
+              title="Show this NAI's collection requirements below"
+              style={{
+                borderTop: `1px solid ${focused ? n.color : 'var(--hairline-mid)'}`,
+                borderRight: `1px solid ${focused ? n.color : 'var(--hairline-mid)'}`,
+                borderBottom: `1px solid ${focused ? n.color : 'var(--hairline-mid)'}`,
+                borderLeft: `2px solid ${n.color}`,
+                background: focused ? `${n.color}14` : 'var(--panel-3)',
+                padding: '7px 9px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 9,
+                cursor: 'pointer',
+              }}
+            >
+              <span className="left-rail-nai-id" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, letterSpacing: '.08em', color: n.color }}>
+                {n.id}
+              </span>
+              <span className="left-rail-nai-desc" style={{ fontSize: 9.5, color: 'var(--ink-mute2)', flex: 1 }}>
+                {n.desc}
+              </span>
+              <span className="left-rail-nai-pir" style={{ fontSize: 8.5, letterSpacing: '.1em', color: 'var(--ink-faint)' }}>
+                {n.pir}
+              </span>
+            </div>
+          );
+        })}
+
+        <div className="left-rail-section-label" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', padding: '6px 2px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span className="left-rail-cpcl-section-title">CPCL · COLLECTION REQUIREMENTS</span>
+          {focusedNaiId && (
+            <span className="left-rail-cpcl-clear-focus" onClick={() => setFocusedNaiId(null)} style={{ color: 'var(--amber)', letterSpacing: '.04em', cursor: 'pointer', fontWeight: 700 }}>
+              ✕ {focusedNaiId} ONLY
             </span>
-            <span className="left-rail-nai-desc" style={{ fontSize: 9.5, color: 'var(--ink-mute2)', flex: 1 }}>
-              {n.desc}
-            </span>
-            <span className="left-rail-nai-pir" style={{ fontSize: 8.5, letterSpacing: '.1em', color: 'var(--ink-faint)' }}>
-              {n.pir}
-            </span>
-          </div>
-        ))}
+          )}
+        </div>
+        {COLLECTION_REQUIREMENTS.slice()
+          .sort((a, b) => a.priority - b.priority)
+          .map((req) => {
+            const nai = naiForRequirement(req, nais);
+            return (
+              <CollectionRequirementRow
+                key={req.id}
+                requirementId={req.id}
+                priority={req.priority}
+                pir={req.pir}
+                description={req.description}
+                naiName={nai?.id ?? null}
+                naiColor={nai?.color ?? null}
+                dimmed={focusedNaiId != null && req.naiId !== focusedNaiId}
+                tasked={requirementIndex.get(req.id) ?? []}
+                onFocusNai={() => req.naiId && setFocusedNaiId((prev) => (prev === req.naiId ? null : req.naiId))}
+              />
+            );
+          })}
       </div>
     </div>
   );

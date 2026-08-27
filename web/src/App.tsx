@@ -4,6 +4,7 @@ import CommandBar from './components/CommandBar';
 import IconSidebar from './components/IconSidebar';
 import ContextLayerManager from './components/ContextLayerManager';
 import LeftRail from './components/LeftRail';
+import AtoManager from './components/AtoManager';
 import OobManager from './components/OobManager';
 import KnowledgeBaseManager from './components/KnowledgeBaseManager';
 import ListsManager from './components/ListsManager';
@@ -55,6 +56,9 @@ export default function App() {
         </div>
         <div className="app-manager-slot app-manager-slot-isr" style={{ display: activeManager === 'isr' ? 'contents' : 'none' }}>
           <LeftRail />
+        </div>
+        <div className="app-manager-slot app-manager-slot-ato" style={{ display: activeManager === 'ato' ? 'contents' : 'none' }}>
+          <AtoManager />
         </div>
         <div className="app-manager-slot app-manager-slot-oob" style={{ display: activeManager === 'oob' ? 'contents' : 'none' }}>
           <OobManager />

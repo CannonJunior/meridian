@@ -340,6 +340,15 @@ export default function DrawingToolManager() {
                 >
                   {drawTool.capturing ? 'CAPTURING…' : 'CAPTURE GOOGLE IMAGERY HERE'}
                 </button>
+
+                <button
+                  type="button"
+                  className="draw-tool-capture-cancel-button"
+                  onClick={() => cancelDrawTool()}
+                  style={{ width: '100%', marginTop: 8, background: 'var(--panel-3)', border: '1px solid var(--red)', color: 'var(--red)', fontFamily: 'var(--font-display)', fontSize: 10.5, letterSpacing: '.1em', padding: '9px 10px', cursor: 'pointer' }}
+                >
+                  CANCEL
+                </button>
               </div>
             )}
 
