@@ -1,4 +1,4 @@
-import type { AtoDay, Effector, FriendlyUnit, LogEntry, Nai, Sensor, Sortie, State, Target } from './types.js';
+import type { Effector, FriendlyUnit, LogEntry, Nai, Sensor, Sortie, State, Target } from './types.js';
 
 // Transcribed verbatim from design_handoff_meridian_fires_c2/Meridian Fires C2.dc.html
 // (constructor of `class Component extends DCLogic`, lines ~744-807) — with
@@ -106,10 +106,6 @@ const SEED_EPOCH = Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(
 function atoTime(offsetDays: number, hh: number, mm: number): string {
   return new Date(SEED_EPOCH + offsetDays * DAY_MS + hh * 3_600_000 + mm * 60_000).toISOString();
 }
-function atoDayLabel(offsetDays: number): AtoDay {
-  return (offsetDays === 0 ? 'D0' : offsetDays > 0 ? `D+${offsetDays}` : `D${offsetDays}`) as AtoDay;
-}
-
 export const SEED_SORTIES: Sortie[] = [
   // D-1 — assessing. Struck FORGE (T2198), which SEED_TARGETS still
   // carries as NEUTRALIZED/stage 4 with a free-text bda written before
@@ -126,7 +122,7 @@ export const SEED_SORTIES: Sortie[] = [
     id: 'BRAVO-01', packageId: 'BRAVO', callsign: 'VIPER-19', platform: 'F-35A', linkedPlatformId: null,
     missionType: 'STRIKE', originAirfield: 'LXGB', recoveryAirfield: 'LXGB',
     targetIds: ['T2198'], supportedSortieIds: [], collectionRequirementIds: [],
-    totWindowStart: atoTime(-1, 6, 10), totWindowEnd: atoTime(-1, 6, 25), status: 'COMPLETE', atoDay: atoDayLabel(-1),
+    totWindowStart: atoTime(-1, 6, 10), totWindowEnd: atoTime(-1, 6, 25), status: 'COMPLETE',
     bda: { T2198: { pda: 'ASSESSED', fda: 'INCONCLUSIVE', tsa: 'PENDING', reattackRecommended: true, note: 'Aimpoint hit confirmed (PDA). Radar van intact in follow-up imagery — TEL functional status unconfirmed. Reattack recommended next ATO cycle.' } },
   },
 
@@ -138,35 +134,35 @@ export const SEED_SORTIES: Sortie[] = [
     id: 'ALPHA-01', packageId: 'ALPHA', callsign: 'HORNET-21', platform: 'F/A-18E', linkedPlatformId: 'HORNET21',
     missionType: 'SEAD', originAirfield: 'LEMO', recoveryAirfield: 'LEMO',
     targetIds: ['T2201'], supportedSortieIds: [], collectionRequirementIds: [],
-    totWindowStart: atoTime(0, 8, 47), totWindowEnd: atoTime(0, 9, 2), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    totWindowStart: atoTime(0, 8, 47), totWindowEnd: atoTime(0, 9, 2), status: 'AIRBORNE',
     bda: null,
   },
   {
     id: 'ALPHA-02', packageId: 'ALPHA', callsign: 'VENOM-1', platform: 'F-35A', linkedPlatformId: 'VENOM1',
     missionType: 'STRIKE', originAirfield: 'LXGB', recoveryAirfield: 'LXGB',
     targetIds: ['T2202'], supportedSortieIds: [], collectionRequirementIds: [],
-    totWindowStart: atoTime(0, 9, 2), totWindowEnd: atoTime(0, 9, 17), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    totWindowStart: atoTime(0, 9, 2), totWindowEnd: atoTime(0, 9, 17), status: 'AIRBORNE',
     bda: null,
   },
   {
     id: 'ALPHA-03', packageId: 'ALPHA', callsign: 'WIDOW-3', platform: 'EA-18G', linkedPlatformId: 'WIDOW3',
     missionType: 'SEAD', originAirfield: 'LEMO', recoveryAirfield: 'LEMO',
     targetIds: [], supportedSortieIds: ['ALPHA-01', 'ALPHA-02'], collectionRequirementIds: [],
-    totWindowStart: atoTime(0, 8, 40), totWindowEnd: atoTime(0, 9, 25), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    totWindowStart: atoTime(0, 8, 40), totWindowEnd: atoTime(0, 9, 25), status: 'AIRBORNE',
     bda: null,
   },
   {
     id: 'ALPHA-04', packageId: 'ALPHA', callsign: 'TEXACO-3', platform: 'KC-135R', linkedPlatformId: null,
     missionType: 'AAR', originAirfield: 'LERT', recoveryAirfield: 'LERT',
     targetIds: [], supportedSortieIds: ['ALPHA-01', 'ALPHA-02', 'ALPHA-03'], collectionRequirementIds: [],
-    totWindowStart: atoTime(0, 8, 15), totWindowEnd: atoTime(0, 10, 15), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    totWindowStart: atoTime(0, 8, 15), totWindowEnd: atoTime(0, 10, 15), status: 'AIRBORNE',
     bda: null,
   },
   {
     id: 'ALPHA-05', packageId: 'ALPHA', callsign: 'SENTRY-3', platform: 'E-3G SENTRY', linkedPlatformId: 'SENTRY3',
     missionType: 'AEW', originAirfield: 'LEMO', recoveryAirfield: 'LEMO',
     targetIds: [], supportedSortieIds: ['ALPHA-01', 'ALPHA-02', 'ALPHA-03'], collectionRequirementIds: [],
-    totWindowStart: atoTime(0, 7, 30), totWindowEnd: atoTime(0, 11, 30), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    totWindowStart: atoTime(0, 7, 30), totWindowEnd: atoTime(0, 11, 30), status: 'AIRBORNE',
     bda: null,
   },
   // D0 — independent (unpackaged) ISR and CSAR lines running alongside
@@ -175,14 +171,14 @@ export const SEED_SORTIES: Sortie[] = [
     id: 'ISR-D0-1', packageId: null, callsign: 'HAWK-01', platform: 'MQ-9A REAPER', linkedPlatformId: 'HAWK01',
     missionType: 'ISR', originAirfield: 'LXGB', recoveryAirfield: 'LXGB',
     targetIds: [], supportedSortieIds: [], collectionRequirementIds: ['CPCL-03'],
-    totWindowStart: atoTime(0, 4, 0), totWindowEnd: atoTime(0, 14, 0), status: 'AIRBORNE', atoDay: atoDayLabel(0),
+    totWindowStart: atoTime(0, 4, 0), totWindowEnd: atoTime(0, 14, 0), status: 'AIRBORNE',
     bda: null,
   },
   {
     id: 'CSAR-D0-1', packageId: null, callsign: 'PEDRO-1', platform: 'HH-60W', linkedPlatformId: null,
     missionType: 'CSAR', originAirfield: 'LERT', recoveryAirfield: 'LERT',
     targetIds: [], supportedSortieIds: [], collectionRequirementIds: [],
-    totWindowStart: atoTime(0, 6, 0), totWindowEnd: atoTime(0, 18, 0), status: 'FRAGGED', atoDay: atoDayLabel(0),
+    totWindowStart: atoTime(0, 6, 0), totWindowEnd: atoTime(0, 18, 0), status: 'FRAGGED',
     bda: null,
   },
 
@@ -191,14 +187,14 @@ export const SEED_SORTIES: Sortie[] = [
     id: 'ISR-D1-1', packageId: null, callsign: 'SENTRY-06', platform: 'E-3G SENTRY', linkedPlatformId: null,
     missionType: 'ISR', originAirfield: 'LEMO', recoveryAirfield: 'LEMO',
     targetIds: [], supportedSortieIds: [], collectionRequirementIds: ['CPCL-04'],
-    totWindowStart: atoTime(1, 11, 30), totWindowEnd: atoTime(1, 19, 30), status: 'FRAGGED', atoDay: atoDayLabel(1),
+    totWindowStart: atoTime(1, 11, 30), totWindowEnd: atoTime(1, 19, 30), status: 'FRAGGED',
     bda: null,
   },
   {
     id: 'AIRLIFT-D1-1', packageId: null, callsign: 'REACH-210', platform: 'C-17A', linkedPlatformId: null,
     missionType: 'AIRLIFT', originAirfield: 'LERT', recoveryAirfield: 'LXGB',
     targetIds: [], supportedSortieIds: [], collectionRequirementIds: [],
-    totWindowStart: atoTime(1, 4, 0), totWindowEnd: atoTime(1, 5, 10), status: 'FRAGGED', atoDay: atoDayLabel(1),
+    totWindowStart: atoTime(1, 4, 0), totWindowEnd: atoTime(1, 5, 10), status: 'FRAGGED',
     bda: null,
   },
 
@@ -210,7 +206,7 @@ export const SEED_SORTIES: Sortie[] = [
     id: 'CHARLIE-01', packageId: 'CHARLIE', callsign: 'VIPER-20', platform: 'F-35A', linkedPlatformId: null,
     missionType: 'STRIKE', originAirfield: 'LXGB', recoveryAirfield: 'LXGB',
     targetIds: ['T2205'], supportedSortieIds: [], collectionRequirementIds: [],
-    totWindowStart: atoTime(2, 9, 0), totWindowEnd: atoTime(2, 9, 15), status: 'FRAGGED', atoDay: atoDayLabel(2),
+    totWindowStart: atoTime(2, 9, 0), totWindowEnd: atoTime(2, 9, 15), status: 'FRAGGED',
     bda: null,
   },
 ];

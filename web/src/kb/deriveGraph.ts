@@ -14,9 +14,9 @@ import type { OobNode } from '../assets/oob';
 import { parentOf } from '../oobSelectors';
 import { CONTEXT_LAYERS } from '../assets/contextLayers';
 import { loadContextLayerData } from '../contextLayerData';
-import { TARGET_LISTS, listsForTarget } from '../assets/targetLists';
+import { indexSortiesByBdaTarget, listsForTargetIndexed, TARGET_LISTS } from '../assets/targetLists';
 import { useStore } from '../store';
-import type { Target } from '../types';
+import type { Sortie, Target } from '../types';
 import { contextLayerUri, oobUri, radarUri, targetListUri, targetUri, weaponUri, KG_CONTEXT } from './ontology';
 import type { KgDocument, KgNode, KgType } from './ontology';
 import { deriveEezZones, derivePortMatches } from './geoMatch';
@@ -122,12 +122,19 @@ function buildStaticGraph(args: { eez?: FeatureCollection | null; ports?: Featur
 // above, without re-running any of the expensive derivation. Pure/plain —
 // no memoization here; useKnowledgeGraph below is what actually gates how
 // often each part reruns.
-export function buildKnowledgeGraph(args: { staticNodes: KgNode[]; targets: Target[]; kbAssociations: Record<string, string[]> }): KgDocument {
+export function buildKnowledgeGraph(args: { staticNodes: KgNode[]; targets: Target[]; sorties: Sortie[]; kbAssociations: Record<string, string[]> }): KgDocument {
   const nodes = new Map(args.staticNodes.map((n) => [n['@id'], n]));
+  // Built once for every target below, not once per target — a target's
+  // reattack-driven HPTL membership (assets/targetLists.ts, Phase F of the
+  // "Rolling Air Picture" plan) was previously invisible here entirely
+  // (this call never passed sorties, so it always fell back to the "no
+  // reattack" case); fixed the same way CollectionTable.tsx's per-row scan
+  // was, rather than reintroducing an O(targets × sorties) scan here too.
+  const reattackIndex = indexSortiesByBdaTarget(args.sorties);
 
   for (const t of args.targets) {
     const uri = targetUri(t.id);
-    const lists = listsForTarget(t).map((id) => targetListUri(id));
+    const lists = listsForTargetIndexed(t, reattackIndex).map((id) => targetListUri(id));
     nodes.set(uri, {
       '@id': uri,
       '@type': 'Target',
@@ -228,10 +235,11 @@ function useJoinableLayerData(): { eez: FeatureCollection | null; ports: Feature
 // tick rate.
 export function useKnowledgeGraph(): KgDocument {
   const targets = useStore((s) => s.targets);
+  const sorties = useStore((s) => s.sorties);
   const kbAssociations = useStore((s) => s.kbAssociations);
   const { eez, ports } = useJoinableLayerData();
   const staticNodes = useMemo(() => buildStaticGraph({ eez, ports }), [eez, ports]);
-  return useMemo(() => buildKnowledgeGraph({ staticNodes, targets, kbAssociations }), [staticNodes, targets, kbAssociations]);
+  return useMemo(() => buildKnowledgeGraph({ staticNodes, targets, sorties, kbAssociations }), [staticNodes, targets, sorties, kbAssociations]);
 }
 
 export interface CytoscapeElement {
@@ -296,8 +304,8 @@ export interface OrgChartLayout {
 // module has no rendering concerns of its own).
 export const ORG_CHART_BOX_W = 132;
 export const ORG_CHART_BOX_H = 34;
-const H_GAP = 16;
-const V_GAP = 10;
+const LEAF_GAP = 14; // pitch between sibling leaf-object boxes (ships) within one row
+const QUADRANT_GAP = 56; // gap between command quadrants — deliberately much larger than LEAF_GAP so separate commands read as visually distinct blocks, not one dense cluster
 const LEVEL_GAP = 64;
 
 interface Subtree {
@@ -306,56 +314,81 @@ interface Subtree {
   positions: Map<string, OrgChartPosition>;
 }
 
+interface ChildSubtree {
+  id: string;
+  sub: Subtree;
+}
+
+// Shelf-packs already-laid-out sibling subtrees: wraps into as many rows as
+// it takes to keep each row's width near sqrt(total subtree area) — a
+// target that makes the whole block roughly square regardless of how many
+// siblings there are or how lopsided their sizes are (unlike a fixed column
+// count or a uniform-cell grid, which forces every cell to the size of the
+// *largest* sibling and wastes enormous space once sibling sizes vary a
+// lot, as they do here: a fleet with 80 ships next to a fleet with 3).
+// Rows are exactly as tall as their tallest member, not a shared max, so a
+// row of small subtrees doesn't inherit a big neighbor's height either.
+// This is also what lets major commands at the same tree depth — e.g. two
+// numbered fleets under the same branch — land in different quadrants
+// instead of being forced onto one shared row/rank: each wraps onto its own
+// row (or its own position within a row) purely based on the running width
+// budget, not its depth.
+function packFlow(subtrees: ChildSubtree[], gap: number, yOffset: number): Subtree {
+  const totalArea = subtrees.reduce((sum, s) => sum + s.sub.width * s.sub.height, 0);
+  const targetRowWidth = Math.max(Math.sqrt(totalArea), ...subtrees.map((s) => s.sub.width));
+
+  const rows: ChildSubtree[][] = [];
+  let current: ChildSubtree[] = [];
+  let currentWidth = 0;
+  for (const s of subtrees) {
+    const widthIfAdded = current.length ? currentWidth + gap + s.sub.width : s.sub.width;
+    if (current.length && widthIfAdded > targetRowWidth) {
+      rows.push(current);
+      current = [s];
+      currentWidth = s.sub.width;
+    } else {
+      current.push(s);
+      currentWidth = widthIfAdded;
+    }
+  }
+  if (current.length) rows.push(current);
+
+  const positions = new Map<string, OrgChartPosition>();
+  let y = yOffset;
+  let maxRowWidth = 0;
+  for (const row of rows) {
+    const rowWidth = row.reduce((sum, s) => sum + s.sub.width, 0) + gap * (row.length - 1);
+    maxRowWidth = Math.max(maxRowWidth, rowWidth);
+    let cursor = -rowWidth / 2;
+    let rowHeight = 0;
+    for (const { sub } of row) {
+      const centerX = cursor + sub.width / 2;
+      for (const [cid, p] of sub.positions) positions.set(cid, { x: centerX + p.x, y: y + p.y });
+      rowHeight = Math.max(rowHeight, sub.height);
+      cursor += sub.width + gap;
+    }
+    y += rowHeight + gap;
+  }
+  return { width: maxRowWidth, height: y - gap, positions };
+}
+
 // A hand-rolled tidy-tree, not one of cytoscape's built-in layouts (unlike
 // every other mode in the dropdown) — see the comment on layoutForMode in
 // KnowledgeGraphView.tsx for why: cytoscape's breadthfirst puts every node
-// at a given depth on one shared rank, and a rank layout can't help this
-// data's shape (a squadron's ~15-20 ships all land in the one deepest
-// rank alongside every *other* squadron's ships, forcing a ~90-wide row
-// that starves every other rank of the container's height). Wrapping each
-// leaf-heavy sibling group into its own compact grid — the way the
-// referenced numbered-fleet composition charts actually draw a squadron's
-// hull list — fixes it structurally: a subtree's width is its own
-// children's, not the whole tree's deepest rank.
+// at a given depth on one shared rank, which can't help this data's shape
+// (see packFlow above for the fix). Leaf-object siblings (ships in a
+// squadron) pack tight; anything with its own subordinates packs at
+// QUADRANT_GAP so separate commands stay visually distinct.
 function layoutNode(id: string, childrenOf: Map<string, string[]>): Subtree {
   const children = childrenOf.get(id) ?? [];
   if (children.length === 0) {
     return { width: ORG_CHART_BOX_W, height: ORG_CHART_BOX_H, positions: new Map([[id, { x: 0, y: 0 }]]) };
   }
-
-  const positions = new Map<string, OrgChartPosition>();
-  const allLeaves = children.every((c) => !(childrenOf.get(c)?.length));
-  if (allLeaves && children.length > 6) {
-    const cols = Math.max(3, Math.ceil(Math.sqrt(children.length * 1.8)));
-    const rows = Math.ceil(children.length / cols);
-    const gridWidth = cols * (ORG_CHART_BOX_W + H_GAP) - H_GAP;
-    children.forEach((c, i) => {
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      positions.set(c, {
-        x: col * (ORG_CHART_BOX_W + H_GAP) - gridWidth / 2 + ORG_CHART_BOX_W / 2,
-        y: LEVEL_GAP + row * (ORG_CHART_BOX_H + V_GAP),
-      });
-    });
-    positions.set(id, { x: 0, y: 0 });
-    return { width: Math.max(gridWidth, ORG_CHART_BOX_W), height: LEVEL_GAP + rows * (ORG_CHART_BOX_H + V_GAP), positions };
-  }
-
-  // Standard tidy-tree case: children side by side, each occupying exactly
-  // its own subtree's width, so a small branch doesn't waste the space a
-  // wide sibling branch needs.
   const subtrees = children.map((c) => ({ id: c, sub: layoutNode(c, childrenOf) }));
-  const totalWidth = subtrees.reduce((sum, s) => sum + s.sub.width, 0) + H_GAP * (subtrees.length - 1);
-  let cursor = -totalWidth / 2;
-  let maxChildBottom = 0;
-  for (const { sub } of subtrees) {
-    const centerX = cursor + sub.width / 2;
-    for (const [cid, p] of sub.positions) positions.set(cid, { x: centerX + p.x, y: LEVEL_GAP + p.y });
-    maxChildBottom = Math.max(maxChildBottom, LEVEL_GAP + sub.height);
-    cursor += sub.width + H_GAP;
-  }
-  positions.set(id, { x: 0, y: 0 });
-  return { width: Math.max(totalWidth, ORG_CHART_BOX_W), height: maxChildBottom, positions };
+  const allLeaves = children.every((c) => !(childrenOf.get(c)?.length));
+  const packed = packFlow(subtrees, allLeaves ? LEAF_GAP : QUADRANT_GAP, LEVEL_GAP);
+  packed.positions.set(id, { x: 0, y: 0 });
+  return { width: Math.max(packed.width, ORG_CHART_BOX_W), height: packed.height, positions: packed.positions };
 }
 
 export function buildOrgChart(doc: KgDocument): OrgChartLayout {
@@ -377,16 +410,10 @@ export function buildOrgChart(doc: KgDocument): OrgChartLayout {
     }
   }
 
+  // Top-level roots (separate countries/branches with no partOf at all)
+  // pack the same way as any other command quadrant group.
   const rootTrees = roots.map((id) => ({ id, sub: layoutNode(id, childrenOf) }));
-  const rootGap = H_GAP * 3; // extra breathing room between unrelated top-level orgs (separate countries/branches)
-  const totalWidth = rootTrees.reduce((sum, r) => sum + r.sub.width, 0) + rootGap * Math.max(0, rootTrees.length - 1);
-  const positions: Record<string, OrgChartPosition> = {};
-  let cursor = -totalWidth / 2;
-  for (const { sub } of rootTrees) {
-    const centerX = cursor + sub.width / 2;
-    for (const [id, p] of sub.positions) positions[id] = { x: centerX + p.x, y: p.y };
-    cursor += sub.width + rootGap;
-  }
+  const packed = packFlow(rootTrees, QUADRANT_GAP, 0);
 
-  return { elements, positions };
+  return { elements, positions: Object.fromEntries(packed.positions) };
 }

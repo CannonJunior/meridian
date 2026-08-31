@@ -22,6 +22,8 @@ export default function CommandBar() {
   const setShowFlightLines = useStore((s) => s.setShowFlightLines);
   const showAcoOverlay = useStore((s) => s.showAcoOverlay);
   const setShowAcoOverlay = useStore((s) => s.setShowAcoOverlay);
+  const showOob = useStore((s) => s.showOob);
+  const setShowOob = useStore((s) => s.setShowOob);
   const rightRailWidth = useStore((s) => s.rightRailWidth);
   const activeManager = useStore((s) => s.activeManager);
   const setActiveManager = useStore((s) => s.setActiveManager);
@@ -252,6 +254,31 @@ export default function CommandBar() {
           }}
         >
           ACO
+        </button>
+        <button
+          type="button"
+          className="command-bar-oob-toggle"
+          onClick={() => setShowOob(!showOob)}
+          aria-pressed={showOob}
+          title="Toggle Order of Battle markers on the COP"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginLeft: 6,
+            background: showOob ? 'rgba(255,171,56,.14)' : 'rgba(8,13,14,.82)',
+            border: `1px solid ${showOob ? 'var(--amber)' : 'var(--hairline-mid)'}`,
+            color: showOob ? 'var(--amber)' : 'var(--ink-mute)',
+            fontFamily: 'var(--font-display)',
+            fontSize: 9.5,
+            fontWeight: 700,
+            letterSpacing: '.08em',
+            padding: '3px 8px',
+            cursor: 'pointer',
+          }}
+        >
+          OOB
         </button>
         <CommandBarMenu />
       </div>

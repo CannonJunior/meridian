@@ -69,7 +69,11 @@ services:
         --create --if-not-exists
         --topic meridian.telemetry.history.v1
         --partitions 6 --replication-factor 1 &&
-        echo "Topic meridian.telemetry.history.v1 ready."
+        echo "Topic meridian.telemetry.history.v1 ready." &&
+        for d in air sea ground space; do
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic meridian.live.$$d.v1 --partitions 1 --replication-factor 1;
+        echo "Topic meridian.live.$$d.v1 ready.";
+        done
     restart: "no"
 
   # Phase 1's simulated data store (R1: "an external dockerized service").
@@ -92,6 +96,46 @@ services:
       BACKFILL_HOURS: ${HISTORY_SIM_BACKFILL_HOURS:-6}
       TICK_SECONDS: ${HISTORY_SIM_TICK_SECONDS:-300}
       BACKFILL_COMPRESSION: ${HISTORY_SIM_BACKFILL_COMPRESSION:-300}
+    restart: unless-stopped
+
+  # Real-world Ground domain data source (see kafka/README.md's "Message
+  # schema" section) — polls GDELT's public GEO 2.0 API and republishes
+  # onto the same history topic as history-sim above, layer_id
+  # "history-ground-events". Needs outbound internet access from this
+  # container (api.gdeltproject.org), unlike every other service in this
+  # compose project.
+  history-gdelt:
+    build: ./producer-gdelt
+    container_name: meridian-history-gdelt
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER: kafka:9092
+      KAFKA_HISTORY_TOPIC: meridian.telemetry.history.v1
+      GDELT_QUERY: ${GDELT_QUERY:-(military OR troops OR airstrike OR insurgent OR offensive OR ceasefire)}
+      GDELT_TIMESPAN: ${GDELT_TIMESPAN:-1440}
+      GDELT_MAX_POINTS: ${GDELT_MAX_POINTS:-250}
+      GDELT_POLL_SECONDS: ${GDELT_POLL_SECONDS:-900}
+    restart: unless-stopped
+
+  # Real-world Space domain data source — fetches CelesTrak's public
+  # orbital-element catalog and propagates real satellite positions via
+  # SGP4, republishing onto the same history topic, layer_id
+  # "history-space-tracks". Also needs outbound internet access
+  # (celestrak.org).
+  history-celestrak:
+    build: ./producer-celestrak
+    container_name: meridian-history-celestrak
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      KAFKA_BROKER: kafka:9092
+      KAFKA_HISTORY_TOPIC: meridian.telemetry.history.v1
+      CELESTRAK_GROUP: ${CELESTRAK_GROUP:-stations}
+      CATALOG_REFRESH_SECONDS: ${CELESTRAK_CATALOG_REFRESH_SECONDS:-21600}
+      PROPAGATE_SECONDS: ${CELESTRAK_PROPAGATE_SECONDS:-30}
     restart: unless-stopped
 
 volumes:

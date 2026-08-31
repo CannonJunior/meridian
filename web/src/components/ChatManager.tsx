@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { ORGANIZATIONS } from '../assets/staff';
 import { fmtLogTime } from '../selectors';
@@ -15,9 +15,26 @@ export default function ChatManager() {
   const [draft, setDraft] = useState('');
 
   const org = ORGANIZATIONS.find((o) => o.id === activeChatOrgId) ?? ORGANIZATIONS[0];
-  const thread = chatMessages.filter((m) => m.orgId === org.id);
+  // This panel stays mounted (just hidden) while any other manager is
+  // active, and `targets`/`pendingActions` both get a new array reference
+  // roughly once/second (the sim mutates target decay every tick) — without
+  // memoizing, that redid this thread filter and every org's pending count
+  // below once/second for the life of the tab, even while BOARD COMMS was
+  // never opened.
+  const thread = useMemo(() => chatMessages.filter((m) => m.orgId === org.id), [chatMessages, org.id]);
   const scopedTarget = activeChatTargetId ? targets.find((x) => x.id === activeChatTargetId) : undefined;
-  const pendingHere = pendingActions.filter((a) => a.orgId === org.id && a.status === 'pending').length;
+  // One pass over pendingActions instead of one .filter() per org (there
+  // are 5+ orgs, each previously re-scanning the whole array in the tabs
+  // loop below).
+  const pendingCountByOrg = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const a of pendingActions) {
+      if (a.status !== 'pending') continue;
+      counts.set(a.orgId, (counts.get(a.orgId) ?? 0) + 1);
+    }
+    return counts;
+  }, [pendingActions]);
+  const pendingHere = pendingCountByOrg.get(org.id) ?? 0;
 
   function submit() {
     if (!draft.trim()) return;
@@ -37,7 +54,7 @@ export default function ChatManager() {
       <div className="chat-manager-org-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '8px 10px', borderBottom: '1px solid var(--hairline)' }}>
         {ORGANIZATIONS.map((o) => {
           const active = o.id === org.id;
-          const count = pendingActions.filter((a) => a.orgId === o.id && a.status === 'pending').length;
+          const count = pendingCountByOrg.get(o.id) ?? 0;
           return (
             <span
               key={o.id}

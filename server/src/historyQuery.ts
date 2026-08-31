@@ -31,7 +31,13 @@ const TYPE_NAME = 'meridian:entity_track_history';
 // have to land inside whichever Sortie it belongs to's real, dynamically-
 // computed TOT window (see seed.ts's atoTime()), and not through the
 // Kafka pipeline either, since there's no live air-track producer yet.
-const ALLOWED_LAYER_IDS = new Set(['history-vessel-tracks', 'history-air-tracks']);
+// 'history-ground-events' (GDELT) and 'history-space-tracks' (CelesTrak)
+// are real external data, published by kafka/producer-gdelt and
+// kafka/producer-celestrak respectively — see kafka/README.md's "Message
+// schema" section. Not to be confused with server/src/liveDomainKafka.ts's
+// unrelated live_ground_tracks/live_space_tracks tables, which classify
+// this app's own simulated targets/sensors/units, not external data.
+const ALLOWED_LAYER_IDS = new Set(['history-vessel-tracks', 'history-air-tracks', 'history-ground-events', 'history-space-tracks']);
 
 // Hard cap on features returned by a single page — mirrors the
 // "pre-simplify so the browser can hold it" discipline contextLayers.ts

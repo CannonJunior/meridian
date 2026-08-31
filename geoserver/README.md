@@ -104,8 +104,14 @@ plan's Phase D) is fixture-only: seeded by `server/src/seed.ts`'s
 event times have to land inside whichever `Sortie` fixture it belongs to's
 own dynamically-computed TOT window — a static SQL file can't know that
 at Docker-init time, and there's no live air-track Kafka producer yet.
-Both values are whitelisted in `server/src/historyQuery.ts`'s
-`ALLOWED_LAYER_IDS`; adding a third layer means adding it there too.
+`history-ground-events` and `history-space-tracks` are real external data
+— GDELT news-mention locations and CelesTrak/SGP4-propagated satellite
+positions respectively, published live by `kafka/producer-gdelt` and
+`kafka/producer-celestrak` (see `kafka/README.md`'s "Message schema"
+section for both). Unlike the two layers above, there is no fixture for
+either — they only have rows once those producer containers are actually
+running. All four values are whitelisted in `server/src/historyQuery.ts`'s
+`ALLOWED_LAYER_IDS`; adding a fifth layer means adding it there too.
 
 **Axis order — read before writing any BBOX query against this layer.**
 Verified live during Phase 0: this GeoServer instance requires **lat,lon

@@ -5,6 +5,7 @@ import IconSidebar from './components/IconSidebar';
 import ContextLayerManager from './components/ContextLayerManager';
 import LeftRail from './components/LeftRail';
 import AtoManager from './components/AtoManager';
+import LayerManager from './components/LayerManager';
 import OobManager from './components/OobManager';
 import KnowledgeBaseManager from './components/KnowledgeBaseManager';
 import ListsManager from './components/ListsManager';
@@ -59,6 +60,9 @@ export default function App() {
         </div>
         <div className="app-manager-slot app-manager-slot-ato" style={{ display: activeManager === 'ato' ? 'contents' : 'none' }}>
           <AtoManager />
+        </div>
+        <div className="app-manager-slot app-manager-slot-layers" style={{ display: activeManager === 'layers' ? 'contents' : 'none' }}>
+          <LayerManager />
         </div>
         <div className="app-manager-slot app-manager-slot-oob" style={{ display: activeManager === 'oob' ? 'contents' : 'none' }}>
           <OobManager />

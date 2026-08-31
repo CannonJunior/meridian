@@ -18,10 +18,29 @@ export interface TutorialStep {
   fastForward?: () => void;
 }
 
+// Groundwork for the ATO tutorials (see the "Tutorial Flight Plan" brief's
+// RT-T4/RT-T7 findings): CommandBarMenu.tsx groups the TUTORIALS list under
+// its category rather than rendering one flat list, and required (not
+// optional) specifically so a new tutorial can't be added without someone
+// deciding where it belongs — the whole point is that this doesn't
+// silently degrade back into an unsorted list as more get added.
+export type TutorialCategory = 'Staff & Adjudication' | 'Air Tasking';
+// Display order for CommandBarMenu.tsx's grouped list — not derived from
+// TUTORIALS itself, so a category with zero tutorials in it yet (Air
+// Tasking, until those are built) still has a defined place rather than
+// only appearing once something exists to put there.
+export const TUTORIAL_CATEGORIES: TutorialCategory[] = ['Staff & Adjudication', 'Air Tasking'];
+
 export interface Tutorial {
   id: string;
   name: string;
   description: string;
+  category: TutorialCategory;
+  // At most one tutorial per category should set this — CommandBarMenu.tsx
+  // doesn't enforce that, it just renders whichever one(s) do with a
+  // "START HERE" tag, so a genuinely new user has a signal for which of a
+  // growing list to click first.
+  recommended?: boolean;
   steps: TutorialStep[];
   cleanup?: () => void;
 }
@@ -32,6 +51,8 @@ const staffRolesTutorial: Tutorial = {
   id: 'staff-roles',
   name: 'Staff Roles & Organizations',
   description: 'How Meridian models who does the targeting process — roles, personnel, and the boards/bureaus/cells/centers/working groups they sit on.',
+  category: 'Staff & Adjudication',
+  recommended: true,
   steps: [
     {
       title: 'Welcome',
@@ -84,6 +105,7 @@ const boardPilotTutorial: Tutorial = {
   id: 'board-pilot',
   name: 'Board Adjudication Pilot',
   description: 'Submit a Strike Cell Concur request for a live track and watch the JTCB actually adjudicate it — submitted-DTG, adjudicated-DTG, and a stated rationale.',
+  category: 'Staff & Adjudication',
   steps: [
     {
       title: 'Setup',
@@ -169,6 +191,7 @@ const adjudicationTransparencyTutorial: Tutorial = {
   id: 'adjudication-transparency',
   name: 'NPC Adjudication & Transparency',
   description: "Watch the same Positive ID rule land two different ways on two real tracks, each ruling credited by name — proof the adjudicator is a stated rule, not a black box.",
+  category: 'Staff & Adjudication',
   steps: [
     {
       title: 'Welcome',
@@ -279,6 +302,7 @@ const nominationAndFinalGateTutorial: Tutorial = {
   id: 'nomination-final-gate',
   name: 'Nomination & the Final Gate',
   description: 'Nominate an unprioritized track for the HPTL, watch one get approved and one get held, then close the whole approval chain by granting Target Engagement Authority.',
+  category: 'Staff & Adjudication',
   steps: [
     {
       title: 'Welcome',
@@ -413,6 +437,7 @@ const boardCommsTutorial: Tutorial = {
   name: 'Board Communications',
   description:
     'Message a board directly about a live request — one that gets approved, one that gets held — and get back an answer that is always a real lookup over the same pending-action data the rest of Meridian shows, never an invented reply.',
+  category: 'Staff & Adjudication',
   steps: [
     {
       title: 'Welcome',
@@ -525,10 +550,267 @@ const boardCommsTutorial: Tutorial = {
   },
 };
 
+// The five ATO tutorials — "Tutorial Flight Plan" brief, built on the
+// groundwork that brief's §V called for: atoDay is derived live (never
+// stored), so no step below narrates a day-label without also driving to
+// the sortie by id; TutorialSnapshot now covers selectedAtoDay/
+// sortieMissionTypeFilter/showFlightLines/showAcoOverlay/focusedNaiId, so
+// none of these five need a custom cleanup() — the generic snapshot
+// restore in store.ts already reverts every field any step here touches.
+// Unlike the Staff & Adjudication tutorials, nothing here submits a
+// pending action, so none of these have a fastForward step either — nothing
+// in the ATO work has a real-time adjudication delay to fast-forward past.
+const atoBasicsTutorial: Tutorial = {
+  id: 'ato-basics',
+  name: 'Air Tasking Order Basics',
+  description: 'Where the flight schedule lives, and what "D-3 to D+3" actually means — the on-ramp for every other ATO tutorial.',
+  category: 'Air Tasking',
+  recommended: true,
+  steps: [
+    {
+      title: 'Welcome',
+      narration:
+        "Meridian tracks more than this instant now — sorties flown over the last three days, and sorties planned for the next three. This walks through where that lives and what the vocabulary means, before any of the other Air Tasking tutorials build on it.",
+    },
+    {
+      title: 'One clock, two directions',
+      narration:
+        "Real air campaigns run on a rolling cycle: today's flying, tomorrow's is being built, the day after that is still being planned. Yesterday's flying — and the two days before it — are being graded on what they actually achieved. That grading has three stages of its own (PDA, then FDA, then TSA), covered in full in \"Reading a Sortie.\" Opening the AIR TASKING panel now — the icon below ISR COLLECTION in the far-left sidebar.",
+      run: () => useStore.getState().setActiveManager('ato'),
+    },
+    {
+      title: 'The AIR TASKING panel, left to right',
+      narration:
+        "Seven boxes across the top, D-3 to D+3, each showing a phase label (ASSESSING/EXECUTION/PRODUCTION/PLANNING) and how many sorties fall on it. D0 — today, in execution — is selected now. Clicking any other box re-scopes everything below it: the mission-type filter and the sortie list.",
+      run: () => useStore.getState().setSelectedAtoDay('D0'),
+    },
+    {
+      title: "Mission types aren't all strikes",
+      narration:
+        'The row of chips under the day strip filters by mission type. Selecting AAR — air-to-air refueling — on purpose: most of what a real ATO tasks is not kinetic at all.',
+      caveat: "AAR sorties (like TEXACO-3 below) don't have a map location the way a target-linked strike does — covered honestly in \"Reading a Sortie\" and \"Flight Lines & Airspace,\" not hidden here.",
+      run: () => useStore.getState().setSortieMissionTypeFilter('AAR'),
+    },
+    {
+      title: 'Open one',
+      narration:
+        'Clicking a row opens that sortie\'s own card — clearing the filter first, then opening HORNET-21\'s SEAD line. Its four tabs (OVERVIEW, LINKAGE, ROUTE, BDA) are "Reading a Sortie," next.',
+      run: () => {
+        const s = useStore.getState();
+        s.setSortieMissionTypeFilter('ALL');
+        s.openEntity('sortie', 'ALPHA-01');
+      },
+    },
+    {
+      title: 'Wrap-up',
+      narration:
+        'The AIR TASKING panel: a rolling seven-day window, a mission-type filter, and a list that opens into the sortie card itself. "Reading a Sortie" picks up exactly there.',
+    },
+  ],
+};
+
+const readingASortieTutorial: Tutorial = {
+  id: 'reading-a-sortie',
+  name: 'Reading a Sortie',
+  description: 'The four-tab card, and the one real historical example Meridian has of a sortie that\'s actually finished.',
+  category: 'Air Tasking',
+  steps: [
+    {
+      title: 'Welcome',
+      narration:
+        'Every sortie card answers four questions, one per tab: what flew (OVERVIEW), what it was for (LINKAGE), where it went (ROUTE), and what happened (BDA).',
+    },
+    {
+      title: 'OVERVIEW — a currently-flying example',
+      narration:
+        "VENOM-1's strike line, still AIRBORNE: callsign, platform, mission type, package, status, which ATO day it falls on, and its time-over-target window — all read straight off the sortie, nothing summarized or rounded.",
+      run: () => {
+        const s = useStore.getState();
+        s.setActiveManager('ato');
+        s.setSelectedAtoDay('D0');
+        s.openEntity('sortie', 'ALPHA-02');
+      },
+    },
+    {
+      title: "LINKAGE — not every sortie has a target",
+      narration:
+        "VENOM-1 is linked to one target (2202 ANVIL) — but LINKAGE has two other sections: SUPPORTS (what a tanker or AEW sortie is refueling or covering, not striking) and COLLECTION REQUIREMENTS (what an ISR sortie is tasked to watch). A given sortie only ever fills in the section that actually applies to it.",
+      run: () => useStore.getState().setCardTab(1),
+    },
+    {
+      title: 'ROUTE — honest about what\'s not there yet',
+      narration:
+        'Origin and recovery airfield, by name. That\'s all this tab has today.',
+      caveat: "These names aren't linked to real airfield map features yet for a sortie with no target — an AAR, AEW, or most ISR lines round-trip the same airfield with nothing to draw a route through. Covered on the map itself in \"Flight Lines & Airspace.\"",
+      run: () => useStore.getState().setCardTab(2),
+    },
+    {
+      title: 'Switch example — a finished strike',
+      narration:
+        "Opening VIPER-19's card directly by callsign, not by clicking around for it — the one sortie in this fixture set that's actually COMPLETE, from yesterday's ATO day.",
+      run: () => {
+        const s = useStore.getState();
+        s.setSelectedAtoDay('D-1');
+        s.openEntity('sortie', 'BRAVO-01');
+        s.setCardTab(3);
+      },
+    },
+    {
+      title: 'BDA — three questions, not one',
+      narration:
+        "Combat assessment is three separate calls, left to right: PDA (was the aimpoint actually hit?), FDA (did the target lose the capability it had?), and TSA (what's the effect on the wider system it belongs to?). VIPER-19's strike reads PDA ASSESSED (green, confirmed hit) but FDA INCONCLUSIVE (amber) — read the note underneath for why, in plain language.",
+    },
+    {
+      title: 'Wrap-up',
+      narration:
+        'Four tabs, four questions. FDA reading INCONCLUSIVE here is not a loose end — "Reattack: When BDA Isn\'t Done" is what Meridian actually does with that fact.',
+    },
+  ],
+};
+
+const flightLinesAirspaceTutorial: Tutorial = {
+  id: 'flight-lines-airspace',
+  name: 'Flight Lines & Airspace',
+  description: 'Turning on the two map toggles, and why some sorties still don\'t draw a line.',
+  category: 'Air Tasking',
+  steps: [
+    {
+      title: 'Welcome',
+      narration:
+        'Two toggles in the command bar, top-right of the map, next to ALT: FLT (flight lines) and ACO (airspace control). Both default off — a fully-drawn air picture on top of everything else Meridian already puts on the map gets crowded fast, so both are opt-in.',
+    },
+    {
+      title: 'FLT — turn it on',
+      narration:
+        "Switching to today's ATO day, then turning on FLT. Lines now appear for sorties with somewhere real to draw a route to — solid for a sortie that's flown or is flying, dashed for one still only fragged.",
+      run: () => {
+        const s = useStore.getState();
+        s.setSelectedAtoDay('D0');
+        s.setShowFlightLines(true);
+      },
+    },
+    {
+      title: 'A finished leg looks different',
+      narration:
+        "Switching to yesterday's ATO day: VIPER-19's line is a real recorded track — a multi-point path actually flown, not a straight-line guess — because it's the one sortie in this fixture set with real flight history behind it. Every other line on the map today is an approximation: origin, straight to the linked target, straight to recovery.",
+      run: () => useStore.getState().setSelectedAtoDay('D-1'),
+    },
+    {
+      title: 'Why some sorties draw nothing',
+      narration:
+        "Back to today. TEXACO-3's tanker line isn't on the map at all, and it's not a bug: it launches and recovers at the same airfield with no linked target, so there's no resolvable route to draw yet — the same gap ROUTE's caveat in \"Reading a Sortie\" already named. HORNET-21's SEAD line, from the last tutorial, does draw — it round-trips that same airfield too, but it has a linked target to draw a route through.",
+      run: () => useStore.getState().setSelectedAtoDay('D0'),
+    },
+    {
+      title: 'ACO — the airspace structure underneath',
+      narration:
+        "Turning on ACO: a Restricted Operations Zone box around where package ALPHA is working, and a tanker track corridor — the airspace structure every sortie flies inside of, published alongside the ATO the same way in real air operations. Unlike the flight lines, this isn't scoped to a day at all — it's standing structure, not something tied to today's tasking.",
+      run: () => useStore.getState().setShowAcoOverlay(true),
+    },
+    {
+      title: 'Wrap-up',
+      narration:
+        'FLT and ACO both switch back off once this tutorial exits, same as they were before it started — turn them on yourself from the command bar whenever you actually want the overlay.',
+    },
+  ],
+};
+
+const cpclCollectionPlanTutorial: Tutorial = {
+  id: 'cpcl-collection-plan',
+  name: 'Collection Plan & the CPCL',
+  description: 'The ISR manager\'s missing half — what\'s being asked for, not just what\'s watching.',
+  category: 'Air Tasking',
+  steps: [
+    {
+      title: 'Welcome',
+      narration:
+        'The ISR manager already shows sensors and Named Areas of Interest — where collection is actually looking. Below that is the CPCL: what those areas actually need collected against, whether or not anything is currently tasked to do it.',
+      run: () => useStore.getState().setActiveManager('isr'),
+    },
+    {
+      title: 'A requirement, read top to bottom',
+      narration:
+        'Each CPCL row: a priority number, the intelligence requirement it traces to, a plain-language description, and a status — COLLECTING (green, something is on it right now), TASKED (amber, assigned but not yet on station), or UNTASKED (red). UNTASKED is a real, useful thing to be able to see — a need with nothing yet assigned against it.',
+    },
+    {
+      title: "From the NAI's side",
+      narration:
+        'Clicking NAI-3 in the list above focuses the CPCL below it to just that NAI\'s requirement — CPCL-03 stays at full brightness, everything else dims. "What does this NAI need" is one click away from the NAI itself.',
+      run: () => useStore.getState().setFocusedNaiId('NAI-3'),
+    },
+    {
+      title: "From the requirement's side",
+      narration:
+        'CPCL-03 reads COLLECTING, with a chip underneath naming HAWK-01 — clicking it opens that sortie\'s own card directly, the reverse link: from "what\'s needed" straight to "what\'s doing it."',
+      run: () => useStore.getState().openEntity('sortie', 'ISR-D0-1'),
+    },
+    {
+      title: 'Wrap-up',
+      narration:
+        "In doctrine terms, this list is a CPCL — a Component Prioritized Collection List — the collection side's version of the target lists (JTL/JIPTL) already in Meridian. Exiting clears the NAI-3 focus and closes this card, back to how the ISR manager stood before.",
+    },
+  ],
+};
+
+const REATTACK_TARGET_ID = 'T2198';
+const reattackTutorial: Tutorial = {
+  id: 'reattack-recommendation',
+  name: "Reattack: When BDA Isn't Done",
+  description: 'The one feature that ties Sortie, Target, and the HPTL back together — and the biggest "aha" in the Air Tasking set.',
+  category: 'Air Tasking',
+  steps: [
+    {
+      title: 'Welcome',
+      narration: "What happens when a strike doesn't finish the job? This is the one Air Tasking tutorial that reaches back into the targeting workflow the Staff & Adjudication tutorials cover.",
+    },
+    {
+      title: 'Recall the ladder',
+      narration:
+        "Reopening VIPER-19's BDA tab from \"Reading a Sortie\": FDA reads INCONCLUSIVE, and the note says reattack is recommended next cycle. That single flag — reattackRecommended — is what the rest of this tutorial follows.",
+      run: () => {
+        const s = useStore.getState();
+        s.setSelectedAtoDay('D-1');
+        s.openEntity('sortie', 'BRAVO-01');
+        s.setCardTab(3);
+      },
+    },
+    {
+      title: 'The target it hit',
+      narration: "Opening 2198 FORGE's own card — the same strike, from the target's side instead of the sortie's.",
+      run: () => useStore.getState().openEntity('target', REATTACK_TARGET_ID),
+    },
+    {
+      title: 'Still on the HPTL — on purpose',
+      narration:
+        'FORGE carries no priority rank and reads NEUTRALIZED, yet it sits on the High-Payoff Target List with a ⚠ REATTACK badge in place of its usual status — because of that reattack flag, not despite it.',
+      caveat:
+        'If you\'ve run "Nomination & the Final Gate," that tutorial put FORGE on the HPTL a different way — an approved priority rank. Both are real, independent reasons the same list can hold a target; one doesn\'t cancel the other out.',
+      run: () => useStore.getState().setActiveListId('hptl'),
+    },
+    {
+      title: 'The workup panel says so too',
+      narration:
+        "Look at the right-rail TARGET WORKUP panel: instead of a plain green \"TARGET COMPLETE,\" it reads \"⚠ REATTACK RECOMMENDED,\" amber, with the same BDA note from VIPER-19's card. One fact, surfaced everywhere a HPTL-relevant decision gets made.",
+    },
+    {
+      title: 'Wrap-up',
+      narration:
+        'One sortie\'s BDA, followed all the way through to a target staying on the working priority list and its workup panel changing state to say so.',
+      caveat:
+        'Acting on the recommendation isn\'t automated — there\'s no "reattack" button. An analyst notices the badge and manually walks the target back through the existing REGRESS control to reopen the engagement chain.',
+    },
+  ],
+};
+
 export const TUTORIALS: Tutorial[] = [
   staffRolesTutorial,
   boardPilotTutorial,
   adjudicationTransparencyTutorial,
   nominationAndFinalGateTutorial,
   boardCommsTutorial,
+  atoBasicsTutorial,
+  readingASortieTutorial,
+  flightLinesAirspaceTutorial,
+  cpclCollectionPlanTutorial,
+  reattackTutorial,
 ];

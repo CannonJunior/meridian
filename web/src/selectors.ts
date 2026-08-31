@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { forward as mgrsForward } from 'mgrs';
 import { STAGES } from './types';
-import type { Affiliation, AtoDay, Category, Effector, Sensor, Sortie, SortieStatus, State, Target, Threat } from './types';
+import type { Affiliation, AtoDay, Category, Domain, Effector, FriendlyUnit, Sensor, Sortie, SortieStatus, State, Target, Threat } from './types';
 
 // Pure derived-value helpers, ported 1:1 from the `Component` class methods
 // in Meridian Fires C2.dc.html (renderVals/renderMap section, lines ~920-1113).
@@ -14,6 +14,7 @@ export const C = {
   blue: '#5b9dff',
   yellow: '#ffd23f',
   green: '#5fe39a',
+  violet: '#c77dff',
   ink: '#dfe9e7',
   dim: '#7a8d8a',
   faint: '#46554f',
@@ -89,6 +90,61 @@ const UNIT_FOR: Record<Category, string> = {
 export function unitFor(t: Target): string {
   return UNIT_FOR[t.cat] || 'Unknown formation';
 }
+
+// Domain classification (LayerManager.tsx's per-domain checkboxes, the
+// domain-segmented Kafka topics — see kafka/README.md's "Live Domain
+// Tracks" section, and server/src/domain.ts, which mirrors this file
+// exactly for the server-side producer). Targets carry a Category, which
+// maps to a domain directly; sensors and friendly units carry no such
+// field, so they're classified by platform-name keyword instead — fixture-
+// specific but the only signal either type actually has today. A newly
+// added platform this doesn't recognize falls through to GROUND, the most
+// common default (infantry, ADA, static installations), rather than AIR or
+// SEA, which would be a more visible wrong guess for something that isn't
+// obviously either of those.
+const CAT_DOMAIN: Record<Category, Domain> = {
+  TEL: 'GROUND',
+  SAM: 'GROUND',
+  C2: 'GROUND',
+  SHIP: 'SEA',
+  BOAT: 'SEA',
+  RADAR: 'GROUND',
+  UAS: 'AIR',
+  TROOP: 'GROUND',
+  EMIT: 'GROUND',
+};
+export function domainForTarget(t: Target): Domain {
+  return CAT_DOMAIN[t.cat] || 'GROUND';
+}
+
+// Checked before the generic altFt-set-means-airborne rule below, so a
+// satellite (no altFt — see ORACLE in server/src/seed.ts) still lands in
+// SPACE rather than falling through to GROUND.
+const SPACE_SENSOR_PLATFORM = /\bSAT\b/;
+export function domainForSensor(s: Sensor): Domain {
+  if (SPACE_SENSOR_PLATFORM.test(s.platform)) return 'SPACE';
+  if (s.altFt != null) return 'AIR';
+  return 'GROUND';
+}
+
+const SEA_UNIT_KEYWORDS = /CARRIER|DESTROYER|CRUISER|FRIGATE|NAVAL|\bDDG\b|\bSHIP\b/;
+const AIR_UNIT_KEYWORDS = /AIR PATROL|AIRCRAFT|BOMBER|FIGHTER|^[A-Z]{1,2}-\d/;
+export function domainForUnit(u: FriendlyUnit): Domain {
+  if (SEA_UNIT_KEYWORDS.test(u.platform) || SEA_UNIT_KEYWORDS.test(u.type)) return 'SEA';
+  if (AIR_UNIT_KEYWORDS.test(u.platform) || AIR_UNIT_KEYWORDS.test(u.type)) return 'AIR';
+  return 'GROUND';
+}
+
+export const DOMAINS: Domain[] = ['AIR', 'SEA', 'GROUND', 'SPACE'];
+// SEA's display label is "MARITIME" — the Domain value itself stays 'SEA'
+// (it's what the classification functions, the Kafka topic names, and the
+// live_sea_tracks table all key on), only the user-facing text changed.
+export const DOMAIN_META: Record<Domain, { label: string; color: string }> = {
+  AIR: { label: 'AIR', color: C.cyan },
+  SEA: { label: 'MARITIME', color: C.blue },
+  GROUND: { label: 'GROUND', color: C.amber },
+  SPACE: { label: 'SPACE', color: C.violet },
+};
 
 export function sensorName(sensors: Sensor[], id: string | null | undefined): string {
   const s = sensors.find((x) => x.id === id);
@@ -451,6 +507,25 @@ export function stageForF2T2EA(stage: number): number {
 
 // Rolling ATO timeline strip (design brief §III.1) — Phase B.
 export const ATO_DAYS: AtoDay[] = ['D-3', 'D-2', 'D-1', 'D0', 'D+1', 'D+2', 'D+3'];
+
+// Tutorial-groundwork fix for the design brief's RT-T1 finding: a sortie's
+// ATO-day band is derived here, live, from totWindowStart against the
+// real clock — never stored. An earlier version of Sortie had `atoDay` as
+// a field, computed once at seed time; left alone for long enough (no
+// live producer ever recomputes it, and nothing in the app resets the
+// seed on a schedule), every stored label would quietly go stale relative
+// to "today" without anything failing loudly. A sortie whose window falls
+// outside the D-3..D+3 band it can represent (badly stale fixture data,
+// or a real deployment's sortie further out than this UI bothers banding)
+// clamps to the nearest edge rather than producing an invalid label or
+// silently vanishing from every day's count.
+export function atoDayFor(totWindowStart: string, referenceDate: Date = new Date()): AtoDay {
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  const startOfToday = Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), referenceDate.getUTCDate());
+  const offsetDays = Math.floor((new Date(totWindowStart).getTime() - startOfToday) / DAY_MS);
+  const clamped = Math.max(-3, Math.min(3, offsetDays));
+  return (clamped === 0 ? 'D0' : clamped > 0 ? `D+${clamped}` : `D${clamped}`) as AtoDay;
+}
 
 // Which BDA phase would be maturing that far back (PDA→FDA→TSA) — an
 // illustrative day-band label per the design brief's hero diagram, not a

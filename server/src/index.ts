@@ -1,6 +1,7 @@
 import express from 'express';
 import { createServer } from 'node:http';
 import { getState, initStore } from './store.js';
+import { pruneAirTrackHistory, pruneRealtimeHistoryLayers } from './db.js';
 import { attachWs } from './ws.js';
 import { tick } from './sim.js';
 import { startLiveSync } from './liveSync.js';
@@ -8,12 +9,28 @@ import { createDrawnShape, deleteDrawnShape, getReferenceImage, listDrawnShapes,
 import { fetchGoogleStaticMap } from './googleStaticMap.js';
 import { countHistoryFeatures, HistoryQueryError, queryHistoryFeatures, validateFilter } from './historyQuery.js';
 import { startKafkaHistoryConsumer } from './kafkaHistoryConsumer.js';
+import { startLiveDomainConsumer, startLiveDomainProducer } from './liveDomainKafka.js';
 
 async function main() {
   // Loads (and, on a fresh PostGIS volume, seeds) the live picture before
   // anything can read it — the HTTP route, the WS connection handler, and
   // the sim tick all assume `getState()` already has real data.
   await initStore();
+
+  // RT-03 data-volume safeguard (see db.ts's pruneAirTrackHistory doc
+  // comment) — once at startup so an already-running deployment's table
+  // doesn't just grow forever between restarts, then hourly. A single
+  // indexed DELETE (entity_track_history_layer_time_idx) is cheap enough
+  // not to warrant a real job scheduler for this.
+  pruneAirTrackHistory().catch((err) => console.error('[meridian] air-track history prune failed:', err));
+  // Same safeguard for history-ground-events/history-space-tracks (see
+  // db.ts's pruneRealtimeHistoryLayers doc comment) — the two real-data
+  // producers added this session have no retention of their own.
+  pruneRealtimeHistoryLayers().catch((err) => console.error('[meridian] realtime history prune failed:', err));
+  setInterval(() => {
+    pruneAirTrackHistory().catch((err) => console.error('[meridian] air-track history prune failed:', err));
+    pruneRealtimeHistoryLayers().catch((err) => console.error('[meridian] realtime history prune failed:', err));
+  }, 60 * 60 * 1000);
 
   const app = express();
   // The default 100kb limit is well under a captured Google satellite
@@ -163,6 +180,14 @@ async function main() {
   // working unmodified for anyone who hasn't brought it up.
   if (process.env.KAFKA_HISTORY_ENABLED === 'true') {
     startKafkaHistoryConsumer();
+  }
+
+  // Live Domain Tracks (see LayerManager.tsx, liveDomainKafka.ts) — same
+  // opt-in convention as KAFKA_HISTORY_ENABLED above, its own flag since
+  // either Kafka pipeline can be run independently of the other.
+  if (process.env.KAFKA_LIVE_DOMAINS_ENABLED === 'true') {
+    startLiveDomainProducer();
+    startLiveDomainConsumer();
   }
 }
 

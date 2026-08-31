@@ -24,6 +24,16 @@
 -- JSONB, matching the existing effectors.suits convention — server/src/
 -- db.ts (de)serializes these as plain JS arrays/objects rather than typed
 -- Postgres arrays, since nothing needs to query inside them from SQL.
+--
+-- No atoDay column, deliberately — an earlier version stored the D-3..D+3
+-- rolling-timeline band as its own TEXT column, computed once at seed
+-- time. Left alone long enough with nothing to recompute it (no live
+-- producer, no scheduled reseed, and server/src/db.ts's resetToSeed() was
+-- never wired to a route or button), every stored label would quietly go
+-- stale relative to "today" without anything failing loudly — the
+-- "Tutorial Flight Plan" brief's RT-T1 finding. web/src/selectors.ts's
+-- atoDayFor() now derives it client-side, live, from totWindowStart
+-- instead; there is nothing for this table to store or index.
 
 DROP TABLE IF EXISTS sorties;
 CREATE TABLE sorties (
@@ -41,7 +51,5 @@ CREATE TABLE sorties (
   totWindowStart TIMESTAMPTZ NOT NULL,
   totWindowEnd TIMESTAMPTZ NOT NULL,
   status TEXT NOT NULL,
-  atoDay TEXT NOT NULL,
   bda JSONB
 );
-CREATE INDEX sorties_ato_day_idx ON sorties (atoDay);

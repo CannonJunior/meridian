@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import 'ol/ol.css';
 import 'olcs/css/olcs.css';
 import OlMap from 'ol/Map';
@@ -24,7 +24,7 @@ import Attribution from 'ol/control/Attribution';
 import { useStore } from '../store';
 import type { DrawLayerId } from '../store';
 import { computeStaticMapExtentWebMercator, fetchGoogleStaticMapDataUrl, GOOGLE_STATIC_MAP_SIZE } from '../googleStaticMap';
-import { affColor, altBand, geodesicCircleLngLat, geodesicSectorLngLat, geodesicEllipseLngLat, sortieStatusColor } from '../selectors';
+import { affColor, altBand, atoDayFor, domainForSensor, domainForTarget, domainForUnit, geodesicCircleLngLat, geodesicSectorLngLat, geodesicEllipseLngLat, sortieStatusColor } from '../selectors';
 import { statusMeta } from '../oobSelectors';
 import type { ObjectStatus } from '../assets/oob';
 import { hexToRgba } from '../assets/palette';
@@ -39,6 +39,7 @@ import type { MapMode } from '../cesium3d';
 import type OLCesiumType from 'olcs';
 import type * as CesiumNS from 'cesium';
 import OobMapLayer from './OobMapLayer';
+import TimelapseMapLayer from './TimelapseMapLayer';
 import { CONTEXT_LAYERS } from '../assets/contextLayers';
 import type { ContextLayer } from '../assets/contextLayers';
 import { loadContextLayerData } from '../contextLayerData';
@@ -612,9 +613,18 @@ const NaiLayer = memo(function NaiLayer({ nais, project, openEntity }: { nais: N
 function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: number; height: number }) {
   const cesiumActive = useStore((s) => s.mapMode !== '2D');
   const nais = useStore((s) => s.nais);
-  const sensors = useStore((s) => s.sensors);
-  const units = useStore((s) => s.units);
-  const targets = useStore((s) => s.targets);
+  const allSensors = useStore((s) => s.sensors);
+  const allUnits = useStore((s) => s.units);
+  const allTargets = useStore((s) => s.targets);
+  const domainVisibility = useStore((s) => s.domainVisibility);
+  // LayerManager.tsx's per-domain checkboxes — filters which live entities
+  // this overlay draws, without touching the underlying arrays or any of
+  // the click/select/open-card interactivity below (see that component's
+  // header comment for why this stays additive rather than switching this
+  // overlay's data source to GeoServer WFS).
+  const sensors = useMemo(() => allSensors.filter((s) => domainVisibility[domainForSensor(s)]), [allSensors, domainVisibility]);
+  const units = useMemo(() => allUnits.filter((u) => domainVisibility[domainForUnit(u)]), [allUnits, domainVisibility]);
+  const targets = useMemo(() => allTargets.filter((t) => domainVisibility[domainForTarget(t)]), [allTargets, domainVisibility]);
   const selectedId = useStore((s) => s.selectedId);
   const selectTarget = useStore((s) => s.selectTarget);
   const openCard = useStore((s) => s.openCard);
@@ -647,7 +657,7 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
   const [historyTracks, setHistoryTracks] = useState<Record<string, [number, number][]>>({});
   useEffect(() => {
     if (!showFlightLines) return;
-    const completed = sorties.filter((s) => s.atoDay === selectedAtoDay && s.status === 'COMPLETE' && !historyTracks[s.id]);
+    const completed = sorties.filter((s) => atoDayFor(s.totWindowStart) === selectedAtoDay && s.status === 'COMPLETE' && !historyTracks[s.id]);
     if (completed.length === 0) return;
     let cancelled = false;
     Promise.all(
@@ -693,7 +703,7 @@ function MapOverlaySvg({ project, width, height }: { project: ProjectFn; width: 
 
       {showFlightLines &&
         sorties
-          .filter((s) => s.atoDay === selectedAtoDay)
+          .filter((s) => atoDayFor(s.totWindowStart) === selectedAtoDay)
           .map((s) => {
             // A real historical track (Phase D), once fetched, replaces
             // the straight-line approximation for that one sortie — see
@@ -871,6 +881,7 @@ export default function TacticalMap() {
   const basemapId = useStore((s) => s.basemapId);
   const mapProjectionCode = useStore((s) => s.mapProjectionCode);
   const legendMode = useStore((s) => s.legendMode);
+  const showOob = useStore((s) => s.showOob);
   const mapMode = useStore((s) => s.mapMode);
   const cesiumActive = mapMode !== '2D';
   const is25D = mapMode === '2.5D';
@@ -882,6 +893,7 @@ export default function TacticalMap() {
   const cardId = useStore((s) => s.cardId);
   const drawnShapes = useStore((s) => s.drawnShapes);
   const shapeEditing = useStore((s) => s.shapeEditing);
+  const timelapseBboxRequest = useStore((s) => s.timelapseBboxRequest);
   const drawImageLayerRef = useRef<ImageLayer<ImageStatic> | null>(null);
   const capturePreviewLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const drawPolygonPreviewLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
@@ -920,7 +932,19 @@ export default function TacticalMap() {
     });
     mapRef.current = map;
 
-    const rerender = () => bumpRender((v) => v + 1);
+    // OL's postrender fires on every rendered frame, including continuously
+    // during a pan/zoom drag (not just once at rest) — un-throttled, that
+    // forced a full React re-render (and, via project's useCallback below, a
+    // full re-projection of every track symbol/marker) at up to 60fps while
+    // dragging. Same fix, same rate, as the Cesium postRender listener
+    // further below already applies for the identical reason.
+    let lastBump = 0;
+    const rerender = () => {
+      const now = performance.now();
+      if (now - lastBump < 50) return;
+      lastBump = now;
+      bumpRender((v) => v + 1);
+    };
     map.on('postrender', rerender);
     view.fit(transformExtent([AO_BOUNDS.west, AO_BOUNDS.south, AO_BOUNDS.east, AO_BOUNDS.north], 'EPSG:4326', projection), { padding: [24, 24, 24, 24], duration: 0 });
 
@@ -1308,6 +1332,22 @@ export default function TacticalMap() {
     };
   }, [captureRequestId]);
 
+  // LayerManager's "USE CURRENT MAP VIEW" button (one per domain's
+  // timelapse layer) bumps timelapseBboxRequest — the map itself isn't
+  // reachable from that panel. Reads the view's *live* extent at the
+  // moment of the request, not a value threaded through props, then
+  // converts it to lng/lat (EPSG:4326) — the axis order and datum
+  // historyQuery.ts's BboxFilter expects — and writes it into whichever
+  // layer's slot the request named.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!timelapseBboxRequest || !map) return;
+    const view = map.getView();
+    const extent = view.calculateExtent(map.getSize());
+    const [west, south, east, north] = transformExtent(extent, view.getProjection(), 'EPSG:4326');
+    useStore.getState().setTimelapseBbox(timelapseBboxRequest.layerId, { west, south, east, north });
+  }, [timelapseBboxRequest]);
+
   // Places the captured Google image on the map at its exact, already-
   // computed EPSG:3857 extent — no warping step (unlike the earlier
   // uploaded-screenshot version, removed): a Static Maps image's bounds are
@@ -1528,6 +1568,24 @@ export default function TacticalMap() {
     view.animate({ center: fromLonLat([flyToRequest.lng, flyToRequest.lat], projection), zoom: flyToRequest.zoom, duration: 1200 });
   }, [flyToRequest]);
 
+  // LayerManager.tsx's per-domain "center on this layer's data" button —
+  // fits the whole extent rather than flyTo's single point + fixed zoom,
+  // since the entities being centered on can be spread arbitrarily far
+  // apart (a fixed zoom that suits a tightly-clustered layer would push a
+  // widely-spread one off-screen instead of bringing it into view).
+  const fitBoundsRequest = useStore((s) => s.fitBoundsRequest);
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !fitBoundsRequest) return;
+    const view = map.getView();
+    const extent = transformExtent(
+      [fitBoundsRequest.west, fitBoundsRequest.south, fitBoundsRequest.east, fitBoundsRequest.north],
+      'EPSG:4326',
+      view.getProjection(),
+    );
+    view.fit(extent, { padding: [60, 60, 60, 60], duration: 1200, maxZoom: 14 });
+  }, [fitBoundsRequest]);
+
   const resetNorthRequest = useStore((s) => s.resetNorthRequest);
   useEffect(() => {
     const map = mapRef.current;
@@ -1597,7 +1655,8 @@ export default function TacticalMap() {
 
       {size.w > 0 && (
         <div className="tactical-map-overlay-wrap" style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
-          <OobMapLayer project={project} width={size.w} height={size.h} />
+          {showOob && <OobMapLayer project={project} width={size.w} height={size.h} />}
+          <TimelapseMapLayer project={project} width={size.w} height={size.h} />
           <MapOverlaySvg project={project} width={size.w} height={size.h} />
         </div>
       )}

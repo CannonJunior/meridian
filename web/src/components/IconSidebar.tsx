@@ -84,6 +84,17 @@ function ChatIcon({ color }: { color: string }) {
   );
 }
 
+function LayersIcon({ color }: { color: string }) {
+  return (
+    <svg className="icon-sidebar-glyph icon-sidebar-glyph-layers" width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path className="icon-sidebar-layers-glyph-top" d="M10 2L18 6.5L10 11L2 6.5L10 2Z" stroke={color} strokeWidth="1.4" strokeLinejoin="round" />
+      <path className="icon-sidebar-layers-glyph-mid" d="M2 10L10 14.5L18 10" stroke={color} strokeWidth="1.4" strokeLinejoin="round" opacity="0.75" />
+      <path className="icon-sidebar-layers-glyph-bottom" d="M2 13.5L10 18L18 13.5" stroke={color} strokeWidth="1.4" strokeLinejoin="round" opacity="0.5" />
+      <path className="icon-sidebar-layers-glyph-check" d="M7.3 6.6L9.2 8.5L12.9 4.8" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function AtoIcon({ color }: { color: string }) {
   return (
     <svg className="icon-sidebar-glyph icon-sidebar-glyph-ato" width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -100,6 +111,7 @@ const MANAGERS: { id: Manager; label: string; accent: string; icon: (c: string) 
   { id: 'context', label: 'CONTEXT LAYERS', accent: 'var(--green)', icon: (c) => <ContextIcon color={c} /> },
   { id: 'isr', label: 'ISR COLLECTION', accent: 'var(--cyan)', icon: (c) => <IsrIcon color={c} /> },
   { id: 'ato', label: 'AIR TASKING', accent: 'var(--amber)', icon: (c) => <AtoIcon color={c} /> },
+  { id: 'layers', label: 'LAYER MANAGER', accent: 'var(--green-alt)', icon: (c) => <LayersIcon color={c} /> },
   { id: 'oob', label: 'ORDER OF BATTLE', accent: 'var(--blue)', icon: (c) => <OobIcon color={c} /> },
   { id: 'kb', label: 'KNOWLEDGE BASE', accent: 'var(--violet)', icon: (c) => <KbIcon color={c} /> },
   { id: 'lists', label: 'TARGET LISTS', accent: 'var(--yellow)', icon: (c) => <ListsIcon color={c} /> },

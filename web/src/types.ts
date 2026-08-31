@@ -1,6 +1,13 @@
 export type Affiliation = 'HOS' | 'UNK' | 'FRD' | 'NEU';
 export type Threat = 'CRIT' | 'HIGH' | 'MED' | 'LOW' | null;
 export type Category = 'TEL' | 'SAM' | 'C2' | 'SHIP' | 'BOAT' | 'RADAR' | 'UAS' | 'TROOP' | 'EMIT';
+// Physical domain a live entity operates in — what the Layer Manager's
+// per-domain checkboxes (LayerManager.tsx) filter the map overlay by, and
+// what the domain-segmented Kafka topics (kafka/README.md's "Live Domain
+// Tracks" section) key on. Not stored on Target/Sensor/FriendlyUnit
+// themselves — derived live via selectors.ts's domainFor*() functions from
+// fields (cat, platform) that already exist, same reasoning as AtoDay.
+export type Domain = 'AIR' | 'SEA' | 'GROUND' | 'SPACE';
 export type SensorCoverage = 'cone' | 'wide' | 'area' | 'none';
 export type View = 'MAP' | 'BOARD';
 export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone' | 'oobObject' | 'port' | 'airfield' | 'kbEntity' | 'sortie';
@@ -149,7 +156,9 @@ export interface Sortie {
   totWindowStart: string;
   totWindowEnd: string;
   status: SortieStatus;
-  atoDay: AtoDay;
+  // No stored atoDay — derive it live from totWindowStart via
+  // selectors.ts's atoDayFor() instead of trusting a label written once
+  // at seed time (see that function's doc comment for why).
   bda: Record<string, SortieBda> | null;
 }
 

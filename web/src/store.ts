@@ -1,7 +1,7 @@
 import { create } from 'zustand';
-import type { FeatureCollection, Polygon } from 'geojson';
+import type { Feature, FeatureCollection, Polygon } from 'geojson';
 import { sendAction } from './wsClient';
-import type { Approvals, AtoDay, CardKind, SortieMissionType, State, Target, TargetListId, View } from './types';
+import type { Approvals, AtoDay, CardKind, Domain, SortieMissionType, State, Target, TargetListId, View } from './types';
 import { findOobNode } from './oobSelectors';
 import { deepEqual } from './deepEqual';
 import { CONTEXT_LAYERS } from './assets/contextLayers';
@@ -9,13 +9,15 @@ import { RIGHT_RAIL_MAX_WIDTH, RIGHT_RAIL_MIN_WIDTH } from './layout';
 import { indexSortiesByBdaTarget, listsForTargetIndexed, TARGET_LISTS } from './assets/targetLists';
 import type { TargetListTransition } from './assets/targetLists';
 import { ACTION_ROUTING, entityForRole, ORGANIZATIONS, orgById, roleLabel } from './assets/staff';
-import { fmtLogTime } from './selectors';
+import { DOMAINS, fmtLogTime } from './selectors';
 import { TUTORIALS } from './assets/tutorials';
 import type { PortFeature } from './portFeature';
 import type { AirfieldFeature } from './airfieldFeature';
 import type { MapMode } from './cesium3d';
+import { defaultTimelapseFilter, fetchHistoryCount, fetchHistoryFeatures, initialCursorFor, MAX_TIMELAPSE_FEATURES, TIMELAPSE_LAYERS } from './timelapse';
+import type { BboxFilter, TimelapseFilter, TimelapseLayerId } from './timelapse';
 
-export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb' | 'draw' | 'ato';
+export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb' | 'draw' | 'ato' | 'layers';
 export type LegendMode = 'AFFILIATION' | 'OOB';
 
 // Layer/object association scope for the drawing tool (DrawingToolManager.tsx)
@@ -67,6 +69,80 @@ export interface DrawToolState {
   // answer to "did that work" before the user does anything else. Cleared
   // by resetDrawTool(), the explicit "draw another shape" action.
   savedShapeName: string | null;
+}
+
+// Timelapse capability, Phase 3+ (LayerManager.tsx / TimelapseMapLayer.tsx
+// — see timelapse.ts for the query-builder API client and playback
+// selectors this is built on). `features` and the preflight `previewCount`
+// are two separate round trips deliberately: previewing lets the panel warn
+// on a too-broad range before committing to the full fetch that populates
+// `features` and starts playback.
+//
+// One of these per TimelapseLayerId (see `timelapseByLayer` below), not one
+// shared slot — each domain's timelapse panel (LayerManager.tsx's
+// DomainSection) needs its own independent filter/features/cursor/playback,
+// so expanding AIR's TIMELAPSE row can't collapse or overwrite MARITIME's.
+// An earlier version of this had exactly one shared slot with a "which
+// layer is active" pointer, which is what caused that collapsing bug —
+// there is no such pointer anymore, every layer's state just always exists.
+export interface TimelapseState {
+  filter: TimelapseFilter;
+  previewCount: number | null;
+  previewing: boolean;
+  features: Feature[];
+  loading: boolean;
+  error: string | null;
+  totalMatched: number | null;
+  truncated: boolean;
+  // Playback cursor, ISO 8601 UTC — null until Load has populated
+  // `features` at least once (set via timelapse.ts's initialCursorFor at
+  // that point — filter.timeStart for a bounded scenario, filter.timeEnd
+  // for a continuously-live layer, see that function's doc comment).
+  cursor: string | null;
+  playing: boolean;
+  // Minutes of simulated time advanced per real second while playing —
+  // driven by LayerManager's own playback-tick effect, not stored
+  // state elsewhere, since nothing outside that effect needs to observe
+  // "is a tick due."
+  speedMinPerSec: number;
+  // LayerManager.tsx's per-domain TIMELAPSE checkbox — whether
+  // TimelapseMapLayer.tsx draws this layer's markers/trails on the map.
+  // Independent of domainVisibility (that's the live picture's own
+  // toggle); this only affects the timelapse overlay, and doesn't stop the
+  // filter form/preview/load/playback controls from working while off, the
+  // same way a context layer's filter box stays usable whether or not that
+  // layer is checked on.
+  visible: boolean;
+}
+
+// Every timelapse action touches exactly one layer's slot in
+// timelapseByLayer and leaves the rest of state untouched — this is that
+// one line, shared so the eleven actions below don't each re-spell
+// `{ timelapseByLayer: { ...prev.timelapseByLayer, [layerId]: { ...prev.timelapseByLayer[layerId], ...patch } } }`.
+function patchTimelapseLayer(
+  state: UiState,
+  layerId: TimelapseLayerId,
+  patch: (layer: TimelapseState) => Partial<TimelapseState>,
+): Pick<UiState, 'timelapseByLayer'> {
+  const layer = state.timelapseByLayer[layerId];
+  return { timelapseByLayer: { ...state.timelapseByLayer, [layerId]: { ...layer, ...patch(layer) } } };
+}
+
+function initialTimelapseStateFor(layerId: TimelapseLayerId): TimelapseState {
+  return {
+    filter: defaultTimelapseFilter(layerId),
+    previewCount: null,
+    previewing: false,
+    features: [],
+    loading: false,
+    error: null,
+    totalMatched: null,
+    truncated: false,
+    cursor: null,
+    playing: false,
+    speedMinPerSec: 5,
+    visible: true,
+  };
 }
 
 // Both saveDrawnShape and saveEditingShape need a closed ring (GeoJSON
@@ -246,6 +322,18 @@ interface TutorialSnapshot {
   chatMessages: ChatMessage[];
   activeChatOrgId: string | null;
   activeChatTargetId: string | null;
+  // Phase B/C's AIR TASKING/map fields — added for the ATO tutorials'
+  // groundwork (see the "Tutorial Flight Plan" brief's Finding I.4).
+  // Without these, a tutorial step that called setShowFlightLines(true)
+  // to demonstrate the map layer would leave FLT switched on after
+  // exitTutorial ran — the one guarantee every existing tutorial makes
+  // ("puts the system back exactly how it found it") wouldn't have held.
+  selectedAtoDay: AtoDay;
+  sortieMissionTypeFilter: SortieMissionType | 'ALL';
+  showFlightLines: boolean;
+  showAcoOverlay: boolean;
+  showOob: boolean;
+  focusedNaiId: string | null;
 }
 
 // A card the user has pinned open via the thumbtack button — pinning moves
@@ -301,6 +389,12 @@ interface UiState {
   // already is for the same reason.
   showFlightLines: boolean;
   showAcoOverlay: boolean;
+  // Order of Battle markers/range-rings (OobMapLayer.tsx) on the COP —
+  // unlike showFlightLines/showAcoOverlay above, this defaults ON: OOB
+  // markers were always unconditionally drawn before this toggle existed,
+  // so defaulting it off would silently hide something every existing
+  // session currently sees rather than just adding an option to declutter.
+  showOob: boolean;
   activeListId: TargetListId;
   // Which D-day band the AIR TASKING manager (AtoManager.tsx) and the
   // rolling timeline strip are scoped to — Phase B of the "Rolling Air
@@ -310,6 +404,14 @@ interface UiState {
   // 'ALL' or one SortieMissionType — the AIR TASKING manager's mission-type
   // filter chip row, scoped within the selected day.
   sortieMissionTypeFilter: SortieMissionType | 'ALL';
+  // The CPCL panel's "what does this NAI need" focus (LeftRail.tsx, ISR
+  // manager) — moved here from a local useState during the ATO tutorials'
+  // groundwork (see the "Tutorial Flight Plan" brief's Finding I.4): a
+  // tutorial step's run() can only drive store state, and this is exactly
+  // the kind of within-panel UI selection every other manager's own state
+  // (activeListId, selectedAtoDay, ...) already lives here for. null means
+  // no NAI is focused — every requirement shows at full opacity.
+  focusedNaiId: string | null;
   // Last-observed list membership per target id, and the append-only log of
   // moments a target first qualified for a list — see targetLists.ts for why
   // this exists (it's what makes "state transitions" real, not just the
@@ -332,9 +434,27 @@ interface UiState {
   // assets/contextLayers.ts); sent to GeoServer as a CQL_FILTER rather than
   // filtered client-side (see contextLayerData.ts).
   contextLayerFilters: Record<string, string>;
+  // LayerManager.tsx's per-domain checkboxes — whether the live tactical
+  // picture's AIR/SEA/GROUND/SPACE entities (see selectors.ts's
+  // domainFor*() functions) are drawn in TacticalMap.tsx's SVG overlay.
+  // Filters what MapOverlaySvg renders; it does not touch the underlying
+  // targets/sensors/units arrays or the WS/Zustand data flow, and it's
+  // unrelated to whether that domain's data also reaches GeoServer over
+  // Kafka (kafka/README.md's "Live Domain Tracks" section) — that pipeline
+  // publishes every domain unconditionally, since it's a separate consumer
+  // (GeoServer/WFS), not this app's own map.
+  domainVisibility: Record<Domain, boolean>;
   ports: Record<string, PortFeature>;
   airfields: Record<string, AirfieldFeature>;
   flyToRequest: { lng: number; lat: number; zoom: number } | null;
+  // LayerManager.tsx's per-domain "center on this layer's data" button —
+  // unlike flyTo (a single point + fixed zoom), the entities being centered
+  // on can be spread arbitrarily far apart, so this needs the map to fit a
+  // whole extent rather than assume any particular zoom works. A fresh
+  // object each request (not a counter) since the bbox itself is what the
+  // effect needs, and object identity alone is enough to signal "new
+  // request" — including a repeat of the exact same bbox.
+  fitBoundsRequest: BboxFilter | null;
   // Bumped (never read for its value) to ask TacticalMap to reset the map's
   // rotation back to "up is North" — needed because ol-cesium's Camera
   // keeps the OL View's rotation synced to the Cesium camera heading while
@@ -375,6 +495,15 @@ interface UiState {
   // user drags vertices — null until the first modifyend, at which point
   // SAVE CHANGES has something to PATCH.
   shapeEditing: { shapeId: string; layerId: DrawLayerId; objectId: string; ring: [number, number][] | null } | null;
+  timelapseByLayer: Record<TimelapseLayerId, TimelapseState>;
+  // "USE CURRENT MAP VIEW" (LayerManager.tsx's per-layer timelapse
+  // controls) bumps this — the map itself isn't reachable from that panel,
+  // so TacticalMap.tsx's effect watches it, reads its own live view extent,
+  // and writes the result into timelapseByLayer[layerId].filter.bbox. A
+  // fresh object each request (not a per-layer counter) so the effect's
+  // dependency array fires even when the same layerId is requested twice
+  // in a row.
+  timelapseBboxRequest: { layerId: TimelapseLayerId; requestId: number } | null;
 }
 
 interface Actions {
@@ -424,16 +553,20 @@ interface Actions {
   setShowAltitude: (v: boolean) => void;
   setShowFlightLines: (v: boolean) => void;
   setShowAcoOverlay: (v: boolean) => void;
+  setShowOob: (v: boolean) => void;
   setActiveListId: (id: TargetListId) => void;
   setSelectedAtoDay: (day: AtoDay) => void;
   setSortieMissionTypeFilter: (f: SortieMissionType | 'ALL') => void;
+  setFocusedNaiId: (id: string | null) => void;
   selectOob: (id: string) => void;
   openOob: (id: string) => void;
   toggleContextLayer: (id: string) => void;
   setContextLayerFilter: (id: string, text: string) => void;
+  toggleDomainVisibility: (d: Domain) => void;
   openPort: (feature: PortFeature) => void;
   openAirfield: (feature: AirfieldFeature) => void;
   flyTo: (lng: number, lat: number, zoom?: number) => void;
+  fitBounds: (bbox: BboxFilter) => void;
   resetNorth: () => void;
   setOobStyleColor: (key: keyof OobStyle, hex: string) => void;
   assignContactIdentity: (contactId: string, profileId: string) => void;
@@ -464,6 +597,17 @@ interface Actions {
   startEditingShape: (shapeId: string, layerId: DrawLayerId, objectId: string, initialRing: [number, number][]) => void;
   setEditingShapeRing: (ring: [number, number][]) => void;
   saveEditingShape: () => Promise<void>;
+
+  setTimelapseFilter: (layerId: TimelapseLayerId, patch: Partial<Omit<TimelapseFilter, 'layerId'>>) => void;
+  requestTimelapseBboxFromView: (layerId: TimelapseLayerId) => void;
+  setTimelapseBbox: (layerId: TimelapseLayerId, bbox: BboxFilter) => void;
+  clearTimelapseBbox: (layerId: TimelapseLayerId) => void;
+  previewTimelapseCount: (layerId: TimelapseLayerId) => Promise<void>;
+  loadTimelapseFeatures: (layerId: TimelapseLayerId) => Promise<void>;
+  setTimelapseCursor: (layerId: TimelapseLayerId, iso: string) => void;
+  setTimelapsePlaying: (layerId: TimelapseLayerId, v: boolean) => void;
+  setTimelapseSpeed: (layerId: TimelapseLayerId, minPerSec: number) => void;
+  setTimelapseVisible: (layerId: TimelapseLayerId, v: boolean) => void;
 }
 
 type Store = State & UiState & Actions;
@@ -499,9 +643,11 @@ export const useStore = create<Store>((set, get) => ({
   showAltitude: false,
   showFlightLines: false,
   showAcoOverlay: false,
+  showOob: true,
   activeListId: 'hptl',
   selectedAtoDay: 'D0',
   sortieMissionTypeFilter: 'ALL',
+  focusedNaiId: null,
   targetListMembership: {},
   targetListTransitions: [],
   toasts: [],
@@ -512,9 +658,11 @@ export const useStore = create<Store>((set, get) => ({
   oobSelectedId: null,
   contextLayerVisibility: Object.fromEntries(CONTEXT_LAYERS.map((l) => [l.id, l.defaultVisible])),
   contextLayerFilters: {},
+  domainVisibility: Object.fromEntries(DOMAINS.map((d) => [d, true])) as Record<Domain, boolean>,
   ports: {},
   airfields: {},
   flyToRequest: null,
+  fitBoundsRequest: null,
   resetNorthRequest: 0,
   oobStyle: { radarColor: '#3fd2e6', weaponColor: '#ffab38' },
   contactIdentityAssignments: {},
@@ -528,6 +676,8 @@ export const useStore = create<Store>((set, get) => ({
   drawTool: INITIAL_DRAW_TOOL,
   drawnShapes: {},
   shapeEditing: null,
+  timelapseByLayer: Object.fromEntries(TIMELAPSE_LAYERS.map((l) => [l.id, initialTimelapseStateFor(l.id)])) as Record<TimelapseLayerId, TimelapseState>,
+  timelapseBboxRequest: null,
 
   setFromServer: (s) => {
     set((prev) => {
@@ -624,7 +774,13 @@ export const useStore = create<Store>((set, get) => ({
       adjudicationDueAt: now + org.cadenceSeconds,
       status: 'pending',
     };
-    set((prev) => ({ pendingActions: [...prev.pendingActions, action] }));
+    // Capped the same way toasts/targetListTransitions already are —
+    // resolved entries are never otherwise removed (resolvePendingActionsByIds
+    // only flips their status in place, since TargetCardBody's adjudication
+    // history reads the last few per target), so without a cap this grows
+    // for the life of the tab. 300 is generous headroom over the "last 6 per
+    // target" TargetCardBody actually reads.
+    set((prev) => ({ pendingActions: [...prev.pendingActions, action].slice(-300) }));
   },
   assignPriority: (targetId) => {
     const targets = get().targets;
@@ -660,7 +816,12 @@ export const useStore = create<Store>((set, get) => ({
       text: reply.text,
       t,
     };
-    set((prev) => ({ chatMessages: [...prev.chatMessages, userMsg, npcMsg] }));
+    // Capped the same way toasts/pendingActions/targetListTransitions
+    // already are in this file — sendChatMessage has no other bound, so an
+    // unusually chatty session would otherwise grow this for the life of
+    // the tab. 400 is generous (200 exchanges) across ChatManager's shared
+    // per-org threads.
+    set((prev) => ({ chatMessages: [...prev.chatMessages, userMsg, npcMsg].slice(-400) }));
   },
   resolveDuePendingActions: () => {
     const { pendingActions, t } = get();
@@ -712,7 +873,7 @@ export const useStore = create<Store>((set, get) => ({
     }
 
     set((prev) => ({
-      pendingActions: prev.pendingActions.map((a) => resolvedById.get(a.id) ?? a),
+      pendingActions: prev.pendingActions.map((a) => resolvedById.get(a.id) ?? a).slice(-300),
       toasts: newToasts.length ? [...prev.toasts, ...newToasts].slice(-40) : prev.toasts,
     }));
   },
@@ -785,9 +946,11 @@ export const useStore = create<Store>((set, get) => ({
   setShowAltitude: (v) => set({ showAltitude: v }),
   setShowFlightLines: (v) => set({ showFlightLines: v }),
   setShowAcoOverlay: (v) => set({ showAcoOverlay: v }),
+  setShowOob: (v) => set({ showOob: v }),
   setActiveListId: (id) => set({ activeListId: id }),
   setSelectedAtoDay: (day) => set({ selectedAtoDay: day }),
   setSortieMissionTypeFilter: (f) => set({ sortieMissionTypeFilter: f }),
+  setFocusedNaiId: (id) => set({ focusedNaiId: id }),
   selectOob: (id) => {
     const node = findOobNode(id);
     set({
@@ -799,10 +962,15 @@ export const useStore = create<Store>((set, get) => ({
   openOob: (id) => set({ oobSelectedId: id, activeManager: 'oob', cardKind: 'oobObject', cardId: id, cardTab: 0 }),
   toggleContextLayer: (id) => set((prev) => ({ contextLayerVisibility: { ...prev.contextLayerVisibility, [id]: !prev.contextLayerVisibility[id] } })),
   setContextLayerFilter: (id, text) => set((prev) => ({ contextLayerFilters: { ...prev.contextLayerFilters, [id]: text } })),
+  toggleDomainVisibility: (d) => set((prev) => ({ domainVisibility: { ...prev.domainVisibility, [d]: !prev.domainVisibility[d] } })),
   openPort: (feature) => set((prev) => ({ ports: { ...prev.ports, [feature.id]: feature }, cardKind: 'port', cardId: feature.id, cardTab: 0 })),
   openAirfield: (feature) => set((prev) => ({ airfields: { ...prev.airfields, [feature.id]: feature }, cardKind: 'airfield', cardId: feature.id, cardTab: 0 })),
   flyTo: (lng, lat, zoom = 13) => {
     set({ flyToRequest: { lng, lat, zoom } });
+    if (get().view !== 'MAP') get().setView('MAP');
+  },
+  fitBounds: (bbox) => {
+    set({ fitBoundsRequest: bbox });
     if (get().view !== 'MAP') get().setView('MAP');
   },
   resetNorth: () => set((prev) => ({ resetNorthRequest: prev.resetNorthRequest + 1 })),
@@ -857,6 +1025,12 @@ export const useStore = create<Store>((set, get) => ({
       chatMessages: prev.chatMessages,
       activeChatOrgId: prev.activeChatOrgId,
       activeChatTargetId: prev.activeChatTargetId,
+      selectedAtoDay: prev.selectedAtoDay,
+      sortieMissionTypeFilter: prev.sortieMissionTypeFilter,
+      showFlightLines: prev.showFlightLines,
+      showAcoOverlay: prev.showAcoOverlay,
+      showOob: prev.showOob,
+      focusedNaiId: prev.focusedNaiId,
     };
     set({ activeTutorialId: id, tutorialStepIndex: 0, tutorialSnapshot: snapshot, tutorialScratch: {} });
     tutorial.steps[0]?.run?.();
@@ -955,4 +1129,51 @@ export const useStore = create<Store>((set, get) => ({
     await get().loadDrawnShapes(editing.layerId, editing.objectId);
     set({ shapeEditing: null });
   },
+
+  setTimelapseFilter: (layerId, patch) =>
+    set((prev) => patchTimelapseLayer(prev, layerId, (l) => ({ filter: { ...l.filter, ...patch } }))),
+  requestTimelapseBboxFromView: (layerId) =>
+    set((prev) => ({ timelapseBboxRequest: { layerId, requestId: (prev.timelapseBboxRequest?.requestId ?? 0) + 1 } })),
+  setTimelapseBbox: (layerId, bbox) => set((prev) => patchTimelapseLayer(prev, layerId, (l) => ({ filter: { ...l.filter, bbox } }))),
+  clearTimelapseBbox: (layerId) =>
+    set((prev) =>
+      patchTimelapseLayer(prev, layerId, (l) => {
+        const { bbox: _bbox, ...rest } = l.filter;
+        return { filter: rest };
+      }),
+    ),
+  previewTimelapseCount: async (layerId) => {
+    const filter = get().timelapseByLayer[layerId].filter;
+    set((prev) => patchTimelapseLayer(prev, layerId, () => ({ previewing: true, error: null })));
+    try {
+      const count = await fetchHistoryCount(filter);
+      set((prev) => patchTimelapseLayer(prev, layerId, () => ({ previewing: false, previewCount: count })));
+    } catch (err) {
+      set((prev) => patchTimelapseLayer(prev, layerId, () => ({ previewing: false, error: err instanceof Error ? err.message : 'Failed to preview count.' })));
+    }
+  },
+  loadTimelapseFeatures: async (layerId) => {
+    const filter = get().timelapseByLayer[layerId].filter;
+    set((prev) => patchTimelapseLayer(prev, layerId, () => ({ loading: true, error: null, playing: false })));
+    try {
+      const totalMatched = await fetchHistoryCount(filter);
+      const result = await fetchHistoryFeatures(filter, { count: Math.min(Math.max(totalMatched, 1), MAX_TIMELAPSE_FEATURES) });
+      set((prev) =>
+        patchTimelapseLayer(prev, layerId, () => ({
+          loading: false,
+          features: result.features,
+          totalMatched: result.totalMatched,
+          truncated: result.truncated,
+          previewCount: result.totalMatched,
+          cursor: initialCursorFor(layerId, filter),
+        })),
+      );
+    } catch (err) {
+      set((prev) => patchTimelapseLayer(prev, layerId, () => ({ loading: false, error: err instanceof Error ? err.message : 'Failed to load history.' })));
+    }
+  },
+  setTimelapseCursor: (layerId, iso) => set((prev) => patchTimelapseLayer(prev, layerId, () => ({ cursor: iso }))),
+  setTimelapsePlaying: (layerId, v) => set((prev) => patchTimelapseLayer(prev, layerId, () => ({ playing: v }))),
+  setTimelapseSpeed: (layerId, minPerSec) => set((prev) => patchTimelapseLayer(prev, layerId, () => ({ speedMinPerSec: minPerSec }))),
+  setTimelapseVisible: (layerId, v) => set((prev) => patchTimelapseLayer(prev, layerId, () => ({ visible: v }))),
 }));

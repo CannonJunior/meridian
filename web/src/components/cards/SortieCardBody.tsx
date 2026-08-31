@@ -1,5 +1,5 @@
 import { useStore } from '../../store';
-import { atoDayPhaseLabel, fmtSortieTime, sortieStatusColor } from '../../selectors';
+import { atoDayFor, atoDayPhaseLabel, fmtSortieTime, sortieStatusColor } from '../../selectors';
 import type { BdaPhaseStatus } from '../../types';
 import { EmptyNote, KV, KVGrid, SectionLabel } from './shared';
 
@@ -32,6 +32,7 @@ export default function SortieCardBody({ id, tab }: { id: string; tab: number })
   if (!sortie) return null;
 
   if (tab === 0) {
+    const day = atoDayFor(sortie.totWindowStart);
     return (
       <>
         <KVGrid>
@@ -40,7 +41,7 @@ export default function SortieCardBody({ id, tab }: { id: string; tab: number })
           <KV label="MISSION TYPE" value={sortie.missionType} color="var(--cyan)" />
           <KV label="PACKAGE" value={sortie.packageId ?? '— UNPACKAGED —'} />
           <KV label="STATUS" value={sortie.status} color={sortieStatusColor(sortie.status)} />
-          <KV label="ATO DAY" value={`${sortie.atoDay} · ${atoDayPhaseLabel(sortie.atoDay)}`} />
+          <KV label="ATO DAY" value={`${day} · ${atoDayPhaseLabel(day)}`} />
           <KV label="TOT WINDOW" value={`${fmtSortieTime(sortie.totWindowStart)} – ${fmtSortieTime(sortie.totWindowEnd)}`} color="var(--ink-bright)" />
         </KVGrid>
         <div

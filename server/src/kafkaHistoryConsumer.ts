@@ -19,7 +19,7 @@
 // still resolved (there's nothing to persist for it, so nothing to protect
 // by holding the offset back).
 import { Kafka, logLevel } from 'kafkajs';
-import type { Consumer } from 'kafkajs';
+import type { Admin, Consumer } from 'kafkajs';
 import { pool } from './db.js';
 
 const KAFKA_BROKER = process.env.KAFKA_BROKER ?? 'localhost:9094';
@@ -122,6 +122,12 @@ function scheduleRestart(): void {
 async function runConsumer(): Promise<void> {
   const kafka = new Kafka({ brokers: [KAFKA_BROKER], clientId: 'meridian-server', logLevel: logLevel.NOTHING });
   const consumer: Consumer = kafka.consumer({ groupId: GROUP_ID });
+  // Set once the admin client / lag-check interval further below are
+  // actually created — the CRASH handler below can fire either before or
+  // after that point, so both are torn down defensively (null-checked)
+  // rather than assumed to exist.
+  let admin: Admin | null = null;
+  let lagInterval: ReturnType<typeof setInterval> | null = null;
 
   // kafkajs exhausts its own internal retry budget on a sustained broker
   // outage and then emits CRASH rather than retrying forever — this is
@@ -131,10 +137,18 @@ async function runConsumer(): Promise<void> {
   // shape for its own dropped Postgres LISTEN connection.
   consumer.on(consumer.events.CRASH, ({ payload }) => {
     console.error('[meridian] history-consumer crashed, reconnecting in %dms:', RECONNECT_DELAY_MS, payload.error);
+    // Tear down this run's admin client + lag-check interval before
+    // scheduling a restart — runConsumer() creates fresh ones on the next
+    // attempt, and without this both leaked: one extra open admin
+    // connection and one extra 30s-polling interval per crash/restart
+    // cycle, compounding for as long as the broker stays flaky.
+    if (lagInterval) clearInterval(lagInterval);
     consumer
       .disconnect()
       .catch(() => {})
-      .finally(scheduleRestart);
+      .finally(() => {
+        (admin ? admin.disconnect().catch(() => {}) : Promise.resolve()).finally(scheduleRestart);
+      });
   });
 
   await consumer.connect();
@@ -193,9 +207,9 @@ async function runConsumer(): Promise<void> {
     },
   });
 
-  const admin = kafka.admin();
+  admin = kafka.admin();
   await admin.connect();
-  setInterval(async () => {
+  lagInterval = setInterval(async () => {
     try {
       const topicOffsets = await admin.fetchTopicOffsets(TOPIC);
       const groupOffsets = await admin.fetchOffsets({ groupId: GROUP_ID, topics: [TOPIC] });

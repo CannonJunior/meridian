@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
-import { TUTORIALS } from '../assets/tutorials';
+import { TUTORIAL_CATEGORIES, TUTORIALS } from '../assets/tutorials';
 
 const FIELD_GUIDE_URL = 'https://claude.ai/code/artifact/683e9557-56e2-4b29-99c1-87df05022854';
 
@@ -95,22 +95,53 @@ export default function CommandBarMenu() {
             </span>
           </div>
           {tutorialsExpanded && (
-            <div className="command-bar-menu-tutorials-list" style={{ borderBottom: '1px solid var(--hairline)' }}>
-              {TUTORIALS.map((tu) => (
-                <div
-                  key={tu.id}
-                  className="command-bar-menu-tutorial-row"
-                  onClick={() => {
-                    startTutorial(tu.id);
-                    setOpen(false);
-                    setTutorialsExpanded(false);
-                  }}
-                  title={tu.description}
-                  style={{ padding: '8px 12px 8px 22px', fontSize: 9.5, color: 'var(--ink-mute)', cursor: 'pointer', borderTop: '1px solid #0e1716' }}
-                >
-                  {tu.name}
-                </div>
-              ))}
+            // Grouped by category (Tutorial.category) rather than one flat
+            // list, with a max-height + scroll of its own — at 5 tutorials
+            // this never mattered; doubling to 10 with the ATO set would
+            // have run this dropdown off the bottom of a shorter viewport
+            // with no way to reach the rest (the "Tutorial Flight Plan"
+            // brief's RT-T3 finding). TUTORIALS_BY_CATEGORY preserves each
+            // category's own array order within itself.
+            <div className="command-bar-menu-tutorials-list" style={{ borderBottom: '1px solid var(--hairline)', maxHeight: 260, overflowY: 'auto', overflowX: 'hidden' }}>
+              {TUTORIAL_CATEGORIES.map((category) => {
+                const inCategory = TUTORIALS.filter((tu) => tu.category === category);
+                if (inCategory.length === 0) return null;
+                return (
+                  <div key={category} className="command-bar-menu-tutorial-category">
+                    <div
+                      className="command-bar-menu-tutorial-category-label"
+                      style={{ padding: '6px 12px 4px 22px', fontSize: 8, letterSpacing: '.12em', color: 'var(--ink-faint)', borderTop: '1px solid #0e1716' }}
+                    >
+                      {category.toUpperCase()}
+                    </div>
+                    {inCategory.map((tu) => (
+                      <div
+                        key={tu.id}
+                        className="command-bar-menu-tutorial-row"
+                        onClick={() => {
+                          startTutorial(tu.id);
+                          setOpen(false);
+                          setTutorialsExpanded(false);
+                        }}
+                        title={tu.description}
+                        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px 8px 22px', fontSize: 9.5, color: 'var(--ink-mute)', cursor: 'pointer' }}
+                      >
+                        <span className="command-bar-menu-tutorial-row-name" style={{ flex: 1 }}>
+                          {tu.name}
+                        </span>
+                        {tu.recommended && (
+                          <span
+                            className="command-bar-menu-tutorial-row-start-here"
+                            style={{ fontSize: 7.5, letterSpacing: '.08em', padding: '1px 5px', border: '1px solid var(--amber)', color: 'var(--amber)', fontWeight: 700, flexShrink: 0 }}
+                          >
+                            START HERE
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useStore } from '../store';
 import { C, indexSortiesByCollectionRequirement } from '../selectors';
 import { COLLECTION_REQUIREMENTS, naiForRequirement } from '../assets/collectionRequirements';
@@ -147,11 +147,12 @@ export default function LeftRail() {
   const nais = useStore((s) => s.nais);
   const sorties = useStore((s) => s.sorties);
   const sensorsOn = sensors.filter((s) => s.status === 'ON STATION' || s.status === 'TASKED').length;
-  // Local to this panel, not global store state — purely a within-panel
-  // "what does this NAI need" affordance (design brief §III.7), not
-  // something any other view needs to read. Clicking the same NAI again
-  // clears it rather than being a one-way drill-down.
-  const [focusedNaiId, setFocusedNaiId] = useState<string | null>(null);
+  // Store state, not a local useState (moved during the ATO tutorials'
+  // groundwork — see store.ts's focusedNaiId doc comment): a future
+  // tutorial's run() needs to be able to drive this focus itself, the way
+  // every other interactive step in this app already can.
+  const focusedNaiId = useStore((s) => s.focusedNaiId);
+  const setFocusedNaiId = useStore((s) => s.setFocusedNaiId);
   const requirementIndex = useMemo(() => indexSortiesByCollectionRequirement(sorties), [sorties]);
 
   return (
@@ -184,7 +185,7 @@ export default function LeftRail() {
             <div
               key={n.id}
               className="left-rail-nai-row"
-              onClick={() => setFocusedNaiId((prev) => (prev === n.id ? null : n.id))}
+              onClick={() => setFocusedNaiId(focusedNaiId === n.id ? null : n.id)}
               title="Show this NAI's collection requirements below"
               style={{
                 borderTop: `1px solid ${focused ? n.color : 'var(--hairline-mid)'}`,
@@ -235,7 +236,7 @@ export default function LeftRail() {
                 naiColor={nai?.color ?? null}
                 dimmed={focusedNaiId != null && req.naiId !== focusedNaiId}
                 tasked={requirementIndex.get(req.id) ?? []}
-                onFocusNai={() => req.naiId && setFocusedNaiId((prev) => (prev === req.naiId ? null : req.naiId))}
+                onFocusNai={() => req.naiId && setFocusedNaiId(focusedNaiId === req.naiId ? null : req.naiId)}
               />
             );
           })}

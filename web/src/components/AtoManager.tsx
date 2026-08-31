@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import { useStore } from '../store';
-import { ATO_DAYS, atoDayPhaseColor, atoDayPhaseLabel, fmtSortieTime, sortieStatusColor } from '../selectors';
+import { ATO_DAYS, atoDayFor, atoDayPhaseColor, atoDayPhaseLabel, fmtSortieTime, sortieStatusColor } from '../selectors';
 import type { AtoDay, Sortie, SortieMissionType } from '../types';
 
 const GRID_COLS = '78px 96px 84px 84px 1fr 96px';
@@ -107,14 +108,25 @@ export default function AtoManager() {
   const cardId = useStore((s) => s.cardId);
   const openEntity = useStore((s) => s.openEntity);
 
-  const dayCounts = Object.fromEntries(ATO_DAYS.map((d) => [d, sorties.filter((s) => s.atoDay === d).length])) as Record<AtoDay, number>;
-
-  const sortiesForDay = sorties.filter((s) => s.atoDay === selectedAtoDay);
-  const missionTypesToday = Array.from(new Set(sortiesForDay.map((s) => s.missionType))) as SortieMissionType[];
-  const visibleSorties = sortiesForDay
-    .filter((s) => sortieMissionTypeFilter === 'ALL' || s.missionType === sortieMissionTypeFilter)
-    .slice()
-    .sort((a, b) => a.totWindowStart.localeCompare(b.totWindowStart));
+  // AtoManager also re-renders on cardKind/cardId changes anywhere in the
+  // app (for its own selection highlighting below), not just on sortie/day/
+  // filter changes — without memoizing here, every one of those unrelated
+  // re-renders redid this whole day-count + filter + sort chain from
+  // scratch, even while this panel isn't the active manager.
+  const dayCounts = useMemo(
+    () => Object.fromEntries(ATO_DAYS.map((d) => [d, sorties.filter((s) => atoDayFor(s.totWindowStart) === d).length])) as Record<AtoDay, number>,
+    [sorties],
+  );
+  const sortiesForDay = useMemo(() => sorties.filter((s) => atoDayFor(s.totWindowStart) === selectedAtoDay), [sorties, selectedAtoDay]);
+  const missionTypesToday = useMemo(() => Array.from(new Set(sortiesForDay.map((s) => s.missionType))) as SortieMissionType[], [sortiesForDay]);
+  const visibleSorties = useMemo(
+    () =>
+      sortiesForDay
+        .filter((s) => sortieMissionTypeFilter === 'ALL' || s.missionType === sortieMissionTypeFilter)
+        .slice()
+        .sort((a, b) => a.totWindowStart.localeCompare(b.totWindowStart)),
+    [sortiesForDay, sortieMissionTypeFilter],
+  );
 
   return (
     <div className="ato-manager" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, borderRight: '1px solid var(--hairline)', overflow: 'hidden', background: 'var(--panel-1)' }}>

@@ -65,7 +65,7 @@ function rowToSortie(r: any): Sortie {
     originAirfield: r.originairfield, recoveryAirfield: r.recoveryairfield,
     targetIds: r.targetids, supportedSortieIds: r.supportedsortieids, collectionRequirementIds: r.collectionrequirementids,
     totWindowStart: r.totwindowstart.toISOString(), totWindowEnd: r.totwindowend.toISOString(),
-    status: r.status, atoDay: r.atoday, bda: r.bda,
+    status: r.status, bda: r.bda,
   };
 }
 
@@ -114,12 +114,12 @@ async function seedFresh(): Promise<void> {
     }
     for (const so of s.sorties) {
       await client.query(
-        `INSERT INTO sorties (id,packageId,callsign,platform,linkedPlatformId,missionType,originAirfield,recoveryAirfield,targetIds,supportedSortieIds,collectionRequirementIds,totWindowStart,totWindowEnd,status,atoDay,bda)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        `INSERT INTO sorties (id,packageId,callsign,platform,linkedPlatformId,missionType,originAirfield,recoveryAirfield,targetIds,supportedSortieIds,collectionRequirementIds,totWindowStart,totWindowEnd,status,bda)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
         [
           so.id, so.packageId, so.callsign, so.platform, so.linkedPlatformId, so.missionType,
           so.originAirfield, so.recoveryAirfield, JSON.stringify(so.targetIds), JSON.stringify(so.supportedSortieIds),
-          JSON.stringify(so.collectionRequirementIds), so.totWindowStart, so.totWindowEnd, so.status, so.atoDay,
+          JSON.stringify(so.collectionRequirementIds), so.totWindowStart, so.totWindowEnd, so.status,
           so.bda ? JSON.stringify(so.bda) : null,
         ],
       );
@@ -166,7 +166,7 @@ export async function loadState(): Promise<State> {
     pool.query('SELECT id,description,pir,color,ST_XMin(geom) AS lng_min,ST_YMin(geom) AS lat_min,ST_XMax(geom) AS lng_max,ST_YMax(geom) AS lat_max FROM nais'),
     pool.query('SELECT t,tag,text,tag2 FROM log ORDER BY seq DESC LIMIT 60'),
     pool.query(
-      'SELECT id,packageId,callsign,platform,linkedPlatformId,missionType,originAirfield,recoveryAirfield,targetIds,supportedSortieIds,collectionRequirementIds,totWindowStart,totWindowEnd,status,atoDay,bda FROM sorties',
+      'SELECT id,packageId,callsign,platform,linkedPlatformId,missionType,originAirfield,recoveryAirfield,targetIds,supportedSortieIds,collectionRequirementIds,totWindowStart,totWindowEnd,status,bda FROM sorties',
     ),
   ]);
   return {
@@ -270,4 +270,46 @@ export async function persistTick(state: State, prev: State): Promise<void> {
 
 export async function resetToSeed(): Promise<void> {
   await seedFresh();
+}
+
+// The design brief's RT-03 finding: nothing in the UI (selectors.ts's
+// ATO_DAYS) ever looks further back than D-3 (72h), but nothing was
+// stopping entity_track_history's 'history-air-tracks' rows from growing
+// without bound regardless — the Phase 0 vessel-track fixture this table
+// was originally sized for is a fixed 6 rows; a real per-sortie,
+// near-per-second air-track feed (Phase D's stated future direction, see
+// kafka/README.md) would not be. 96h (72h + a day's margin) keeps a full
+// D-3 day intact rather than trimming right at the boundary the UI
+// actually reads. Scoped to this one layer_id so a Kafka-fed
+// 'history-vessel-tracks' (or any future layer) is never touched by a
+// retention policy that's specifically sized around the ATO day window.
+const AIR_TRACK_RETENTION_HOURS = 96;
+
+export async function pruneAirTrackHistory(retentionHours = AIR_TRACK_RETENTION_HOURS): Promise<number> {
+  const result = await pool.query(
+    `DELETE FROM entity_track_history WHERE layer_id = 'history-air-tracks' AND event_time < now() - make_interval(hours => $1)`,
+    [retentionHours],
+  );
+  return result.rowCount ?? 0;
+}
+
+// Same RT-03 data-volume safeguard as AIR_TRACK_RETENTION_HOURS above, for
+// the two continuously-running real-data producers (kafka/producer-gdelt,
+// kafka/producer-celestrak — see kafka/README.md's "Message schema"
+// section). A separate constant/function rather than folding into
+// pruneAirTrackHistory: these two layers have no ATO-day-window rationale
+// to size a retention period around (that's specific to air-tracks/
+// sorties) — 72h is just "a few days of scrollback." CelesTrak alone
+// publishes a fresh position every ~30s per tracked satellite with no
+// upstream retention of its own, so without this the table would grow
+// without bound for as long as that container runs.
+const REALTIME_HISTORY_LAYER_IDS = ['history-ground-events', 'history-space-tracks'];
+const REALTIME_HISTORY_RETENTION_HOURS = 72;
+
+export async function pruneRealtimeHistoryLayers(retentionHours = REALTIME_HISTORY_RETENTION_HOURS): Promise<number> {
+  const result = await pool.query(
+    `DELETE FROM entity_track_history WHERE layer_id = ANY($1) AND event_time < now() - make_interval(hours => $2)`,
+    [REALTIME_HISTORY_LAYER_IDS, retentionHours],
+  );
+  return result.rowCount ?? 0;
 }

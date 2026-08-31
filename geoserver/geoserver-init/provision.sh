@@ -318,4 +318,29 @@ curl -s -o /dev/null -X PUT -H "Content-Type: application/json" \
   -d '{"layer":{"defaultStyle":{"name":"meridian_entity_track_history","workspace":"meridian"}}}' \
   "$GS/layers/meridian:entity_track_history"
 
+# Live Domain Tracks — the domain-segmented live picture LayerManager.tsx's
+# checkboxes control (see 110-live-domain-tracks.sql, kafka/README.md's
+# "Live Domain Tracks" section). Published through the same history_ro_pg
+# datastore as entity_track_history above, for the same reason: this
+# server's Kafka consumer (liveDomainKafka.ts) is meant to be the only
+# writer, and history_ro_pg's role connects read-only at the database level
+# regardless of this workspace's WFS-T service setting. Styled with the
+# same meridian_live_point default the two-way live-entity layers above
+# use — these are the same kinds of markers, just a second, Kafka-fed
+# projection of them, not a visually distinct dataset.
+for ft in live_air_tracks:"Live Air Tracks" live_sea_tracks:"Live Sea Tracks" live_ground_tracks:"Live Ground Tracks" live_space_tracks:"Live Space Tracks"; do
+  name="${ft%%:*}"
+  title="${ft#*:}"
+
+  echo "Publishing '$name' feature type..."
+  curl -s -o /dev/null -X POST -H "Content-Type: application/json" \
+    -d "{\"featureType\":{\"name\":\"$name\",\"nativeName\":\"$name\",\"title\":\"$title (live, Kafka-fed)\",\"abstract\":\"Meridian's live tactical picture, domain-segmented and republished onto Kafka by server/src/liveDomainKafka.ts, ingested here by the same module's consumer half. Published read-only via history_ro_pg -- see this script's comment above entity_track_history for why.\",\"srs\":\"EPSG:4326\"}}" \
+    "$GS/workspaces/meridian/datastores/history_ro_pg/featuretypes?recalculate=nativebbox,latlonbbox" || true
+
+  echo "Setting default style on layer '$name'..."
+  curl -s -o /dev/null -X PUT -H "Content-Type: application/json" \
+    -d '{"layer":{"defaultStyle":{"name":"meridian_live_point","workspace":"meridian"}}}' \
+    "$GS/layers/meridian:$name"
+done
+
 echo "GeoServer provisioning complete."

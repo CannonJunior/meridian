@@ -1,6 +1,10 @@
 export type Affiliation = 'HOS' | 'UNK' | 'FRD' | 'NEU';
 export type Threat = 'CRIT' | 'HIGH' | 'MED' | 'LOW' | null;
 export type Category = 'TEL' | 'SAM' | 'C2' | 'SHIP' | 'BOAT' | 'RADAR' | 'UAS' | 'TROOP' | 'EMIT';
+// Mirrors web/src/types.ts's Domain exactly (see that file's doc comment) —
+// the physical domain domain.ts classifies each live entity into for the
+// Kafka producer in liveDomainKafka.ts.
+export type Domain = 'AIR' | 'SEA' | 'GROUND' | 'SPACE';
 export type SensorCoverage = 'cone' | 'wide' | 'area' | 'none';
 export type View = 'MAP' | 'BOARD';
 export type CardKind = 'target' | 'sensor' | 'unit' | 'nai' | 'zone';
@@ -122,12 +126,13 @@ export interface LogEntry {
 // no target at all.
 export type SortieMissionType = 'STRIKE' | 'SEAD' | 'CAS' | 'OCA' | 'DCA' | 'ISR' | 'AAR' | 'AIRLIFT' | 'AEW' | 'CSAR';
 export type SortieStatus = 'FRAGGED' | 'AIRBORNE' | 'TOT' | 'RTB' | 'COMPLETE' | 'CANCELLED';
-// D-3..D+3 — the rolling-timeline band a sortie belongs to. Derived at
-// seed/fixture time from totWindowStart relative to "now," not stored
-// independently of it, but kept as its own field since Phase B's timeline
-// strip and AIR TASKING manager filter by day far more often than they'd
-// want to recompute the offset from a raw timestamp on every render.
-export type AtoDay = 'D-3' | 'D-2' | 'D-1' | 'D0' | 'D+1' | 'D+2' | 'D+3';
+// The D-3..D+3 rolling-timeline band a sortie belongs to (AtoDay) is not a
+// server-side type at all — it's derived client-side, live, from
+// totWindowStart (see web/src/selectors.ts's atoDayFor()). An earlier
+// version stored it as its own field, computed once at seed time; left
+// alone long enough with nothing to recompute it, every label would
+// quietly go stale relative to "today." See the "Tutorial Flight Plan"
+// brief's RT-T1 finding.
 export type BdaPhaseStatus = 'PENDING' | 'ASSESSED' | 'INCONCLUSIVE';
 
 // One (sortie, target) pair's combat-assessment ladder (CJCSI 3162.02A) —
@@ -185,7 +190,10 @@ export interface Sortie {
   totWindowStart: string;
   totWindowEnd: string;
   status: SortieStatus;
-  atoDay: AtoDay;
+  // No stored atoDay — the server never computes or sends a day-band
+  // label. web/src/selectors.ts's atoDayFor() derives it client-side, live,
+  // from totWindowStart, instead of trusting a label frozen at seed time
+  // (the tutorial-groundwork fix for the design brief's RT-T1 finding).
   // Keyed by targetId — see SortieBda's doc comment. null for sorties
   // with no targetIds.
   bda: Record<string, SortieBda> | null;

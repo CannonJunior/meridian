@@ -94,3 +94,18 @@ body {
     transform: translateY(2400%);
   }
 }
+/* A ping ring expanding out from a marker and fading — TimelapseMapLayer.tsx
+   plays this a few times on each of a layer's markers right after its
+   TIMELAPSE checkbox is switched on, so markers that are easy to miss at a
+   glance (e.g. a satellite's small dot, one of many scattered across a
+   zoomed-in view) draw the eye to where they actually are. */
+@keyframes twbmarkerflash {
+  0% {
+    r: 4;
+    opacity: 0.9;
+  }
+  100% {
+    r: 18;
+    opacity: 0;
+  }
+}
