@@ -5,3 +5,15 @@ dist/
 *.sqlite-wal
 *.sqlite-shm
 .DS_Store
+
+# Real secrets live in untracked .env files (one per compose project —
+# geoserver/.env, kafka/.env, this repo root's .env for the app compose);
+# each directory's .env.example documents the variables and stays tracked.
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Same convention for the k8s Secret template (k8s/secret.example.yaml
+# stays tracked; a filled-in k8s/secret.yaml must not be).
+k8s/secret.yaml

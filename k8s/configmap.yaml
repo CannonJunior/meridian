@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: meridian-config
+  namespace: meridian
+data:
+  # --- server ---
+  PORT: "8799"
+  PGHOST: "postgis.example.internal"   # replace: managed Postgres/PostGIS endpoint
+  PGPORT: "5432"
+  PGDATABASE: "meridian"
+  PGUSER: "meridian"
+  GEOSERVER_WFS_URL: "http://geoserver.example.internal/geoserver/meridian/wfs"
+  KAFKA_BROKER: "kafka.example.internal:9092"
+  KAFKA_HISTORY_ENABLED: "false"
+  KAFKA_LIVE_DOMAINS_ENABLED: "false"
+  KAFKA_HISTORY_TOPIC: "meridian.telemetry.history.v1"
+
+  # --- web (nginx upstream — matches the server Service name below) ---
+  SERVER_UPSTREAM: "server"
+  SERVER_PORT: "8799"
+
+  # --- history-sim producer (kafka/producer/src/produce.ts) ---
+  # Names here are what the container's process.env actually reads — NOT
+  # the HISTORY_SIM_*-prefixed names kafka/docker-compose.yml's host-side
+  # .env uses; that prefix only exists to disambiguate multiple producers'
+  # host-side overrides sharing one .env file, and gets stripped by that
+  # compose file's own `SEED: ${HISTORY_SIM_SEED:-42}`-style mapping before
+  # the container ever sees it. A ConfigMap has no such indirection — its
+  # keys become the container's env var names directly.
+  SEED: "42"
+  ENTITY_COUNT: "6"
+  BACKFILL_HOURS: "6"
+  TICK_SECONDS: "300"
+  BACKFILL_COMPRESSION: "300"
+
+  # --- history-gdelt producer (kafka/producer-gdelt/src/produce.ts) ---
+  GDELT_QUERY: "(military OR troops OR airstrike OR insurgent OR offensive OR ceasefire)"
+  GDELT_TIMESPAN: "1440"
+  GDELT_MAX_POINTS: "250"
+  GDELT_POLL_SECONDS: "900"
+
+  # --- history-celestrak producer (kafka/producer-celestrak/src/produce.ts) ---
+  CELESTRAK_GROUP: "stations"
+  CATALOG_REFRESH_SECONDS: "21600"
+  PROPAGATE_SECONDS: "30"

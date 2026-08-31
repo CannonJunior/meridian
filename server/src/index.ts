@@ -39,6 +39,14 @@ async function main() {
   // inline as `referenceImage`.
   app.use(express.json({ limit: '10mb' }));
 
+  // Liveness/readiness probe target (Docker HEALTHCHECK, k8s probes) — no
+  // dependency on DB/GeoServer/Kafka reachability, just that the process is
+  // up and serving. Deliberately not under /api so it isn't mistaken for a
+  // data endpoint.
+  app.get('/healthz', (_req, res) => {
+    res.status(200).json({ status: 'ok' });
+  });
+
   app.get('/api/state', (_req, res) => {
     res.json(getState());
   });

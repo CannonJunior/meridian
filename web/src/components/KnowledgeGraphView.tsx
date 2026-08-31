@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import cytoscape from 'cytoscape';
-import type { Core, LayoutOptions, NodeSingular, Stylesheet } from 'cytoscape';
+import type { Core, LayoutOptions, NodeSingular, StylesheetCSS, StylesheetStyle } from 'cytoscape';
+// @types/cytoscape 3.21.9 declares `Stylesheet` as a namespace-scoped type
+// alias (`type Stylesheet = StylesheetStyle | StylesheetCSS`) rather than a
+// directly exported member, so `import type { Stylesheet }` doesn't resolve
+// under this project's `verbatimModuleSyntax` — reconstructed locally
+// instead of importing it.
+type Stylesheet = StylesheetStyle | StylesheetCSS;
 import { useStore } from '../store';
 import { ORG_CHART_BOX_H, ORG_CHART_BOX_W, buildOrgChart, toCytoscapeElements, useKnowledgeGraph } from '../kb/deriveGraph';
 import type { CytoscapeElement, OrgChartPosition } from '../kb/deriveGraph';
@@ -225,12 +231,19 @@ export default function KnowledgeGraphView() {
     // cytoscape layout algorithm over the element set.
     const layout: LayoutOptions =
       layoutMode === 'orgchart'
-        ? {
+        ? ({
             name: 'preset',
+            // @types/cytoscape 3.21.9's NodePositionFunction signature is
+            // `(nodeid: string) => Position`, but cytoscape's actual preset
+            // layout calls this with the NodeSingular itself (hence
+            // `.id()` below) — a known upstream typing inaccuracy, not a
+            // runtime bug, so the whole object is cast past it rather than
+            // the callback's real (and correct) parameter being narrowed
+            // to match the wrong declared type.
             positions: (node: NodeSingular): OrgChartPosition => orgChart?.positions[node.id()] ?? { x: 0, y: 0 },
             fit: true,
             padding: 50,
-          }
+          } as unknown as LayoutOptions)
         : layoutForMode(layoutMode);
 
     const cy = cytoscape({

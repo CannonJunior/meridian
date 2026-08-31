@@ -1,0 +1,63 @@
+name: meridian-app
+
+# The app tier (server + web) as its own compose project — standalone from
+# geoserver/docker-compose.yml and kafka/docker-compose.yml for the same
+# reason those two are standalone from each other (see kafka/README.md's
+# "Why this is a separate compose project" section): it reaches Postgres/
+# GeoServer/Kafka via their *published* host ports, not shared
+# docker-network DNS, so all three stacks stay independently up/down-able.
+# Bring the other two up first (npm run geo:up, and kafka:up if
+# KAFKA_HISTORY_ENABLED/KAFKA_LIVE_DOMAINS_ENABLED are true) — this stack
+# doesn't start them itself.
+services:
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: meridian-server
+    # Lets a container on this compose network reach the *host's* published
+    # ports the same way a host process (e.g. `npm run dev -w server`)
+    # already does via `localhost` — Docker Desktop resolves
+    # host.docker.internal out of the box; host-gateway makes it resolve on
+    # Linux too (Docker 20.10+).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PORT: 8799
+      PGHOST: host.docker.internal
+      PGPORT: ${POSTGIS_PORT:-5555}
+      PGDATABASE: ${POSTGRES_DB:-meridian}
+      PGUSER: ${POSTGRES_USER:-meridian}
+      # No fallback default on purpose — see .env.example's header comment.
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env — see .env.example}
+      GEOSERVER_WFS_URL: http://host.docker.internal:${GEOSERVER_PORT:-8600}/geoserver/meridian/wfs
+      KAFKA_BROKER: host.docker.internal:${KAFKA_EXTERNAL_PORT:-9094}
+      KAFKA_HISTORY_ENABLED: ${KAFKA_HISTORY_ENABLED:-false}
+      KAFKA_LIVE_DOMAINS_ENABLED: ${KAFKA_LIVE_DOMAINS_ENABLED:-false}
+      GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+    ports:
+      - "${SERVER_PORT:-8799}:8799"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:8799/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: meridian-web
+    depends_on:
+      server:
+        condition: service_healthy
+    environment:
+      # Service-name DNS on this compose network (not host.docker.internal —
+      # web only ever needs to reach the server container, never the host).
+      SERVER_UPSTREAM: server
+      SERVER_PORT: 8799
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    restart: unless-stopped

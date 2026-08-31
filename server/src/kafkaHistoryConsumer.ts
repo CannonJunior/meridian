@@ -62,22 +62,29 @@ function isValidHistoryEvent(raw: unknown): raw is HistoryEvent {
   );
 }
 
-// One transaction per batch, mirroring db.ts's seedFresh()/persistTick()
-// idiom (BEGIN, per-row statements, COMMIT/ROLLBACK). A true multi-row
-// VALUES(...),(...) insert would cut round-trips further but isn't needed
-// at Phase 1's data volumes — noted as a Phase 5 perf candidate if ingest
-// throughput ever becomes the bottleneck, not a correctness concern now.
+// One transaction per batch, with rows written via a multi-row
+// VALUES(...),(...) INSERT rather than one round-trip per row — the
+// Phase 5 perf candidate this file used to flag, now applied. Chunked to
+// INSERT_CHUNK_SIZE rows per statement (10 params/row, so 500 rows keeps
+// every statement to 5000 params, well under Postgres's 65535 bind-param
+// limit) — a single Kafka batch can otherwise contain far more rows than
+// that. ON CONFLICT (event_id) DO NOTHING has no issue with the same
+// conflict target appearing twice within one statement (unlike DO UPDATE,
+// see liveDomainKafka.ts's upsertBatch), so no dedup is needed here.
+const INSERT_CHUNK_SIZE = 500;
+const INSERT_COLS = 10;
+
 async function insertBatch(events: HistoryEvent[]): Promise<void> {
   if (!events.length) return;
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const e of events) {
-      await client.query(
-        `INSERT INTO entity_track_history (event_id, entity_id, entity_kind, layer_id, affiliation, speed_kn, event_time, geom, attrs)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,ST_SetSRID(ST_MakePoint($8,$9),4326),$10)
-         ON CONFLICT (event_id) DO NOTHING`,
-        [
+    for (let i = 0; i < events.length; i += INSERT_CHUNK_SIZE) {
+      const chunk = events.slice(i, i + INSERT_CHUNK_SIZE);
+      const values: unknown[] = [];
+      const rows = chunk.map((e, idx) => {
+        const b = idx * INSERT_COLS;
+        values.push(
           e.event_id,
           e.entity_id,
           e.entity_kind,
@@ -88,7 +95,14 @@ async function insertBatch(events: HistoryEvent[]): Promise<void> {
           e.geom.coordinates[0],
           e.geom.coordinates[1],
           JSON.stringify(e.attrs ?? {}),
-        ],
+        );
+        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},$${b + 5},$${b + 6},$${b + 7},ST_SetSRID(ST_MakePoint($${b + 8},$${b + 9}),4326),$${b + 10})`;
+      });
+      await client.query(
+        `INSERT INTO entity_track_history (event_id, entity_id, entity_kind, layer_id, affiliation, speed_kn, event_time, geom, attrs)
+         VALUES ${rows.join(',')}
+         ON CONFLICT (event_id) DO NOTHING`,
+        values,
       );
     }
     await client.query('COMMIT');

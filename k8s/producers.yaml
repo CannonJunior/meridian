@@ -1,0 +1,92 @@
+# Three independent long-running producers (kafka/producer,
+# kafka/producer-gdelt, kafka/producer-celestrak) — each a single-replica
+# Deployment, not a Job/CronJob (see k8s/README.md's table for why), and
+# each only reads the subset of meridian-config's keys it cares about (see
+# configmap.yaml's comments) — the rest are harmlessly unused per pod. No
+# Service: these don't accept inbound traffic, they only publish to Kafka.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: history-sim
+  namespace: meridian
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: history-sim
+  template:
+    metadata:
+      labels:
+        app: history-sim
+    spec:
+      containers:
+        - name: history-sim
+          image: meridian-history-sim:latest # replace with your registry path + a pinned tag
+          envFrom:
+            - configMapRef:
+                name: meridian-config
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: history-gdelt
+  namespace: meridian
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: history-gdelt
+  template:
+    metadata:
+      labels:
+        app: history-gdelt
+    spec:
+      containers:
+        - name: history-gdelt
+          image: meridian-history-gdelt:latest # replace with your registry path + a pinned tag
+          envFrom:
+            - configMapRef:
+                name: meridian-config
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: history-celestrak
+  namespace: meridian
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: history-celestrak
+  template:
+    metadata:
+      labels:
+        app: history-celestrak
+    spec:
+      containers:
+        - name: history-celestrak
+          image: meridian-history-celestrak:latest # replace with your registry path + a pinned tag
+          envFrom:
+            - configMapRef:
+                name: meridian-config
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"

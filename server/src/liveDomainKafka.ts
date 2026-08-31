@@ -162,19 +162,47 @@ function isValidDomainMessage(raw: unknown): raw is DomainMessage {
 // `table` is always one of the four fixed literals in TABLE_FOR, never
 // derived from message content, so interpolating it into the query string
 // carries no injection risk despite not being a bound parameter.
+//
+// Written as a multi-row VALUES(...),(...) INSERT (chunked to
+// UPSERT_CHUNK_SIZE rows/statement — 8 params/row keeps a 500-row chunk to
+// 4000 params, well under Postgres's 65535 limit) rather than one
+// round-trip per row, mirroring kafkaHistoryConsumer.ts's insertBatch.
+// Unlike that DO NOTHING insert, ON CONFLICT ... DO UPDATE errors
+// ("ON CONFLICT DO UPDATE command cannot affect row a second time") if the
+// same entity_id appears twice within one INSERT statement — and it can,
+// since publishSnapshot (above) republishes on every targets/sensors/units
+// change, close to once/sec per its own comment, so a single fetched batch
+// can contain several messages for the same entity. Deduping
+// to the latest message per entity_id before chunking sidesteps that error
+// and reproduces the same end state the old sequential per-row loop
+// produced (last message for an entity_id wins).
+const UPSERT_CHUNK_SIZE = 500;
+const UPSERT_COLS = 8;
+
 async function upsertBatch(table: string, messages: DomainMessage[]): Promise<void> {
   if (!messages.length) return;
+  const latestByEntity = new Map<string, DomainMessage>();
+  for (const m of messages) latestByEntity.set(m.entity_id, m);
+  const deduped = [...latestByEntity.values()];
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const m of messages) {
+    for (let i = 0; i < deduped.length; i += UPSERT_CHUNK_SIZE) {
+      const chunk = deduped.slice(i, i + UPSERT_CHUNK_SIZE);
+      const values: unknown[] = [];
+      const rows = chunk.map((m, idx) => {
+        const b = idx * UPSERT_COLS;
+        values.push(m.entity_id, m.entity_kind, m.name, m.affiliation, m.geom.coordinates[0], m.geom.coordinates[1], m.updated_at, JSON.stringify(m.attrs ?? {}));
+        return `($${b + 1},$${b + 2},$${b + 3},$${b + 4},ST_SetSRID(ST_MakePoint($${b + 5},$${b + 6}),4326),$${b + 7},$${b + 8})`;
+      });
       await client.query(
         `INSERT INTO ${table} (entity_id, entity_kind, name, affiliation, geom, updated_at, attrs)
-         VALUES ($1,$2,$3,$4,ST_SetSRID(ST_MakePoint($5,$6),4326),$7,$8)
+         VALUES ${rows.join(',')}
          ON CONFLICT (entity_id) DO UPDATE SET
            entity_kind = EXCLUDED.entity_kind, name = EXCLUDED.name, affiliation = EXCLUDED.affiliation,
            geom = EXCLUDED.geom, updated_at = EXCLUDED.updated_at, attrs = EXCLUDED.attrs`,
-        [m.entity_id, m.entity_kind, m.name, m.affiliation, m.geom.coordinates[0], m.geom.coordinates[1], m.updated_at, JSON.stringify(m.attrs ?? {})],
+        values,
       );
     }
     await client.query('COMMIT');

@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: meridian
+spec:
+  # Stateless static content + reverse proxy (web/nginx.conf.template) —
+  # safe to scale, unlike `server` (see server-deployment.yaml).
+  replicas: 2
+  selector:
+    matchLabels:
+      app: web
+  template:
+    metadata:
+      labels:
+        app: web
+    spec:
+      containers:
+        - name: web
+          image: meridian-web:latest # replace with your registry path + a pinned tag
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: meridian-config
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: meridian
+spec:
+  selector:
+    app: web
+  ports:
+    - port: 80
+      targetPort: 80

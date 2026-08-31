@@ -1,0 +1,40 @@
+# Templated by the nginx image's docker-entrypoint (envsubst on files under
+# /etc/nginx/templates/*.template) so the API/WS upstream is swappable via
+# env vars — SERVER_UPSTREAM/SERVER_PORT default to "server:8799", the
+# docker-compose service name, but a k8s Service DNS name works the same
+# way with no image rebuild.
+server {
+  listen 80;
+  server_name _;
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # web/src/store.ts and friends call fetch('/api/...') same-origin — see
+  # web/vite.config.ts's dev-server proxy, which this mirrors for the
+  # production build.
+  location /api/ {
+    proxy_pass http://${SERVER_UPSTREAM}:${SERVER_PORT};
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+  }
+
+  # web/src/wsClient.ts connects to `${proto}://${location.host}/ws` — needs
+  # the Upgrade/Connection headers forwarded or every reconnect just hangs.
+  location /ws {
+    proxy_pass http://${SERVER_UPSTREAM}:${SERVER_PORT};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+  }
+
+  location /healthz {
+    proxy_pass http://${SERVER_UPSTREAM}:${SERVER_PORT};
+  }
+
+  # SPA fallback — client-side routing (if any) resolves through index.html
+  # rather than a raw 404 on a hard refresh of a non-root path.
+  location / {
+    try_files $uri /index.html;
+  }
+}

@@ -22,18 +22,52 @@ export function kindLabel(kind: OobKind): string {
   return KIND_LABEL[kind] ?? kind.toUpperCase();
 }
 
-export function findOobNode(id: string, tree: OobNode[] = OOB_TREE): OobNode | null {
+// OOB_TREE is static (never mutated at runtime), so its id->node and
+// id->parentId lookups are indexed once at module load rather than walked
+// on every call — findOobNode/ancestorIds/pathNodes are called from card
+// render bodies that re-render on every sim tick (see ObjectCard.tsx,
+// OobManager.tsx, cards/OobObjectCardBody.tsx), so a per-call tree walk
+// over the whole OOB tree would redo that work every tick. Callers that
+// pass a custom `tree` (none currently do, but the parameter is kept for
+// generality) fall back to the plain recursive walk below.
+interface OobIndex {
+  byId: Map<string, OobNode>;
+  parentById: Map<string, string>;
+}
+
+function buildOobIndex(tree: OobNode[]): OobIndex {
+  const byId = new Map<string, OobNode>();
+  const parentById = new Map<string, string>();
+  function walk(nodes: OobNode[], parentId: string | undefined) {
+    for (const n of nodes) {
+      byId.set(n.id, n);
+      if (parentId !== undefined) parentById.set(n.id, parentId);
+      if (n.children) walk(n.children, n.id);
+    }
+  }
+  walk(tree, undefined);
+  return { byId, parentById };
+}
+
+const OOB_INDEX = buildOobIndex(OOB_TREE);
+
+function findOobNodeWalk(id: string, tree: OobNode[]): OobNode | null {
   for (const n of tree) {
     if (n.id === id) return n;
     if (n.children) {
-      const found = findOobNode(id, n.children);
+      const found = findOobNodeWalk(id, n.children);
       if (found) return found;
     }
   }
   return null;
 }
 
-export function ancestorIds(id: string, tree: OobNode[] = OOB_TREE): string[] {
+export function findOobNode(id: string, tree: OobNode[] = OOB_TREE): OobNode | null {
+  if (tree === OOB_TREE) return OOB_INDEX.byId.get(id) ?? null;
+  return findOobNodeWalk(id, tree);
+}
+
+function ancestorIdsWalk(id: string, tree: OobNode[]): string[] {
   const path: string[] = [];
   function walk(nodes: OobNode[], trail: string[]): boolean {
     for (const n of nodes) {
@@ -47,6 +81,19 @@ export function ancestorIds(id: string, tree: OobNode[] = OOB_TREE): string[] {
   }
   walk(tree, []);
   return path;
+}
+
+export function ancestorIds(id: string, tree: OobNode[] = OOB_TREE): string[] {
+  if (tree === OOB_TREE) {
+    const path: string[] = [];
+    let current = OOB_INDEX.parentById.get(id);
+    while (current !== undefined) {
+      path.unshift(current);
+      current = OOB_INDEX.parentById.get(current);
+    }
+    return path;
+  }
+  return ancestorIdsWalk(id, tree);
 }
 
 export function pathNodes(id: string, tree: OobNode[] = OOB_TREE): OobNode[] {

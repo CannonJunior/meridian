@@ -1,0 +1,25 @@
+# Routes only to `web` — web/nginx.conf.template already proxies /api and
+# /ws through to the `server` Service internally, so nothing outside the
+# cluster needs to reach `server` directly. Assumes an ingress-nginx
+# controller (annotation below); swap for your controller's equivalent if
+# different.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: meridian
+  namespace: meridian
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600" # long-lived WS connections (web/src/wsClient.ts)
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+spec:
+  rules:
+    - host: meridian.example.internal # replace with a real hostname
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
