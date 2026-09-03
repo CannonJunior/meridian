@@ -23,7 +23,8 @@
 // minutes — which is what makes it meaningful to scrub through in the
 // timelapse UI at all.
 import { randomUUID } from 'node:crypto';
-import { Kafka, Partitioners, logLevel } from 'kafkajs';
+import { Kafka, Partitioners, CompressionTypes, logLevel } from 'kafkajs';
+import './zstdCodec.js';
 
 const KAFKA_BROKER = process.env.KAFKA_BROKER ?? 'kafka:9092';
 const TOPIC = process.env.KAFKA_HISTORY_TOPIC ?? 'meridian.telemetry.history.v1';
@@ -152,7 +153,7 @@ async function main() {
       const now = new Date();
       const events = features.map((f) => buildEvent(f, now)).filter((e): e is NonNullable<typeof e> => e != null);
       if (events.length > 0) {
-        await producer.send({ topic: TOPIC, messages: events.map((ev) => ({ key: ev.entity_id, value: JSON.stringify(ev) })) });
+        await producer.send({ topic: TOPIC, compression: CompressionTypes.ZSTD, messages: events.map((ev) => ({ key: ev.entity_id, value: JSON.stringify(ev) })) });
       }
       console.log(`[gdelt] poll complete: fetched=${features.length} published=${events.length} at=${now.toISOString()}`);
     } catch (err) {

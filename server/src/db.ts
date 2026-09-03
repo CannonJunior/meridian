@@ -19,13 +19,23 @@ import type { Approvals, Effector, FriendlyUnit, LogEntry, Nai, Sensor, Sortie, 
 // WebSocket broadcast (store.ts's `update`) are NOT gated on these
 // Promises resolving — persistence happens in the background so DB
 // latency never delays a tick reaching connected clients. See store.ts.
-export const pool = new pg.Pool({
-  host: process.env.PGHOST ?? 'localhost',
-  port: Number(process.env.PGPORT ?? process.env.POSTGIS_PORT ?? 5555),
-  database: process.env.PGDATABASE ?? process.env.POSTGRES_DB ?? 'meridian',
-  user: process.env.PGUSER ?? process.env.POSTGRES_USER ?? 'meridian',
-  password: process.env.PGPASSWORD ?? process.env.POSTGRES_PASSWORD ?? 'meridian',
-});
+// Shared by every dedicated (non-pooled) pg.Client in this codebase —
+// liveSync.ts's LISTEN connection and leaderElection.ts's advisory-lock
+// connection both need one, since pg_advisory_lock/LISTEN are session-scoped
+// and can't go through `pool` below (a pooled connection can be silently
+// recycled out from under either). Exported instead of the third copy of
+// this same object literal being pasted into leaderElection.ts.
+export function pgConnectionConfig(): pg.ClientConfig {
+  return {
+    host: process.env.PGHOST ?? 'localhost',
+    port: Number(process.env.PGPORT ?? process.env.POSTGIS_PORT ?? 5555),
+    database: process.env.PGDATABASE ?? process.env.POSTGRES_DB ?? 'meridian',
+    user: process.env.PGUSER ?? process.env.POSTGRES_USER ?? 'meridian',
+    password: process.env.PGPASSWORD ?? process.env.POSTGRES_PASSWORD ?? 'meridian',
+  };
+}
+
+export const pool = new pg.Pool(pgConnectionConfig());
 
 function rowToTarget(r: any): Target {
   return {
@@ -219,6 +229,14 @@ function newLogEntries(next: LogEntry[], prev: LogEntry[]): LogEntry[] {
   return out;
 }
 
+// Only targets, sensors, and log have an incremental-write path below —
+// effectors, units, nais, and sorties don't, on purpose: nothing in
+// sim.ts/actions.ts ever mutates those four arrays at runtime today (they're
+// seed-only, loaded once by loadState and never written back). That's a
+// real constraint this function relies on, not an oversight — if a future
+// change starts mutating any of them, it needs a branch here too (the same
+// per-index reference-check pattern targets/sensors already use), or that
+// change will silently never persist past the in-memory state.
 export async function persistTick(state: State, prev: State): Promise<void> {
   const client = await pool.connect();
   try {

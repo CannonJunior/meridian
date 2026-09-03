@@ -186,3 +186,25 @@ See the header comments in `postgis-init/generate_ports_sql.py`,
 `postgis-init/generate_shipping_lanes_sql.py`,
 `postgis-init/generate_submarine_cables_sql.py` and
 `postgis-init/generate_bathymetry_sql.py`.
+
+## Updating layer styles (SLDs)
+
+`geoserver-init/{ports,airfields,eez,shipping_lanes,submarine_cables,
+bathymetry,drawn_shapes}_style.sld` are generated files — do not hand-edit
+them. Their content (every color/width/opacity value) is sourced from
+`web/src/assets/layerColors.json`, which is *also* what
+`web/src/assets/contextLayers.ts` and `web/src/components/TacticalMap.tsx`
+read to style the same layers in the app's own OpenLayers rendering (the
+SLDs only affect non-OpenLayers WMS consumers — GeoServer's own layer
+preview, QGIS, etc. — not this app's map). To change a color, edit
+`layerColors.json` once, then:
+
+```
+python3 geoserver-init/generate_slds.py
+```
+
+`live_point_style.sld`, `nais_style.sld` and `history_style.sld` are not
+part of this — the live tactical picture has no OpenLayers-side equivalent
+to drift from (it's rendered from the WebSocket feed, not WFS/SLD; see
+provision.sh's "Live Domain Tracks" comment), so those three remain
+hand-maintained.

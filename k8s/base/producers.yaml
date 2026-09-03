@@ -19,9 +19,12 @@ spec:
       labels:
         app: history-sim
     spec:
+      # See server-deployment.yaml's imagePullSecrets comment — same setup.
+      imagePullSecrets:
+        - name: ghcr-pull
       containers:
         - name: history-sim
-          image: meridian-history-sim:latest # replace with your registry path + a pinned tag
+          image: ghcr.io/cannonjunior/meridian-history-sim:latest # built/pushed by .github/workflows/ci.yml
           envFrom:
             - configMapRef:
                 name: meridian-config
@@ -48,9 +51,12 @@ spec:
       labels:
         app: history-gdelt
     spec:
+      # See server-deployment.yaml's imagePullSecrets comment — same setup.
+      imagePullSecrets:
+        - name: ghcr-pull
       containers:
         - name: history-gdelt
-          image: meridian-history-gdelt:latest # replace with your registry path + a pinned tag
+          image: ghcr.io/cannonjunior/meridian-history-gdelt:latest # built/pushed by .github/workflows/ci.yml
           envFrom:
             - configMapRef:
                 name: meridian-config
@@ -77,9 +83,12 @@ spec:
       labels:
         app: history-celestrak
     spec:
+      # See server-deployment.yaml's imagePullSecrets comment — same setup.
+      imagePullSecrets:
+        - name: ghcr-pull
       containers:
         - name: history-celestrak
-          image: meridian-history-celestrak:latest # replace with your registry path + a pinned tag
+          image: ghcr.io/cannonjunior/meridian-history-celestrak:latest # built/pushed by .github/workflows/ci.yml
           envFrom:
             - configMapRef:
                 name: meridian-config

@@ -3,6 +3,8 @@ import { useStore } from '../store';
 import { C, indexSortiesByCollectionRequirement } from '../selectors';
 import { COLLECTION_REQUIREMENTS, naiForRequirement } from '../assets/collectionRequirements';
 import type { Sensor, Sortie } from '../types';
+import ManagerHeader from './ManagerHeader';
+import { ClickableDiv, ClickableSpan } from './Clickable';
 
 function sensorColors(s: Sensor) {
   const statusColor = s.status === 'ON STATION' ? C.green : s.status === 'TASKED' ? C.amber : s.status === 'DEGRADED' ? C.red : C.dim;
@@ -17,7 +19,7 @@ function SensorCard({ s }: { s: Sensor }) {
   const { statusColor, endColor, taskColor, border } = sensorColors(s);
 
   return (
-    <div className="sensor-card" onClick={() => retaskSensor(s.id)} style={{ border: `1px solid ${border}`, background: 'var(--panel-3)', padding: '8px 9px', cursor: 'pointer', position: 'relative' }}>
+    <ClickableDiv className="sensor-card" onClick={() => retaskSensor(s.id)} title="Retask sensor" style={{ border: `1px solid ${border}`, background: 'var(--panel-3)', padding: '8px 9px', cursor: 'pointer', position: 'relative' }}>
       <div className="sensor-card-header" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <span className="sensor-card-status-dot" style={{ width: 7, height: 7, borderRadius: '50%', background: statusColor, boxShadow: `0 0 6px ${statusColor}`, flexShrink: 0 }} />
         <span className="sensor-card-callsign" style={{ fontFamily: 'var(--font-display)', fontSize: 12, fontWeight: 600, letterSpacing: '.06em', color: 'var(--ink-bright)' }}>
@@ -56,7 +58,7 @@ function SensorCard({ s }: { s: Sensor }) {
           {s.endur}%
         </span>
       </div>
-    </div>
+    </ClickableDiv>
   );
 }
 
@@ -106,13 +108,13 @@ function CollectionRequirementRow({ requirementId, priority, pir, description, n
         </span>
         <span className="left-rail-cpcl-row-spacer" style={{ flex: 1 }} />
         {naiName && (
-          <span
+          <ClickableSpan
             className="left-rail-cpcl-row-nai-tag"
             onClick={onFocusNai}
             style={{ fontSize: 8, letterSpacing: '.06em', padding: '1px 5px', border: `1px solid ${naiColor}`, color: naiColor ?? undefined, cursor: 'pointer' }}
           >
             {naiName}
-          </span>
+          </ClickableSpan>
         )}
         <span className="left-rail-cpcl-row-status" style={{ fontSize: 8, letterSpacing: '.06em', color: statusColor, fontWeight: 700 }}>
           {statusLabel}
@@ -127,14 +129,14 @@ function CollectionRequirementRow({ requirementId, priority, pir, description, n
       {tasked.length > 0 && (
         <div className="left-rail-cpcl-row-tasked-sorties" style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
           {tasked.map((s) => (
-            <span
+            <ClickableSpan
               key={s.id}
               className="left-rail-cpcl-row-tasked-sortie-chip"
               onClick={() => openEntity('sortie', s.id)}
               style={{ fontSize: 8.5, letterSpacing: '.04em', padding: '2px 6px', border: '1px solid var(--hairline-mid)', color: 'var(--cyan)', cursor: 'pointer' }}
             >
               {s.callsign} · {s.status}
-            </span>
+            </ClickableSpan>
           ))}
         </div>
       )}
@@ -157,16 +159,18 @@ export default function LeftRail() {
 
   return (
     <div className="left-rail" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div className="left-rail-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="left-rail-header-accent" style={{ width: 5, height: 14, background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }} />
-        <span className="left-rail-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--cyan)', fontWeight: 600 }}>
-          ISR · COLLECTION
-        </span>
+      <ManagerHeader
+        className="left-rail-header"
+        accentClassName="left-rail-header-accent"
+        titleClassName="left-rail-title"
+        accentColor="var(--cyan)"
+        title="ISR · COLLECTION"
+      >
         <span className="left-rail-spacer" style={{ flex: 1 }} />
         <span className="left-rail-on-station-count" style={{ fontSize: 9, color: 'var(--ink-faint)', letterSpacing: '.1em' }}>
           {sensorsOn}/{sensors.length} ON STN
         </span>
-      </div>
+      </ManagerHeader>
 
       <div className="left-rail-body" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div className="left-rail-section-label" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', padding: '0 2px' }}>
@@ -182,7 +186,7 @@ export default function LeftRail() {
         {nais.map((n) => {
           const focused = focusedNaiId === n.id;
           return (
-            <div
+            <ClickableDiv
               key={n.id}
               className="left-rail-nai-row"
               onClick={() => setFocusedNaiId(focusedNaiId === n.id ? null : n.id)}
@@ -209,16 +213,16 @@ export default function LeftRail() {
               <span className="left-rail-nai-pir" style={{ fontSize: 8.5, letterSpacing: '.1em', color: 'var(--ink-faint)' }}>
                 {n.pir}
               </span>
-            </div>
+            </ClickableDiv>
           );
         })}
 
         <div className="left-rail-section-label" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', padding: '6px 2px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
           <span className="left-rail-cpcl-section-title">CPCL · COLLECTION REQUIREMENTS</span>
           {focusedNaiId && (
-            <span className="left-rail-cpcl-clear-focus" onClick={() => setFocusedNaiId(null)} style={{ color: 'var(--amber)', letterSpacing: '.04em', cursor: 'pointer', fontWeight: 700 }}>
+            <ClickableSpan className="left-rail-cpcl-clear-focus" onClick={() => setFocusedNaiId(null)} style={{ color: 'var(--amber)', letterSpacing: '.04em', cursor: 'pointer', fontWeight: 700 }}>
               ✕ {focusedNaiId} ONLY
-            </span>
+            </ClickableSpan>
           )}
         </div>
         {COLLECTION_REQUIREMENTS.slice()

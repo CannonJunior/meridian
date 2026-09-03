@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import TacticalMap from './TacticalMap';
 import Workbench from './Workbench';
 import Toasts from './Toasts';
+import { ClickableDiv } from './Clickable';
 
 // Lazily loaded: cytoscape.js is a sizeable dependency that only the
 // Knowledge Base graph view needs — same reasoning App.tsx already applies
@@ -34,20 +35,20 @@ export default function CenterPanel() {
         <span className="center-panel-spacer" style={{ flex: 1 }} />
         {!isKb && (
           <div className="center-panel-view-toggle" style={{ display: 'flex', border: '1px solid var(--hairline-mid)' }}>
-            <div
+            <ClickableDiv
               className="center-panel-view-toggle-map"
               onClick={() => setView('MAP')}
               style={{ padding: '4px 14px', fontFamily: 'var(--font-display)', fontSize: 10.5, letterSpacing: '.14em', fontWeight: 600, cursor: 'pointer', background: isMap ? 'var(--amber)' : 'transparent', color: isMap ? '#06090a' : '#7a8d8a' }}
             >
               MAP
-            </div>
-            <div
+            </ClickableDiv>
+            <ClickableDiv
               className="center-panel-view-toggle-workbench"
               onClick={() => setView('BOARD')}
               style={{ padding: '4px 14px', fontFamily: 'var(--font-display)', fontSize: 10.5, letterSpacing: '.14em', fontWeight: 600, cursor: 'pointer', background: !isMap ? 'var(--amber)' : 'transparent', color: !isMap ? '#06090a' : '#7a8d8a', borderLeft: '1px solid var(--hairline-mid)' }}
             >
               WORKBENCH
-            </div>
+            </ClickableDiv>
           </div>
         )}
       </div>

@@ -16,6 +16,7 @@ import AirfieldCardBody from './cards/AirfieldCardBody';
 import KbEntityCardBody from './cards/KbEntityCardBody';
 import SortieCardBody from './cards/SortieCardBody';
 import type { CardKind } from '../types';
+import { ClickableDiv } from './Clickable';
 
 function CrosshairsIcon({ color }: { color: string }) {
   return (
@@ -441,7 +442,7 @@ function ObjectCardShell({ cardKind, cardId, cardTab, cardX, cardY, pinned, zInd
         <span className="object-card-spacer" style={{ flex: 1 }} />
         <div className="object-card-capabilities" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {location && (
-            <div
+            <ClickableDiv
               className="object-card-capability-button object-card-capability-crosshairs"
               onClick={() => flyTo(location.lng, location.lat)}
               onPointerDown={(e) => e.stopPropagation()}
@@ -449,10 +450,10 @@ function ObjectCardShell({ cardKind, cardId, cardTab, cardX, cardY, pinned, zInd
               style={{ width: 22, height: 22, border: '1px solid #2a3d3a', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
             >
               <CrosshairsIcon color="var(--ink-mute)" />
-            </div>
+            </ClickableDiv>
           )}
         </div>
-        <div
+        <ClickableDiv
           className="object-card-pin-button"
           onClick={onTogglePin}
           onPointerDown={(e) => e.stopPropagation()}
@@ -460,27 +461,28 @@ function ObjectCardShell({ cardKind, cardId, cardTab, cardX, cardY, pinned, zInd
           style={{ width: 22, height: 22, border: `1px solid ${pinned ? 'var(--amber)' : '#2a3d3a'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
         >
           <ThumbtackIcon color={pinned ? 'var(--amber)' : 'var(--ink-mute)'} pinned={pinned} />
-        </div>
-        <div
+        </ClickableDiv>
+        <ClickableDiv
           className="object-card-close-button"
           onClick={onClose}
           onPointerDown={(e) => e.stopPropagation()}
+          title="Close this card"
           style={{ width: 22, height: 22, border: '1px solid #2a3d3a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: 'var(--ink-mute)', cursor: 'pointer' }}
         >
           ✕
-        </div>
+        </ClickableDiv>
       </div>
 
       <div className="object-card-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--hairline)', background: 'var(--panel-1)' }}>
         {info.tabNames.map((name, i) => (
-          <div
+          <ClickableDiv
             key={name}
             className="object-card-tab"
             onClick={() => onSetTab(i)}
             style={{ padding: '8px 13px', fontFamily: 'var(--font-display)', fontSize: 10, letterSpacing: '.1em', fontWeight: 600, cursor: 'pointer', color: cardTab === i ? '#06090a' : 'var(--ink-mute)', background: cardTab === i ? 'var(--amber)' : 'transparent', borderRight: '1px solid #131e1d' }}
           >
             {name}
-          </div>
+          </ClickableDiv>
         ))}
       </div>
 

@@ -3,6 +3,8 @@ import { useStore } from '../store';
 import { OOB_TREE } from '../assets/oob';
 import type { OobNode } from '../assets/oob';
 import { ancestorIds, effectiveStatus, findOobNode, kindLabel, statusMeta } from '../oobSelectors';
+import ManagerHeader from './ManagerHeader';
+import { ClickableDiv } from './Clickable';
 
 function rootAccent(rootId: string): string {
   return rootId === 'ru' ? 'var(--red)' : rootId === 'us' ? 'var(--cyan)' : 'var(--amber)';
@@ -39,7 +41,7 @@ function OobRow({
 
   return (
     <div className="oob-row-wrap">
-      <div
+      <ClickableDiv
         className="oob-row"
         onClick={() => {
           if (hasChildren) toggle(node.id);
@@ -81,7 +83,7 @@ function OobRow({
             {meta!.label}
           </span>
         )}
-      </div>
+      </ClickableDiv>
       {hasChildren &&
         isOpen &&
         node.children!.map((c) => (
@@ -129,12 +131,13 @@ export default function OobManager() {
 
   return (
     <div className="oob-manager" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div className="oob-manager-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="oob-manager-header-accent" style={{ width: 5, height: 14, background: 'var(--blue)', boxShadow: '0 0 8px var(--blue)' }} />
-        <span className="oob-manager-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--blue)', fontWeight: 600 }}>
-          ORDER · OF BATTLE
-        </span>
-      </div>
+      <ManagerHeader
+        className="oob-manager-header"
+        accentClassName="oob-manager-header-accent"
+        titleClassName="oob-manager-title"
+        accentColor="var(--blue)"
+        title="ORDER · OF BATTLE"
+      />
 
       <div className="oob-manager-tree" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '8px 0' }}>
         {OOB_TREE.map((root) => (

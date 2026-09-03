@@ -63,6 +63,13 @@ services:
       kafka:
         condition: service_healthy
     entrypoint: ["/bin/sh", "-c"]
+    # The last three topics (meridian.actions.v1/state.patch.v1/
+    # notification.v1) back server/src/leaderElection.ts's elected-leader HA
+    # design (SERVER_HA_ENABLED) — not part of the timelapse/live-domain
+    # capabilities the rest of this file is about. Single partition each:
+    # ordering within a topic is load-bearing for that design (epoch
+    # fencing only works because "highest epoch ever seen" is well-defined
+    # per topic), not a throughput choice.
     command:
       - >
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092
@@ -73,6 +80,10 @@ services:
         for d in air sea ground space; do
         /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic meridian.live.$$d.v1 --partitions 1 --replication-factor 1;
         echo "Topic meridian.live.$$d.v1 ready.";
+        done &&
+        for t in meridian.actions.v1 meridian.state.patch.v1 meridian.notification.v1; do
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic $$t --partitions 1 --replication-factor 1;
+        echo "Topic $$t ready.";
         done
     restart: "no"
 

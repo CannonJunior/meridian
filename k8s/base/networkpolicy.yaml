@@ -1,0 +1,102 @@
+# Ingress-only (egress is intentionally left unrestricted — see below).
+# Every rule here has been verified against a real NetworkPolicy-enforcing
+# CNI (Calico, via kind with the default CNI disabled — kind's own default
+# CNI, kindnet, does NOT enforce NetworkPolicy at all, so testing against a
+# plain `kind create cluster` would have proven nothing).
+#
+# Deny-by-default, then explicit allows — the standard NetworkPolicy
+# pattern: a pod becomes ingress-restricted the moment ANY policy selects
+# it, so "default deny" is itself just a policy selecting every pod with
+# no allow rules, and every other allow below is additive on top of it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: meridian
+spec:
+  podSelector: {}
+  policyTypes: ["Ingress"]
+---
+# `web` is the app's public entry point (fronted by ingress.yaml) — an
+# ingress controller's namespace/labels vary by installation and this repo
+# doesn't pin one, so this deliberately allows from anywhere on port 80
+# rather than guessing. Tightening this to a specific controller identity
+# is a reasonable follow-up once a real one is chosen.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-web-ingress
+  namespace: meridian
+spec:
+  podSelector:
+    matchLabels:
+      app: web
+  policyTypes: ["Ingress"]
+  ingress:
+    - ports:
+        - port: 80
+---
+# `server` accepts traffic only from `web` (its nginx proxy — see
+# web/nginx.conf.template) — nothing else in or out of the cluster talks to
+# it directly. Verified this does NOT also block kubelet's own
+# liveness/readiness probes to server-deployment.yaml's /healthz: those
+# arrive over each node's own network stack, not as pod-sourced traffic a
+# NetworkPolicy's ingress rules match against, so they're unaffected by
+# restricting *pod* ingress this way — confirmed live, `server` still
+# reached Ready under this exact policy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-server-ingress
+  namespace: meridian
+spec:
+  podSelector:
+    matchLabels:
+      app: server
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: web
+      ports:
+        - port: 8799
+---
+# `geoserver` accepts traffic from `server` (historyQuery.ts's WFS client)
+# and from geoserver-init-job.yaml's Job pod (provisioning) — nothing else.
+# Job-created pods get an automatic `job-name` label from the Job
+# controller, matched here without needing to hand-label anything. Both
+# allow paths and the default-deny were verified live (a pod labeled
+# app=server and one labeled job-name=geoserver-init could each reach a
+# stand-in geoserver pod on 8080; an unlabeled pod could not).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-geoserver-ingress
+  namespace: meridian
+spec:
+  podSelector:
+    matchLabels:
+      app: geoserver
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: server
+        - podSelector:
+            matchLabels:
+              job-name: geoserver-init
+      ports:
+        - port: 8080
+
+# Egress is NOT restricted here. `server`/`geoserver` each need to reach an
+# external Postgres, `server`/the three producers each need an external
+# Kafka broker, and `server` needs the public Google Static Maps API
+# (server/src/googleStaticMap.ts) — all at addresses this repo only knows
+# as placeholders (base/configmap.yaml's *.example.internal values), not
+# real IPs/CIDRs an egress NetworkPolicy could target. Restricting egress
+# correctly needs the real network topology of wherever this actually
+# deploys, which is exactly the "no real cluster/cloud target yet" gap
+# k8s/README.md's intro already flags — a job for whoever picks that target,
+# not something to guess at here.

@@ -6,6 +6,23 @@ import type { Affiliation, AtoDay, Category, Domain, Effector, FriendlyUnit, Sen
 // Pure derived-value helpers, ported 1:1 from the `Component` class methods
 // in Meridian Fires C2.dc.html (renderVals/renderMap section, lines ~920-1113).
 
+// Raw hex duplicate of theme.css's :root palette — predates theme.css's
+// CSS custom properties (this whole file was ported 1:1 from the original
+// Meridian Fires C2.dc.html, back when there was no :root to reference;
+// see this file's header). Nothing generates one from the other, so they
+// can drift: `violet` here was `#c77dff` against theme.css's `--violet:
+// #b98bff` until this comment was added — fixed to match, but there's
+// nothing stopping the next new color from diverging the same way.
+// Prefer `var(--x)` directly over adding a new key here — it works
+// identically in every context this app actually renders through (DOM
+// style objects and SVG presentation attributes both resolve CSS custom
+// properties; see overlays.tsx's TrackSymbol, which already does this).
+// `C` is kept only because most of this file's existing color-computation
+// functions (threatColor, confColor, decayInfo, DOMAIN_META, and the
+// several dozen other call sites across components/) already return one of
+// these values — not because any of them need a literal hex string for a
+// canvas/non-DOM context. Retiring `C` for good would mean migrating all
+// of those, which is a larger, standalone cleanup, not a one-file fix.
 export const C = {
   amber: '#ffab38',
   red: '#ff5a47',
@@ -14,7 +31,7 @@ export const C = {
   blue: '#5b9dff',
   yellow: '#ffd23f',
   green: '#5fe39a',
-  violet: '#c77dff',
+  violet: '#b98bff',
   ink: '#dfe9e7',
   dim: '#7a8d8a',
   faint: '#46554f',

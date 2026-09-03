@@ -3,6 +3,8 @@ import type { CSSProperties, ReactNode } from 'react';
 import type { Approvals } from '../../types';
 import { useStore } from '../../store';
 import type { DrawLayerId } from '../../store';
+import { ClickableDiv, ClickableSpan } from '../Clickable';
+import { TYPE_SCALE } from '../../layout';
 
 export const APPR_DEFS: { k: keyof Approvals; l: string }[] = [
   { k: 'pid', l: 'POSITIVE ID (PID)' },
@@ -13,19 +15,35 @@ export const APPR_DEFS: { k: keyof Approvals; l: string }[] = [
 
 export function SectionLabel({ children, top = 0 }: { children: ReactNode; top?: number }) {
   return (
-    <div className="section-label" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', margin: top ? `${top}px 0 8px` : '0 0 8px' }}>
+    <div className="card-section-label" style={{ fontSize: TYPE_SCALE.small, letterSpacing: '.18em', color: 'var(--ink-faint)', margin: top ? `${top}px 0 8px` : '0 0 8px' }}>
       {children}
     </div>
   );
 }
 
-export function KV({ label, value, color = 'var(--ink-bright)' }: { label: string; value: ReactNode; color?: string }) {
+// fontSize/fontWeight are optional per-row overrides (e.g. a smaller SIDC
+// value, a bolded CDE level) — everything else about the row (label color,
+// value alignment) stays fixed so every KV row in the app looks like the
+// same primitive with one property tweaked, not a one-off.
+export function KV({
+  label,
+  value,
+  color = 'var(--ink-bright)',
+  fontSize,
+  fontWeight,
+}: {
+  label: string;
+  value: ReactNode;
+  color?: string;
+  fontSize?: number;
+  fontWeight?: number;
+}) {
   return (
     <>
-      <span className="kv-label" style={{ color: 'var(--ink-dim2)' }}>
+      <span className="card-kv-label" style={{ color: 'var(--ink-dim2)' }}>
         {label}
       </span>
-      <span className="kv-value" style={{ color, textAlign: 'right' }}>
+      <span className="card-kv-value" style={{ color, textAlign: 'right', fontSize, fontWeight }}>
         {value}
       </span>
     </>
@@ -34,7 +52,7 @@ export function KV({ label, value, color = 'var(--ink-bright)' }: { label: strin
 
 export function KVGrid({ children }: { children: ReactNode }) {
   return (
-    <div className="kv-grid" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 6, columnGap: 14, fontSize: 11 }}>
+    <div className="card-kv-grid" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 6, columnGap: 14, fontSize: TYPE_SCALE.medium }}>
       {children}
     </div>
   );
@@ -42,17 +60,17 @@ export function KVGrid({ children }: { children: ReactNode }) {
 
 export function ProgressRow({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="progress-row" style={{ marginTop: 12 }}>
-      <div className="progress-row-header" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--ink-dim2)', marginBottom: 4 }}>
-        <span className="progress-row-label" style={{ letterSpacing: '.1em' }}>
+    <div className="card-progress-row" style={{ marginTop: 12 }}>
+      <div className="card-progress-row-header" style={{ display: 'flex', justifyContent: 'space-between', fontSize: TYPE_SCALE.small, color: 'var(--ink-dim2)', marginBottom: 4 }}>
+        <span className="card-progress-row-label" style={{ letterSpacing: '.1em' }}>
           {label}
         </span>
-        <span className="progress-row-value" style={{ color, fontWeight: 600 }}>
+        <span className="card-progress-row-value" style={{ color, fontWeight: 600 }}>
           {value}%
         </span>
       </div>
-      <div className="progress-row-track" style={{ height: 5, background: 'var(--hairline-subtle2)' }}>
-        <div className="progress-row-fill" style={{ height: '100%', width: `${value}%`, background: color }} />
+      <div className="card-progress-row-track" style={{ height: 5, background: 'var(--hairline-subtle2)' }}>
+        <div className="card-progress-row-fill" style={{ height: '100%', width: `${value}%`, background: color }} />
       </div>
     </div>
   );
@@ -78,25 +96,33 @@ export function LinkRow({
   onClick?: () => void;
 }) {
   return (
-    <div className="link-row" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: onClick ? 'pointer' : 'default' }}>
-      <span className="link-row-aff-shape" style={{ width: 11, height: 11, background: '#0c1416', border: `1.5px solid ${affColor}`, flexShrink: 0, ...affShape }} />
-      <span className="link-row-id" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700, color: 'var(--ink-brighter)' }}>
+    // Not every LinkRow is clickable (onClick is optional) — only give it a
+    // Tab stop/button role when it actually does something.
+    <ClickableDiv
+      className="card-link-row"
+      onClick={onClick}
+      tabIndex={onClick ? 0 : undefined}
+      role={onClick ? 'button' : undefined}
+      style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: onClick ? 'pointer' : 'default' }}
+    >
+      <span className="card-link-row-aff-shape" style={{ width: 11, height: 11, background: '#0c1416', border: `1.5px solid ${affColor}`, flexShrink: 0, ...affShape }} />
+      <span className="card-link-row-id" style={{ fontFamily: 'var(--font-display)', fontSize: TYPE_SCALE.medium, fontWeight: 700, color: 'var(--ink-brighter)' }}>
         {idShort}
       </span>
-      <span className="link-row-name" style={{ fontSize: 10, color: affColor, flex: 1 }}>
+      <span className="card-link-row-name" style={{ fontSize: TYPE_SCALE.base, color: affColor, flex: 1 }}>
         {name}
       </span>
       {pillLabel && (
-        <span className="link-row-pill" style={{ fontSize: 8.5, letterSpacing: '.08em', padding: '1px 6px', border: `1px solid ${pillColor}`, color: pillColor, fontWeight: 600 }}>
+        <span className="card-link-row-pill" style={{ fontSize: TYPE_SCALE.tinyPlus, letterSpacing: '.08em', padding: '1px 6px', border: `1px solid ${pillColor}`, color: pillColor, fontWeight: 600 }}>
           {pillLabel}
         </span>
       )}
       {dist && (
-        <span className="link-row-dist" style={{ fontSize: 9, color: 'var(--ink-dim2)', width: 54, textAlign: 'right' }}>
+        <span className="card-link-row-dist" style={{ fontSize: TYPE_SCALE.small, color: 'var(--ink-dim2)', width: 54, textAlign: 'right' }}>
           {dist}
         </span>
       )}
-    </div>
+    </ClickableDiv>
   );
 }
 
@@ -135,7 +161,7 @@ export function DrawnShapesNote({ layerId, objectId }: { layerId: DrawLayerId; o
 
   return (
     <div className="card-drawn-shapes-note" style={{ marginTop: 14, padding: '9px 10px', border: '1px solid var(--hairline-mid)', background: 'var(--panel-3)' }}>
-      <div className="card-drawn-shapes-note-label" style={{ fontSize: 9, letterSpacing: '.12em', color: 'var(--ink-faint)' }}>
+      <div className="card-drawn-shapes-note-label" style={{ fontSize: TYPE_SCALE.small, letterSpacing: '.12em', color: 'var(--ink-faint)' }}>
         DRAWN SHAPES · {shapes.features.length}
       </div>
       {shapes.features.map((f) => {
@@ -144,28 +170,28 @@ export function DrawnShapesNote({ layerId, objectId }: { layerId: DrawLayerId; o
         const deleting = deletingId === shapeId;
         return (
           <div key={shapeId} className="card-drawn-shapes-note-row" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
-            <span className="card-drawn-shapes-note-row-text" style={{ flex: 1, fontSize: 9.5, color: 'var(--ink-mute2)' }}>
+            <span className="card-drawn-shapes-note-row-text" style={{ flex: 1, fontSize: TYPE_SCALE.smallPlus, color: 'var(--ink-mute2)' }}>
               {(f.properties as { name?: string } | null)?.name ?? 'Untitled shape'} — shown on the map, traced with the drawing tool
             </span>
             {error?.id === shapeId && (
-              <span className="card-drawn-shapes-note-row-error" style={{ fontSize: 8.5, color: 'var(--red)' }}>
+              <span className="card-drawn-shapes-note-row-error" style={{ fontSize: TYPE_SCALE.tinyPlus, color: 'var(--red)' }}>
                 {error.message}
               </span>
             )}
             {armed && (
-              <span
+              <ClickableSpan
                 className="card-drawn-shapes-note-row-cancel"
                 onClick={() => setPendingDeleteId(null)}
-                style={{ fontSize: 8.5, letterSpacing: '.06em', color: 'var(--ink-faint)', cursor: 'pointer' }}
+                style={{ fontSize: TYPE_SCALE.tinyPlus, letterSpacing: '.06em', color: 'var(--ink-faint)', cursor: 'pointer' }}
               >
                 CANCEL
-              </span>
+              </ClickableSpan>
             )}
-            <span
+            <ClickableSpan
               className="card-drawn-shapes-note-row-delete"
               onClick={() => (deleting ? undefined : armed ? handleDelete(shapeId) : setPendingDeleteId(shapeId))}
               style={{
-                fontSize: 8.5,
+                fontSize: TYPE_SCALE.tinyPlus,
                 letterSpacing: '.06em',
                 fontWeight: armed ? 700 : 400,
                 color: deleting ? 'var(--ink-faint)' : 'var(--red)',
@@ -174,7 +200,7 @@ export function DrawnShapesNote({ layerId, objectId }: { layerId: DrawLayerId; o
               }}
             >
               {deleting ? 'DELETING…' : armed ? 'CONFIRM DELETE' : 'DELETE'}
-            </span>
+            </ClickableSpan>
           </div>
         );
       })}
@@ -184,7 +210,7 @@ export function DrawnShapesNote({ layerId, objectId }: { layerId: DrawLayerId; o
 
 export function EmptyNote({ children }: { children: ReactNode }) {
   return (
-    <div className="empty-note" style={{ fontSize: 9.5, color: 'var(--ink-faint)' }}>
+    <div className="card-empty-note" style={{ fontSize: TYPE_SCALE.smallPlus, color: 'var(--ink-faint)' }}>
       {children}
     </div>
   );

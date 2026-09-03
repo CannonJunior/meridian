@@ -5,6 +5,7 @@ import { C, DOMAIN_META, DOMAINS, domainForSensor, domainForTarget, domainForUni
 import type { Domain } from '../types';
 import { entityStatesAtTime, extentOfFeatures, groupByEntity, MAX_TIMELAPSE_FEATURES, TIMELAPSE_LAYER_BY_DOMAIN } from '../timelapse';
 import type { EntityState, TimelapseLayerId } from '../timelapse';
+import { ClickableDiv, ClickableSpan } from './Clickable';
 
 const AFFILIATION_OPTIONS = ['ANY', 'HOS', 'UNK', 'FRD', 'NEU'] as const;
 const SPEED_OPTIONS = [1, 5, 15, 60] as const;
@@ -217,23 +218,23 @@ function TimelapseControls({ layerId }: { layerId: TimelapseLayerId }) {
             <span className="layer-manager-timelapse-bbox-summary-text" style={{ fontSize: 9.5, color: 'var(--ink-mute)', letterSpacing: '.02em', flex: 1, fontVariantNumeric: 'tabular-nums' }}>
               {filter.bbox.south.toFixed(2)}, {filter.bbox.west.toFixed(2)} — {filter.bbox.north.toFixed(2)}, {filter.bbox.east.toFixed(2)}
             </span>
-            <span
+            <ClickableSpan
               className="layer-manager-timelapse-bbox-update-button"
               onClick={() => requestTimelapseBboxFromView(layerId)}
               style={{ fontSize: 8.5, letterSpacing: '.08em', padding: '3px 8px', border: '1px solid var(--hairline-mid)', color: 'var(--ink-mute)', cursor: 'pointer', flexShrink: 0 }}
             >
               UPDATE
-            </span>
-            <span
+            </ClickableSpan>
+            <ClickableSpan
               className="layer-manager-timelapse-bbox-clear-button"
               onClick={() => clearTimelapseBbox(layerId)}
               style={{ fontSize: 8.5, letterSpacing: '.08em', padding: '3px 8px', border: '1px solid var(--hairline-mid)', color: 'var(--amber)', cursor: 'pointer', flexShrink: 0 }}
             >
               CLEAR
-            </span>
+            </ClickableSpan>
           </div>
         ) : (
-          <span
+          <ClickableSpan
             className="layer-manager-timelapse-bbox-use-view-button"
             onClick={() => requestTimelapseBboxFromView(layerId)}
             style={{
@@ -247,7 +248,7 @@ function TimelapseControls({ layerId }: { layerId: TimelapseLayerId }) {
             }}
           >
             USE CURRENT MAP VIEW
-          </span>
+          </ClickableSpan>
         )}
       </div>
 
@@ -290,7 +291,7 @@ function TimelapseControls({ layerId }: { layerId: TimelapseLayerId }) {
       {features.length > 0 && cursor && (
         <div className="layer-manager-timelapse-playback" style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: '1px solid #131e1d', paddingTop: 10 }}>
           <div className="layer-manager-timelapse-playback-controls" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span
+            <ClickableSpan
               className="layer-manager-timelapse-play-pause-button"
               onClick={() => setTimelapsePlaying(layerId, !playing)}
               style={{
@@ -307,7 +308,7 @@ function TimelapseControls({ layerId }: { layerId: TimelapseLayerId }) {
               }}
             >
               {playing ? '❚❚' : '▶'}
-            </span>
+            </ClickableSpan>
             <input
               className="layer-manager-timelapse-scrubber"
               type="range"
@@ -326,7 +327,7 @@ function TimelapseControls({ layerId }: { layerId: TimelapseLayerId }) {
               SPEED
             </span>
             {SPEED_OPTIONS.map((s) => (
-              <span
+              <ClickableSpan
                 key={s}
                 className="layer-manager-timelapse-speed-chip"
                 onClick={() => setTimelapseSpeed(layerId, s)}
@@ -341,7 +342,7 @@ function TimelapseControls({ layerId }: { layerId: TimelapseLayerId }) {
                 }}
               >
                 {s}m/s
-              </span>
+              </ClickableSpan>
             ))}
           </div>
 
@@ -510,7 +511,7 @@ function SectionRow({
   onClick: () => void;
 }) {
   return (
-    <div className={className} onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+    <ClickableDiv className={className} onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
       <CheckboxGlyph checked={checked} color={color} />
       <div className={`${className}-text`} style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0, flex: 1 }}>
         <div className={`${className}-label-row`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -523,7 +524,7 @@ function SectionRow({
           {detail}
         </span>
       </div>
-    </div>
+    </ClickableDiv>
   );
 }
 
@@ -586,7 +587,7 @@ function DomainSection({
       className={`layer-manager-domain-section layer-manager-domain-section-${domain.toLowerCase()}`}
       style={{ border: `1px solid ${on ? '#1f4a44' : 'var(--hairline-mid)'}`, background: on ? 'rgba(95,227,154,.05)' : 'var(--panel-3)' }}
     >
-      <div
+      <ClickableDiv
         className="layer-manager-domain-section-header"
         onClick={() => setExpanded(!expanded)}
         style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 9px', cursor: 'pointer' }}
@@ -604,7 +605,7 @@ function DomainSection({
         >
           ▸
         </span>
-      </div>
+      </ClickableDiv>
 
       {expanded && (
         <div className="layer-manager-domain-section-body" style={{ padding: '0 9px 10px', display: 'flex', flexDirection: 'column', gap: 10 }}>

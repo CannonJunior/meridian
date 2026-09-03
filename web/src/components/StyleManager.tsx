@@ -1,6 +1,8 @@
 import { useStore } from '../store';
 import type { OobStyle } from '../store';
 import { STYLE_PALETTE } from '../assets/palette';
+import ManagerHeader from './ManagerHeader';
+import { ClickableDiv } from './Clickable';
 
 const OOB_ATTRIBUTES: { key: keyof OobStyle; label: string; description: string }[] = [
   { key: 'radarColor', label: 'RADAR / SENSOR RANGE', description: 'Detection-range figures on the object card and the range rings drawn around a selected object on the map.' },
@@ -13,12 +15,13 @@ export default function StyleManager() {
 
   return (
     <div className="style-manager" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div className="style-manager-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="style-manager-header-accent" style={{ width: 5, height: 14, background: 'var(--amber)', boxShadow: '0 0 8px var(--amber)' }} />
-        <span className="style-manager-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--amber)', fontWeight: 600 }}>
-          STYLE · MANAGER
-        </span>
-      </div>
+      <ManagerHeader
+        className="style-manager-header"
+        accentClassName="style-manager-header-accent"
+        titleClassName="style-manager-title"
+        accentColor="var(--amber)"
+        title="STYLE · MANAGER"
+      />
 
       <div className="style-manager-list" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
         <div className="style-manager-intro" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', padding: '0 2px', lineHeight: 1.5 }}>
@@ -47,7 +50,7 @@ export default function StyleManager() {
                     {STYLE_PALETTE.map((c) => {
                       const selected = c.hex.toLowerCase() === current.toLowerCase();
                       return (
-                        <div
+                        <ClickableDiv
                           key={c.id}
                           className="style-manager-swatch-button"
                           onClick={() => setOobStyleColor(attr.key, c.hex)}

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Feature, FeatureCollection, Polygon } from 'geojson';
 import { sendAction } from './wsClient';
-import type { Approvals, AtoDay, CardKind, Domain, SortieMissionType, State, Target, TargetListId, View } from './types';
+import type { Approvals, AtoDay, CardKind, Domain, LogEntry, SortieMissionType, State, Target, TargetListId, View } from './types';
 import { findOobNode } from './oobSelectors';
 import { deepEqual } from './deepEqual';
 import { CONTEXT_LAYERS } from './assets/contextLayers';
@@ -9,6 +9,7 @@ import { RIGHT_RAIL_MAX_WIDTH, RIGHT_RAIL_MIN_WIDTH } from './layout';
 import { indexSortiesByBdaTarget, listsForTargetIndexed, TARGET_LISTS } from './assets/targetLists';
 import type { TargetListTransition } from './assets/targetLists';
 import { ACTION_ROUTING, entityForRole, ORGANIZATIONS, orgById, roleLabel } from './assets/staff';
+import { MANAGER_ACTIONS } from './assets/managerActions';
 import { DOMAINS, fmtLogTime } from './selectors';
 import { TUTORIALS } from './assets/tutorials';
 import type { PortFeature } from './portFeature';
@@ -17,7 +18,7 @@ import type { MapMode } from './cesium3d';
 import { defaultTimelapseFilter, fetchHistoryCount, fetchHistoryFeatures, initialCursorFor, MAX_TIMELAPSE_FEATURES, TIMELAPSE_LAYERS } from './timelapse';
 import type { BboxFilter, TimelapseFilter, TimelapseLayerId } from './timelapse';
 
-export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb' | 'draw' | 'ato' | 'layers';
+export type Manager = 'context' | 'isr' | 'oob' | 'style' | 'lists' | 'chat' | 'kb' | 'draw' | 'ato' | 'layers' | 'notifications';
 export type LegendMode = 'AFFILIATION' | 'OOB';
 
 // Layer/object association scope for the drawing tool (DrawingToolManager.tsx)
@@ -175,12 +176,110 @@ export interface OobStyle {
 }
 
 // Click-to-dismiss notifications, stacked bottom-right in the center panel.
-// Currently only produced by target-list transitions (see setFromServer),
-// one per list a target newly joins.
+// Produced by target-list transitions (see setFromServer), one per list a
+// target newly joins, and by receiveNotification below for real
+// server-pushed events — autoDismissMs is set for the latter (unset for the
+// former, matching the pre-existing manual-dismiss-only behavior).
 export interface Toast {
   id: string;
   text: string;
   accent: string;
+  autoDismissMs?: number;
+}
+
+// A real, server-pushed notification (server/src/notifications.ts) —
+// distinct from Toast (an ephemeral, purely client-side display concern).
+// This is the persistent record the Notification Center lists; a Toast is
+// generated alongside it by receiveNotification for immediate visibility,
+// but dismissing the toast doesn't remove the underlying notification here.
+export interface AppNotification {
+  id: string;
+  scope: 'broadcast' | 'client';
+  type: string;
+  priority: 'critical' | 'normal' | 'info';
+  title: string;
+  body: string | null;
+  payload: Record<string, unknown>;
+  createdAt: string;
+  count: number;
+}
+
+export interface NotificationTypeInfo {
+  type: string;
+  label: string;
+  description: string;
+  category: string;
+  // What a type reads as when the user has never touched its toggle (see
+  // notificationTypeEnabled) — chosen per type to match what already
+  // happened before this settings feature existed: types that already
+  // produced an unconditional toast (BDA, weapons release, pairing,
+  // no-strike warnings, target-list joins, action approvals/holds) default
+  // on, so enabling this feature changes nothing until the user opts out.
+  // High-frequency log chatter (track updates, routine system/approval
+  // edits) and the brand-new chat-message type — which never toasted
+  // before — default off, so turning this on doesn't suddenly flood
+  // anyone with noise they never asked for.
+  defaultEnabled: boolean;
+}
+
+// Comprehensive registry of every event in the system a user can subscribe
+// to as a notification. Two provenances, both listed together since the
+// user-facing settings UI doesn't distinguish them:
+//
+//  - 'bda-complete' is the one real server-side producer (see
+//    server/src/notifications.ts's publishNotification, called from
+//    sim.ts) — persisted server-side, replayed on reconnect.
+//  - everything else is detected client-side from state the server
+//    already sends (the shared log/targetListTransitions/pendingActions/
+//    chatMessages), synthesized locally via buildLocalNotification below.
+//    These have no server-side persistence/replay/TTL — they only exist
+//    for a client that was connected (or reconnected close enough behind
+//    that a state patch replay covers it) when the underlying state
+//    changed.
+//
+// 'log:*' types mirror this app's own established log-tag taxonomy
+// (EventLog.tsx's TAG_COLORS / LogEntry.tag2 — det/trk/pair/fire/bda/warn/
+// sys) rather than inventing a new one. 'bda' is deliberately excluded
+// here — sim.ts's BDA-pending transition already fires 'bda-complete'
+// above; watching the log for it too would double-notify the same event.
+// 'det' is also excluded: nothing in the running sim ever produces a live
+// 'det'-tagged entry today (only seed.ts's two startup rows carry it), so
+// a toggle for it would do nothing — see this file's own log-tag watcher
+// in setFromServer for where a future live producer would need adding
+// here too.
+export const NOTIFICATION_TYPES: NotificationTypeInfo[] = [
+  { type: 'bda-complete', label: 'BDA Pending', description: 'A weapons-release engagement completes and battle damage assessment is pending confirmation.', category: 'Engagement', defaultEnabled: true },
+  { type: 'log:fire', label: 'Weapons Released', description: 'An engagement is executed and weapons time-of-flight begins.', category: 'Engagement', defaultEnabled: true },
+  { type: 'log:pair', label: 'Effector Paired', description: 'A target is paired to a strike/fires asset.', category: 'Engagement', defaultEnabled: true },
+  { type: 'log:warn', label: 'No-Strike Zone Alert', description: 'A track enters a no-strike zone or otherwise trips a strike-restriction flag.', category: 'Engagement', defaultEnabled: true },
+  { type: 'log:trk', label: 'Track Update', description: 'Periodic custody/track-quality update on a tracked hostile contact.', category: 'Tracking & System', defaultEnabled: false },
+  { type: 'log:sys', label: 'System / Approval Update', description: 'Sensor retasking, approval grants or withdrawals, board moves, and priority changes.', category: 'Tracking & System', defaultEnabled: false },
+  ...TARGET_LISTS.map((l) => ({
+    type: `list:${l.id}`,
+    label: `Added to ${l.acronym}`,
+    description: l.description,
+    category: 'Target Lists',
+    defaultEnabled: true,
+  })),
+  { type: 'pending:approved', label: 'Action Approved', description: 'A submitted target action (an approval gate, a JTWG nomination) is adjudicated and approved.', category: 'Targeting Workflow', defaultEnabled: true },
+  { type: 'pending:rejected', label: 'Action Held', description: 'A submitted target action is adjudicated and held or rejected, with a stated reason.', category: 'Targeting Workflow', defaultEnabled: true },
+  { type: 'chat:message', label: 'New Chat Message', description: 'A new Board Comms reply arrives in an organization thread.', category: 'Communications', defaultEnabled: false },
+];
+
+// A user-created custom notification (NotificationCenterManager.tsx's
+// "create a new notification" feature) — binds one MANAGER_ACTIONS entry
+// (web/src/assets/managerActions.ts) to a notification this browser wants.
+// Unlike NOTIFICATION_TYPES, this isn't a developer-curated catalog: it's
+// per-browser state the user builds themselves, persisted the same way as
+// notificationTypePrefs (see NOTIFICATION_RULES_KEY below). Creating a rule
+// also flips notificationTypePrefs[`action:${actionId}`] to true — that's
+// the flag receiveNotification actually checks; this array only exists so
+// the UI has something to list/label/delete.
+export interface NotificationRule {
+  id: string;
+  actionId: string; // MANAGER_ACTIONS id this rule watches
+  label: string; // user-facing label; defaults to the catalog entry's own label
+  createdAt: string;
 }
 
 // Gaps 1/3/4/6, generalized: an action a user takes is no longer applied
@@ -420,6 +519,30 @@ interface UiState {
   targetListMembership: Record<string, TargetListId[]>;
   targetListTransitions: TargetListTransition[];
   toasts: Toast[];
+  // Real server-pushed notifications (see wsClient.ts's 'notification'
+  // message handling) — capped, newest-last like toasts. unreadNotificationCount
+  // resets to 0 via markNotificationsRead (called when the Notification
+  // Center panel opens). lastSeenNotificationId is what wsClient.ts sends
+  // back to the server on reconnect for replay catch-up — updated on every
+  // receipt regardless of read state, since it means "delivered," not "seen."
+  notifications: AppNotification[];
+  unreadNotificationCount: number;
+  lastSeenNotificationId: string | null;
+  // Which notification `type`s (NOTIFICATION_TYPES above) the user wants
+  // delivered at all — an explicit `true`/`false` here overrides that
+  // type's own defaultEnabled (see notificationTypeEnabled); a type absent
+  // from this map — the common case, since the user hasn't touched its
+  // toggle — falls back to whatever that type declares as its default.
+  // Checked in receiveNotification and buildLocalNotification's call
+  // sites before a toast/badge/history entry is ever created, so disabling
+  // a type has no user-visible effect whatsoever, not just a suppressed
+  // toast.
+  notificationTypePrefs: Record<string, boolean>;
+  // User-created custom notification rules — see NotificationRule above.
+  // Each one's actionId also has an explicit `true` entry in
+  // notificationTypePrefs above, set at creation time; this array is the
+  // separate, listable/deletable record backing the settings UI.
+  notificationRules: NotificationRule[];
   pendingActions: PendingAction[];
   // Gap 4: org-scoped chat threads (optionally tagged to a target's pending
   // action). Purely client-side, same as pendingActions — nothing here
@@ -575,6 +698,18 @@ interface Actions {
   associateEntities: (uriA: string, uriB: string) => void;
   dissociateEntities: (uriA: string, uriB: string) => void;
   dismissToast: (id: string) => void;
+  receiveNotification: (event: AppNotification) => void;
+  markNotificationsRead: () => void;
+  setNotificationTypeEnabled: (type: string, enabled: boolean) => void;
+  addNotificationRule: (actionId: string, label?: string) => void;
+  removeNotificationRule: (id: string) => void;
+  // Reports "a user just completed this action" to the server (POST
+  // /api/manager-actions), which broadcasts it to every connected browser —
+  // fire-and-forget from the caller's perspective; whether it produces a
+  // visible notification anywhere is entirely up to each browser's own
+  // NotificationRules, decided after this returns. actionId must be one of
+  // MANAGER_ACTIONS' ids.
+  reportManagerAction: (actionId: string, detail?: string | null, targetId?: string | null) => void;
   setRightRailWidth: (w: number) => void;
   startTutorial: (id: string) => void;
   advanceTutorial: () => void;
@@ -626,6 +761,88 @@ const EMPTY_STATE: State = {
   sorties: [],
 };
 
+const NOTIFICATION_TYPE_PREFS_KEY = 'meridian.notificationTypePrefs';
+
+// Persisted in localStorage (same convention as wsClient.ts's clientId/
+// lastSeenNotificationId) rather than plain store state, so the choice
+// survives a full page reload, not just this session. Missing from the
+// stored map (a fresh browser, or a type added after the preference was
+// last saved) falls back to that type's own defaultEnabled — see
+// notificationTypeEnabled.
+function loadNotificationTypePrefs(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(NOTIFICATION_TYPE_PREFS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+function saveNotificationTypePrefs(prefs: Record<string, boolean>): void {
+  localStorage.setItem(NOTIFICATION_TYPE_PREFS_KEY, JSON.stringify(prefs));
+}
+
+const NOTIFICATION_RULES_KEY = 'meridian.notificationRules';
+
+function loadNotificationRules(): NotificationRule[] {
+  try {
+    const raw = localStorage.getItem(NOTIFICATION_RULES_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+function saveNotificationRules(rules: NotificationRule[]): void {
+  localStorage.setItem(NOTIFICATION_RULES_KEY, JSON.stringify(rules));
+}
+
+export function notificationTypeEnabled(prefs: Record<string, boolean>, type: string): boolean {
+  const explicit = prefs[type];
+  if (explicit !== undefined) return explicit;
+  const known = NOTIFICATION_TYPES.find((n) => n.type === type);
+  // A type this browser has never declared a preference for AND doesn't
+  // appear in the developer-curated catalog defaults off — today that's
+  // only a custom `action:*` rule (see NotificationRule) another browser
+  // created but this one didn't, and nobody here asked for it. Every real
+  // pre-existing type is in NOTIFICATION_TYPES above, so this only changes
+  // behavior for types that couldn't previously exist.
+  return known?.defaultEnabled ?? false;
+}
+
+// Shared by every client-only event source (target-list transitions,
+// pending-action resolution, chat replies, and the log-tag watcher in
+// setFromServer) to build a notification+toast pair that looks identical
+// in the UI to a real server-pushed one (receiveNotification's own
+// title/accent/autoDismiss mapping), just without a server-assigned id or
+// replay/TTL backing — nothing built here round-trips through
+// notifications.ts. `scope: 'broadcast'` is a filler, not a real targeting
+// scope: nothing client-side reads AppNotification.scope for anything
+// other than the (unused, for these) server delivery path. Returns null
+// when the type is disabled, so every call site can do
+// `const n = buildLocalNotification(...); if (!n) return prev;`-style
+// early-outs instead of duplicating the enabled check.
+function buildLocalNotification(
+  prefs: Record<string, boolean>,
+  t: number,
+  input: { type: string; priority: AppNotification['priority']; title: string; body?: string | null; payload?: Record<string, unknown> },
+): { notification: AppNotification; toast: Toast } | null {
+  if (!notificationTypeEnabled(prefs, input.type)) return null;
+  const id = `local-${input.type}-${t}-${Math.random().toString(36).slice(2, 7)}`;
+  const notification: AppNotification = {
+    id,
+    scope: 'broadcast',
+    type: input.type,
+    priority: input.priority,
+    title: input.title,
+    body: input.body ?? null,
+    payload: input.payload ?? {},
+    createdAt: new Date().toISOString(),
+    count: 1,
+  };
+  const accent = input.priority === 'critical' ? 'var(--red-crit)' : input.priority === 'normal' ? 'var(--amber)' : 'var(--cyan)';
+  const toast: Toast = { id, text: notification.title, accent, autoDismissMs: input.priority === 'critical' ? undefined : 6000 };
+  return { notification, toast };
+}
+
 export const useStore = create<Store>((set, get) => ({
   ...EMPTY_STATE,
   connected: false,
@@ -651,6 +868,11 @@ export const useStore = create<Store>((set, get) => ({
   targetListMembership: {},
   targetListTransitions: [],
   toasts: [],
+  notifications: [],
+  unreadNotificationCount: 0,
+  lastSeenNotificationId: null,
+  notificationTypePrefs: loadNotificationTypePrefs(),
+  notificationRules: loadNotificationRules(),
   pendingActions: [],
   chatMessages: [],
   activeChatOrgId: ORGANIZATIONS[0].id,
@@ -687,47 +909,112 @@ export const useStore = create<Store>((set, get) => ({
           (patch as Record<string, unknown>)[key] = s[key];
         }
       }
-      if (!patch.targets) return patch;
 
-      // First hydration just establishes a baseline — nothing "transitioned"
-      // onto a list, it was simply already there when we started observing.
-      // Every update after that, a target gaining a list it didn't have a
-      // moment ago is logged as a real, timestamped join event.
-      const isFirstHydration = Object.keys(prev.targetListMembership).length === 0;
-      const nextMembership: Record<string, TargetListId[]> = {};
-      const newTransitions: TargetListTransition[] = [];
-      const newToasts: Toast[] = [];
-      // patch.sorties only exists on a tick where sorties actually changed
-      // (rare) — prev.sorties (already-known, up to date) is what every
-      // other tick needs, not an empty array. Using `s.sorties` directly
-      // here would have silently dropped the reattack->HPTL exception
-      // (assets/targetLists.ts) on almost every tick once broadcasts
-      // became deltas instead of full state.
-      const currentSorties = patch.sorties ?? prev.sorties;
-      // Built once for every target in this tick's patch, not once per
-      // target (listsForTarget would otherwise re-scan currentSorties from
-      // scratch for each one) — see targetLists.ts's listsForTargetIndexed.
-      const reattackIndex = indexSortiesByBdaTarget(currentSorties);
-      for (const target of patch.targets) {
-        const lists = listsForTargetIndexed(target, reattackIndex);
-        nextMembership[target.id] = lists;
-        if (!isFirstHydration) {
-          const prevLists = prev.targetListMembership[target.id] ?? [];
-          for (const listId of lists) {
-            if (!prevLists.includes(listId)) {
-              const joinedAt = patch.t ?? prev.t;
-              newTransitions.push({ targetId: target.id, listId, joinedAt });
-              const def = TARGET_LISTS.find((l) => l.id === listId)!;
-              newToasts.push({ id: `${target.id}-${listId}-${joinedAt}-${Math.random().toString(36).slice(2, 7)}`, text: `${target.id.slice(1)} ${target.name} → ${def.acronym}`, accent: def.accent });
-            }
+      const localNotifications: AppNotification[] = [];
+      const localToasts: Toast[] = [];
+
+      // --- log-tag-derived notifications (NOTIFICATION_TYPES' 'log:*'
+      // entries) --------------------------------------------------------
+      // New entries are exactly the prefix of patch.log whose signature
+      // isn't found in prev.log — server-side, sim.ts/actions.ts reuse the
+      // same LogEntry object reference for every survivor across ticks,
+      // but that identity does not survive the WebSocket: every incoming
+      // message is a fresh JSON.parse, so patch.log's entries are always
+      // new object instances even for entries that are logically
+      // unchanged. Comparing by reference here would treat the entire
+      // array as "new" on every single patch — confirmed directly (each
+      // of a handful of manually-triggered engagements briefly produced
+      // 2-3 duplicate toasts for the same single event, one per log-bearing
+      // patch received before the array aged out of the 60-entry window) —
+      // so entries are compared by content (t + tag2 + text) instead,
+      // which is stable across serialization and, in practice, unique per
+      // occurrence (the text embeds the specific target's name). Guarded
+      // on prev.log.length > 0 (true except the very first hydration,
+      // since EMPTY_STATE.log starts at [] and nothing ever empties it
+      // again) rather than the isFirstHydration flag below, which depends
+      // on patch.targets being present — this doesn't need to be.
+      if (patch.log && prev.log.length > 0) {
+        const logSignature = (entry: LogEntry) => `${entry.t}|${entry.tag2}|${entry.text}`;
+        const prevLogSignatures = new Set(prev.log.map(logSignature));
+        for (const entry of patch.log) {
+          if (prevLogSignatures.has(logSignature(entry))) break; // reached the unchanged tail
+          // 'bda' is already 'bda-complete' (the real server-pushed
+          // notification, published from the same sim.ts code path that
+          // writes this log entry) — watching for it here too would
+          // double-notify. 'det' has no live producer at all (see
+          // NOTIFICATION_TYPES' doc comment) so it would never match, but
+          // is skipped explicitly rather than relying on that.
+          if (entry.tag2 === 'bda' || entry.tag2 === 'det') continue;
+          const built = buildLocalNotification(prev.notificationTypePrefs, patch.t ?? prev.t, {
+            type: `log:${entry.tag2}`,
+            priority: entry.tag2 === 'warn' ? 'normal' : 'info',
+            title: entry.text,
+          });
+          if (built) {
+            localNotifications.push(built.notification);
+            localToasts.push(built.toast);
           }
         }
       }
+
+      let targetListMembership = prev.targetListMembership;
+      let targetListTransitions = prev.targetListTransitions;
+
+      if (patch.targets) {
+        // First hydration just establishes a baseline — nothing
+        // "transitioned" onto a list, it was simply already there when we
+        // started observing. Every update after that, a target gaining a
+        // list it didn't have a moment ago is logged as a real,
+        // timestamped join event.
+        const isFirstHydration = Object.keys(prev.targetListMembership).length === 0;
+        const nextMembership: Record<string, TargetListId[]> = {};
+        const newTransitions: TargetListTransition[] = [];
+        // patch.sorties only exists on a tick where sorties actually changed
+        // (rare) — prev.sorties (already-known, up to date) is what every
+        // other tick needs, not an empty array. Using `s.sorties` directly
+        // here would have silently dropped the reattack->HPTL exception
+        // (assets/targetLists.ts) on almost every tick once broadcasts
+        // became deltas instead of full state.
+        const currentSorties = patch.sorties ?? prev.sorties;
+        // Built once for every target in this tick's patch, not once per
+        // target (listsForTarget would otherwise re-scan currentSorties from
+        // scratch for each one) — see targetLists.ts's listsForTargetIndexed.
+        const reattackIndex = indexSortiesByBdaTarget(currentSorties);
+        for (const target of patch.targets) {
+          const lists = listsForTargetIndexed(target, reattackIndex);
+          nextMembership[target.id] = lists;
+          if (!isFirstHydration) {
+            const prevLists = prev.targetListMembership[target.id] ?? [];
+            for (const listId of lists) {
+              if (!prevLists.includes(listId)) {
+                const joinedAt = patch.t ?? prev.t;
+                newTransitions.push({ targetId: target.id, listId, joinedAt });
+                const def = TARGET_LISTS.find((l) => l.id === listId)!;
+                const built = buildLocalNotification(prev.notificationTypePrefs, joinedAt, {
+                  type: `list:${listId}`,
+                  priority: 'info',
+                  title: `${target.id.slice(1)} ${target.name} → ${def.acronym}`,
+                  payload: { targetId: target.id },
+                });
+                if (built) {
+                  localNotifications.push(built.notification);
+                  localToasts.push(built.toast);
+                }
+              }
+            }
+          }
+        }
+        targetListMembership = nextMembership;
+        targetListTransitions = newTransitions.length ? [...newTransitions, ...prev.targetListTransitions].slice(0, 200) : prev.targetListTransitions;
+      }
+
       return {
         ...patch,
-        targetListMembership: nextMembership,
-        targetListTransitions: newTransitions.length ? [...newTransitions, ...prev.targetListTransitions].slice(0, 200) : prev.targetListTransitions,
-        toasts: newToasts.length ? [...prev.toasts, ...newToasts].slice(-40) : prev.toasts,
+        targetListMembership,
+        targetListTransitions,
+        notifications: localNotifications.length ? [...prev.notifications, ...localNotifications].slice(-200) : prev.notifications,
+        unreadNotificationCount: localNotifications.length ? prev.unreadNotificationCount + localNotifications.length : prev.unreadNotificationCount,
+        toasts: localToasts.length ? [...prev.toasts, ...localToasts].slice(-40) : prev.toasts,
       };
     });
     // Every server tick is also a chance for a board/cell/etc. to have
@@ -781,6 +1068,7 @@ export const useStore = create<Store>((set, get) => ({
     // for the life of the tab. 300 is generous headroom over the "last 6 per
     // target" TargetCardBody actually reads.
     set((prev) => ({ pendingActions: [...prev.pendingActions, action].slice(-300) }));
+    get().reportManagerAction('workflow.action-submitted', `${kind} submitted to ${org.acronym} for adjudication.`, targetId);
   },
   assignPriority: (targetId) => {
     const targets = get().targets;
@@ -821,7 +1109,23 @@ export const useStore = create<Store>((set, get) => ({
     // unusually chatty session would otherwise grow this for the life of
     // the tab. 400 is generous (200 exchanges) across ChatManager's shared
     // per-org threads.
-    set((prev) => ({ chatMessages: [...prev.chatMessages, userMsg, npcMsg].slice(-400) }));
+    set((prev) => {
+      // Only the NPC reply is a "new event arrived" — the user's own
+      // message doesn't need to notify the person who just sent it.
+      const built = buildLocalNotification(prev.notificationTypePrefs, t, {
+        type: 'chat:message',
+        priority: 'info',
+        title: `${reply.authorName} (${reply.authorRoleLabel})`,
+        body: reply.text,
+        payload: { orgId: activeChatOrgId, targetId: activeChatTargetId },
+      });
+      return {
+        chatMessages: [...prev.chatMessages, userMsg, npcMsg].slice(-400),
+        notifications: built ? [...prev.notifications, built.notification].slice(-200) : prev.notifications,
+        unreadNotificationCount: built ? prev.unreadNotificationCount + 1 : prev.unreadNotificationCount,
+        toasts: built ? [...prev.toasts, built.toast].slice(-40) : prev.toasts,
+      };
+    });
   },
   resolveDuePendingActions: () => {
     const { pendingActions, t } = get();
@@ -830,12 +1134,13 @@ export const useStore = create<Store>((set, get) => ({
   },
   forceResolvePendingAction: (id) => get().resolvePendingActionsByIds([id]),
   resolvePendingActionsByIds: (ids: string[]) => {
-    const { pendingActions, t, targets } = get();
+    const { pendingActions, t, targets, notificationTypePrefs } = get();
     const due = pendingActions.filter((a) => ids.includes(a.id) && a.status === 'pending');
     if (due.length === 0) return;
 
     const resolvedById = new Map<string, PendingAction>();
     const newToasts: Toast[] = [];
+    const newNotifications: AppNotification[] = [];
     for (const action of due) {
       const target = targets.find((x) => x.id === action.targetId);
       const org = orgById(action.orgId);
@@ -856,11 +1161,16 @@ export const useStore = create<Store>((set, get) => ({
       const { approve, reasons } = adjudicate ? adjudicate(target) : { approve: true, reasons: [] };
       const rationale = approve ? 'Conditions met; within delegated authority.' : `Held: ${reasons.join('; ')}.`;
       resolvedById.set(action.id, { ...action, status: approve ? 'approved' : 'rejected', resolvedAt: t, resolvedBy, rationale });
-      newToasts.push({
-        id: `resolve-${action.id}`,
-        text: `${target.id.slice(1)} ${target.name} — ${orgName} ${approve ? 'APPROVED' : 'HELD'} (${resolvingLabel}): ${rationale}`,
-        accent: approve ? 'var(--green)' : 'var(--red)',
+      const built = buildLocalNotification(notificationTypePrefs, t, {
+        type: approve ? 'pending:approved' : 'pending:rejected',
+        priority: 'info',
+        title: `${target.id.slice(1)} ${target.name} — ${orgName} ${approve ? 'APPROVED' : 'HELD'} (${resolvingLabel}): ${rationale}`,
+        payload: { targetId: target.id },
       });
+      if (built) {
+        newNotifications.push(built.notification);
+        newToasts.push(built.toast);
+      }
       // Applying the effect of an approval is itself per-kind.
       if (approve) {
         if (action.kind.startsWith('toggleAppr:')) {
@@ -874,6 +1184,8 @@ export const useStore = create<Store>((set, get) => ({
 
     set((prev) => ({
       pendingActions: prev.pendingActions.map((a) => resolvedById.get(a.id) ?? a).slice(-300),
+      notifications: newNotifications.length ? [...prev.notifications, ...newNotifications].slice(-200) : prev.notifications,
+      unreadNotificationCount: newNotifications.length ? prev.unreadNotificationCount + newNotifications.length : prev.unreadNotificationCount,
       toasts: newToasts.length ? [...prev.toasts, ...newToasts].slice(-40) : prev.toasts,
     }));
   },
@@ -1005,6 +1317,82 @@ export const useStore = create<Store>((set, get) => ({
       return { kbAssociations: withBoth };
     }),
   dismissToast: (id) => set((prev) => ({ toasts: prev.toasts.filter((t) => t.id !== id) })),
+  // Called by wsClient.ts for every incoming 'notification' message (live
+  // delivery or reconnect replay alike). Does two things: records it in the
+  // persistent notifications list (Notification Center), and generates a
+  // Toast for immediate visibility — critical priority gets no
+  // autoDismissMs (manual dismiss only, same as every other toast today),
+  // normal/info auto-dismiss after ~6s so a burst of low-priority events
+  // doesn't permanently occupy the toast stack (Toasts.tsx enforces the
+  // timer; this just sets the duration).
+  receiveNotification: (event) =>
+    set((prev) => {
+      // Disabled type (see notificationTypeEnabled) — dropped entirely: no
+      // history entry, no toast, no badge increment. lastSeenNotificationId
+      // still isn't advanced for it, which is fine — ws.ts's replay is
+      // scope/target-filtered, not type-filtered, so a disabled event
+      // skipped here would just be re-skipped on replay too.
+      if (!notificationTypeEnabled(prev.notificationTypePrefs, event.type)) return prev;
+      const accent = event.priority === 'critical' ? 'var(--red-crit)' : event.priority === 'normal' ? 'var(--amber)' : 'var(--cyan)';
+      const toast: Toast = {
+        id: event.id,
+        text: event.count > 1 ? `${event.title} (×${event.count})` : event.title,
+        accent,
+        autoDismissMs: event.priority === 'critical' ? undefined : 6000,
+      };
+      return {
+        notifications: [...prev.notifications, event].slice(-200),
+        unreadNotificationCount: prev.unreadNotificationCount + 1,
+        lastSeenNotificationId: event.id,
+        toasts: [...prev.toasts, toast].slice(-40),
+      };
+    }),
+  markNotificationsRead: () => set({ unreadNotificationCount: 0 }),
+  setNotificationTypeEnabled: (type, enabled) =>
+    set((prev) => {
+      const notificationTypePrefs = { ...prev.notificationTypePrefs, [type]: enabled };
+      saveNotificationTypePrefs(notificationTypePrefs);
+      return { notificationTypePrefs };
+    }),
+  addNotificationRule: (actionId, label) => {
+    const info = MANAGER_ACTIONS.find((a) => a.id === actionId);
+    if (!info) return;
+    const prev = get();
+    if (prev.notificationRules.some((r) => r.actionId === actionId)) return; // one rule per action id
+    const rule: NotificationRule = {
+      id: `rule-${actionId}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      actionId,
+      label: label?.trim() || info.label,
+      createdAt: new Date().toISOString(),
+    };
+    const notificationRules = [...prev.notificationRules, rule];
+    saveNotificationRules(notificationRules);
+    // Enabling this browser's own copy of the type is what actually makes
+    // receiveNotification accept it — see notificationTypeEnabled's
+    // unknown-type-defaults-off fallback above.
+    const notificationTypePrefs = { ...prev.notificationTypePrefs, [`action:${actionId}`]: true };
+    saveNotificationTypePrefs(notificationTypePrefs);
+    set({ notificationRules, notificationTypePrefs });
+  },
+  removeNotificationRule: (id) => {
+    const prev = get();
+    const rule = prev.notificationRules.find((r) => r.id === id);
+    if (!rule) return;
+    const notificationRules = prev.notificationRules.filter((r) => r.id !== id);
+    saveNotificationRules(notificationRules);
+    const notificationTypePrefs = { ...prev.notificationTypePrefs, [`action:${rule.actionId}`]: false };
+    saveNotificationTypePrefs(notificationTypePrefs);
+    set({ notificationRules, notificationTypePrefs });
+  },
+  reportManagerAction: (actionId, detail, targetId) => {
+    const info = MANAGER_ACTIONS.find((a) => a.id === actionId);
+    const title = info ? `${info.managerLabel} — ${info.label}` : actionId;
+    fetch('/api/manager-actions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actionId, title, body: detail ?? null, targetId: targetId ?? null }),
+    }).catch((err) => console.error('[meridian] manager-action report failed:', err));
+  },
   startTutorial: (id) => {
     const tutorial = TUTORIALS.find((tu) => tu.id === id);
     if (!tutorial) return;

@@ -13,3 +13,35 @@
 // one line — go narrower and its 9-character "DDHHMMSSZ" string wraps.
 export const RIGHT_RAIL_MIN_WIDTH = 360;
 export const RIGHT_RAIL_MAX_WIDTH = 640;
+
+// Named scale for the `fontSize` values scattered through every component's
+// inline style objects (there is no CSS-class-based type scale in this
+// app — see CLAUDE.md). A codebase-wide audit found 18 distinct sizes
+// (7 through 20, mostly half-pixel steps) already in active use across
+// ~400 call sites — this scale names every one of them faithfully rather
+// than inventing a smaller "cleaner" set that would shift real layouts.
+// Not a retrofit: existing literals were left as-is (a mechanical
+// find-replace across ~400 sites for a purely cosmetic rename carries real
+// regression risk for zero visual change). Use these names in new or
+// heavily-edited components going forward instead of a bare number, so the
+// scale actually converges over time rather than growing an 19th value.
+export const TYPE_SCALE = {
+  micro: 7, // rare fine print (e.g. a single stray label)
+  microPlus: 7.5,
+  tiny: 8,
+  tinyPlus: 8.5, // pills, badges, secondary metadata — the single most common size
+  small: 9, // section labels, hint text — the second most common size
+  smallPlus: 9.5,
+  base: 10, // default body text in cards/rows
+  basePlus: 10.5,
+  medium: 11, // row/list primary text, manager header titles
+  mediumPlus: 11.5,
+  large: 12,
+  largePlus: 12.5,
+  xl: 13,
+  xl2: 14,
+  xl3: 15,
+  display: 16,
+  displayLarge: 17,
+  hero: 20, // the command bar's DTG clock — the largest text in the app
+} as const;

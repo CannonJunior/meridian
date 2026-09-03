@@ -23,13 +23,9 @@ import type { Approvals, Sortie, Target } from '../types';
 import { orgById } from '../assets/staff';
 import { hasActiveReattackRecommendation, reattackNoteFor } from '../assets/targetLists';
 import RightRailResizeHandle from './RightRailResizeHandle';
-
-const APPR_DEFS: { k: keyof Approvals; l: string }[] = [
-  { k: 'pid', l: 'POSITIVE ID (PID)' },
-  { k: 'jag', l: 'ROE / JAG REVIEW' },
-  { k: 'strike', l: 'STRIKE CELL CONCUR' },
-  { k: 'tea', l: 'TARGET ENGAGEMENT AUTH' },
-];
+import { ClickableDiv, ClickableSpan } from './Clickable';
+import { APPR_DEFS, KV, KVGrid } from './cards/shared';
+import ManagerHeader from './ManagerHeader';
 
 function engageButtonProps(sel: Target, effCallsign: string, sorties: Sortie[]) {
   const ready = isEngageReady(sel);
@@ -103,16 +99,18 @@ export default function TargetWorkup() {
   return (
     <div className="target-workup" style={{ position: 'relative', borderLeft: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
       <RightRailResizeHandle />
-      <div className="target-workup-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="target-workup-header-accent" style={{ width: 5, height: 14, background: 'var(--amber)', boxShadow: '0 0 8px var(--amber)' }} />
-        <span className="target-workup-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--amber)', fontWeight: 600 }}>
-          TARGET WORKUP
-        </span>
-        <span className="target-workup-spacer" style={{ flex: 1 }} />
+      <ManagerHeader
+        className="target-workup-header"
+        accentClassName="target-workup-header-accent"
+        titleClassName="target-workup-title"
+        accentColor="var(--amber)"
+        title="TARGET WORKUP"
+        titleGrow
+      >
         <span className="target-workup-mode-label" style={{ fontSize: 9, color: 'var(--ink-faint)', letterSpacing: '.1em' }}>
           TWB / SINGLE
         </span>
-      </div>
+      </ManagerHeader>
 
       <div className="target-workup-body" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden' }}>
         {/* identity header */}
@@ -149,32 +147,12 @@ export default function TargetWorkup() {
           <div className="target-workup-section-label" style={{ fontSize: 9, letterSpacing: '.2em', color: 'var(--ink-faint)', marginBottom: 9 }}>
             ▸ IDENTIFICATION
           </div>
-          <div className="target-workup-identification-grid" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 6, columnGap: 12, fontSize: 11 }}>
-            <span className="kv-label" style={{ color: 'var(--ink-dim2)' }}>
-              TYPE
-            </span>
-            <span className="kv-value" style={{ color: 'var(--ink-bright)', textAlign: 'right' }}>
-              {sel.type}
-            </span>
-            <span className="kv-label" style={{ color: 'var(--ink-dim2)' }}>
-              CATEGORY
-            </span>
-            <span className="kv-value" style={{ color: 'var(--ink-bright)', textAlign: 'right' }}>
-              {catFull(sel.cat)}
-            </span>
-            <span className="kv-label" style={{ color: 'var(--ink-dim2)' }}>
-              SIDC
-            </span>
-            <span className="kv-value" style={{ color: 'var(--ink-mute)', textAlign: 'right', fontSize: 10 }}>
-              {sel.sidc}
-            </span>
-            <span className="kv-label" style={{ color: 'var(--ink-dim2)' }}>
-              CLASSIFIED BY
-            </span>
-            <span className="kv-value" style={{ color: 'var(--cyan)', textAlign: 'right' }}>
-              {sensorName(sensors, sel.custody)}
-            </span>
-          </div>
+          <KVGrid>
+            <KV label="TYPE" value={sel.type} />
+            <KV label="CATEGORY" value={catFull(sel.cat)} />
+            <KV label="SIDC" value={sel.sidc} color="var(--ink-mute)" fontSize={10} />
+            <KV label="CLASSIFIED BY" value={sensorName(sensors, sel.custody)} color="var(--cyan)" />
+          </KVGrid>
           <div className="target-workup-confidence" style={{ marginTop: 10 }}>
             <div className="target-workup-confidence-header" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'var(--ink-dim2)', marginBottom: 4 }}>
               <span className="target-workup-confidence-label" style={{ letterSpacing: '.1em' }}>
@@ -251,20 +229,20 @@ export default function TargetWorkup() {
             ))}
           </div>
           <div className="target-workup-lifecycle-controls" style={{ display: 'flex', gap: 7, marginTop: 11 }}>
-            <div
+            <ClickableDiv
               className="target-workup-regress-button"
               onClick={retreatStage}
               style={{ flex: 1, textAlign: 'center', padding: 6, border: '1px solid #2a3d3a', fontFamily: 'var(--font-display)', fontSize: 10, letterSpacing: '.1em', color: 'var(--ink-mute)', cursor: 'pointer', fontWeight: 600 }}
             >
               ◂ REGRESS
-            </div>
-            <div
+            </ClickableDiv>
+            <ClickableDiv
               className="target-workup-advance-button"
               onClick={advanceStage}
               style={{ flex: 1, textAlign: 'center', padding: 6, border: '1px solid var(--amber)', background: 'rgba(255,171,56,.1)', fontFamily: 'var(--font-display)', fontSize: 10, letterSpacing: '.1em', color: 'var(--amber)', cursor: 'pointer', fontWeight: 700 }}
             >
               ADVANCE ▸
-            </div>
+            </ClickableDiv>
           </div>
         </div>
 
@@ -287,7 +265,7 @@ export default function TargetWorkup() {
               const bg = x.assigned ? 'rgba(95,227,154,.07)' : 'var(--panel-3)';
               const dot = x.data.kinetic ? (x.data.status === 'AIRBORNE' ? C.green : x.data.status === 'ON STATION' ? C.cyan : C.amber) : C.blue;
               return (
-                <div key={x.data.id} className="target-workup-effector-row" onClick={() => assignEffector(x.data.id)} style={{ border: `1px solid ${border}`, background: bg, padding: '8px 9px', cursor: 'pointer', position: 'relative' }}>
+                <ClickableDiv key={x.data.id} className="target-workup-effector-row" onClick={() => assignEffector(x.data.id)} style={{ border: `1px solid ${border}`, background: bg, padding: '8px 9px', cursor: 'pointer', position: 'relative' }}>
                   <div className="target-workup-effector-row-header" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span className="target-workup-effector-dot" style={{ width: 7, height: 7, background: dot, flexShrink: 0, ...(x.data.stealth ? { transform: 'rotate(45deg)' } : {}) }} />
                     <span className="target-workup-effector-callsign" style={{ fontFamily: 'var(--font-display)', fontSize: 11.5, fontWeight: 600, letterSpacing: '.04em', color: 'var(--ink-brighter)' }}>
@@ -332,7 +310,7 @@ export default function TargetWorkup() {
                       TOT {x.data.tot}m
                     </span>
                   </div>
-                </div>
+                </ClickableDiv>
               );
             })}
           </div>
@@ -343,26 +321,11 @@ export default function TargetWorkup() {
           <div className="target-workup-section-label" style={{ fontSize: 9, letterSpacing: '.2em', color: 'var(--ink-faint)', marginBottom: 9 }}>
             ▸ WEAPONEERING / CDE
           </div>
-          <div className="target-workup-weaponeering-grid" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', rowGap: 6, columnGap: 12, fontSize: 11 }}>
-            <span className="kv-label" style={{ color: 'var(--ink-dim2)' }}>
-              METHOD
-            </span>
-            <span className="kv-value" style={{ color: 'var(--ink-bright)', textAlign: 'right' }}>
-              {sel.method}
-            </span>
-            <span className="kv-label" style={{ color: 'var(--ink-dim2)' }}>
-              CDE LEVEL
-            </span>
-            <span className="kv-value" style={{ color: cdeColorFor(sel.cde), textAlign: 'right', fontWeight: 600 }}>
-              {sel.cde}
-            </span>
-            <span className="kv-label" style={{ color: 'var(--ink-dim2)' }}>
-              NO-STRIKE PROX
-            </span>
-            <span className="kv-value" style={{ color: nsl.color, textAlign: 'right' }}>
-              {nsl.label}
-            </span>
-          </div>
+          <KVGrid>
+            <KV label="METHOD" value={sel.method} />
+            <KV label="CDE LEVEL" value={sel.cde} color={cdeColorFor(sel.cde)} fontWeight={600} />
+            <KV label="NO-STRIKE PROX" value={nsl.label} color={nsl.color} />
+          </KVGrid>
         </div>
 
         {/* engagement authorization */}
@@ -377,7 +340,7 @@ export default function TargetWorkup() {
               const pendingOrg = pending ? orgById(pending.orgId) : undefined;
               const boxColor = pending ? 'var(--amber)' : on ? C.green : 'var(--ink-faint)';
               return (
-                <div
+                <ClickableDiv
                   key={a.k}
                   className="target-workup-authorization-row"
                   onClick={() => {
@@ -405,7 +368,7 @@ export default function TargetWorkup() {
                     {pending ? `${pendingOrg?.acronym ?? pending.orgId.toUpperCase()} · ${fmtLogTime(pending.adjudicationDueAt)}` : on ? 'MET' : 'PENDING'}
                   </span>
                   {pending && (
-                    <span
+                    <ClickableSpan
                       className="target-workup-authorization-discuss-button"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -414,20 +377,20 @@ export default function TargetWorkup() {
                       style={{ fontSize: 8, letterSpacing: '.04em', color: 'var(--red)', cursor: 'pointer', fontWeight: 700, flexShrink: 0 }}
                     >
                       ▸ DISCUSS
-                    </span>
+                    </ClickableSpan>
                   )}
-                </div>
+                </ClickableDiv>
               );
             })}
           </div>
-          <div className="target-workup-engage-button" onClick={engage} style={{ marginTop: 11, textAlign: 'center', padding: 13, border: `1.5px solid ${btn.border}`, background: btn.bg, cursor: btn.cursor, position: 'relative', overflow: 'hidden' }}>
+          <ClickableDiv className="target-workup-engage-button" onClick={engage} style={{ marginTop: 11, textAlign: 'center', padding: 13, border: `1.5px solid ${btn.border}`, background: btn.bg, cursor: btn.cursor, position: 'relative', overflow: 'hidden' }}>
             <div className="target-workup-engage-button-label" style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, letterSpacing: '.18em', color: btn.color }}>
               {btn.label}
             </div>
             <div className="target-workup-engage-button-sub" style={{ fontSize: 8.5, letterSpacing: '.14em', color: btn.subColor, marginTop: 4 }}>
               {btn.sub}
             </div>
-          </div>
+          </ClickableDiv>
         </div>
       </div>
     </div>

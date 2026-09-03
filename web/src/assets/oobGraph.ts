@@ -1,6 +1,9 @@
 // Graph asset derived from the OOB tree (assets/oob.ts): every node flattened
 // with a parent edge. This is the shape a future graph/network view will
-// consume — nodes + edges rather than nested children.
+// consume — nodes + edges rather than nested children. Currently unconsumed
+// — nothing in web/src imports OobGraphNode/OobGraphEdge/buildOobGraph/
+// OOB_GRAPH yet, so don't go looking for a caller; this exists ahead of
+// that view being built.
 
 import { OOB_TREE } from './oob';
 import type { OobNode } from './oob';

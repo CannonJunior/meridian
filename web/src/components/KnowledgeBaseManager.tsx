@@ -8,6 +8,8 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { useKnowledgeGraph } from '../kb/deriveGraph';
 import { KG_TYPE_LABEL, kgTypeColor } from '../kb/ontology';
+import ManagerHeader from './ManagerHeader';
+import { ClickableDiv } from './Clickable';
 import type { KgType } from '../kb/ontology';
 
 const FILTERS: { id: KgType | 'all'; label: string }[] = [
@@ -38,12 +40,13 @@ export default function KnowledgeBaseManager() {
 
   return (
     <div className="kb-manager" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div className="kb-manager-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="kb-manager-header-accent" style={{ width: 5, height: 14, background: 'var(--violet)', boxShadow: '0 0 8px var(--violet)' }} />
-        <span className="kb-manager-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--violet)', fontWeight: 600 }}>
-          KNOWLEDGE · BASE
-        </span>
-      </div>
+      <ManagerHeader
+        className="kb-manager-header"
+        accentClassName="kb-manager-header-accent"
+        titleClassName="kb-manager-title"
+        accentColor="var(--violet)"
+        title="KNOWLEDGE · BASE"
+      />
 
       <div className="kb-manager-search-row" style={{ padding: '8px 10px', borderBottom: '1px solid var(--hairline)' }}>
         <input
@@ -59,7 +62,7 @@ export default function KnowledgeBaseManager() {
         {FILTERS.map((f) => {
           const active = filter === f.id;
           return (
-            <div
+            <ClickableDiv
               key={f.id}
               className={`kb-manager-filter-chip kb-manager-filter-chip-${f.id}`}
               onClick={() => setFilter(f.id)}
@@ -74,7 +77,7 @@ export default function KnowledgeBaseManager() {
               }}
             >
               {f.label}
-            </div>
+            </ClickableDiv>
           );
         })}
       </div>
@@ -83,7 +86,7 @@ export default function KnowledgeBaseManager() {
         {filtered.map((n) => {
           const isSelected = kbSelectedUri === n['@id'];
           return (
-            <div
+            <ClickableDiv
               key={n['@id']}
               className="kb-manager-row"
               onClick={() => selectKbEntity(n['@id'])}
@@ -107,7 +110,7 @@ export default function KnowledgeBaseManager() {
               <span className="kb-manager-row-type" style={{ fontSize: 7.5, letterSpacing: '.06em', color: 'var(--ink-faint)', flexShrink: 0 }}>
                 {KG_TYPE_LABEL[n['@type']]}
               </span>
-            </div>
+            </ClickableDiv>
           );
         })}
         {filtered.length === 0 && (

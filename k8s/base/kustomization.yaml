@@ -5,10 +5,15 @@ resources:
   - namespace.yaml
   - configmap.yaml
   # secret.yaml is gitignored (copy from secret.example.yaml — see
-  # k8s/README.md) and must exist before `kubectl apply -k k8s/` will
-  # succeed, since server-deployment.yaml references it via secretRef.
+  # k8s/README.md) and must exist before `kubectl apply -k k8s/base` (or
+  # any overlay under k8s/overlays/) will succeed, since
+  # server-deployment.yaml references it via secretRef.
   - secret.yaml
   - server-deployment.yaml
   - web-deployment.yaml
+  - geoserver-deployment.yaml
+  - geoserver-init-configmap.yaml
+  - geoserver-init-job.yaml
   - ingress.yaml
   - producers.yaml
+  - networkpolicy.yaml

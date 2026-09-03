@@ -6,6 +6,7 @@ import { moreLikeThis } from '../../kb/similarity';
 import { KG_TYPE_LABEL, kgTabKeys, kgTypeColor } from '../../kb/ontology';
 import type { KgNode } from '../../kb/ontology';
 import { EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
+import { ClickableDiv, ClickableSpan } from '../Clickable';
 
 // Labels for the reverse direction of each edge — "what points at me", as
 // opposed to the plain, already-existing outgoing labels below (PART OF,
@@ -94,9 +95,9 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
             <KV key={k} label={PROPERTY_LABEL[k] ?? k.toUpperCase()} value={String(v)} />
           ))}
         </KVGrid>
-        <div className="kb-entity-card-raw-toggle" onClick={() => setShowRaw((s) => !s)} style={{ marginTop: 14, fontSize: 9, letterSpacing: '.1em', color: 'var(--ink-faint)', cursor: 'pointer' }}>
+        <ClickableDiv className="kb-entity-card-raw-toggle" onClick={() => setShowRaw((s) => !s)} style={{ marginTop: 14, fontSize: 9, letterSpacing: '.1em', color: 'var(--ink-faint)', cursor: 'pointer' }}>
           ▸ {showRaw ? 'HIDE' : 'SHOW'} RAW JSON-LD
-        </div>
+        </ClickableDiv>
         {showRaw && (
           <pre className="kb-entity-card-raw-jsonld" style={{ marginTop: 8, fontSize: 9, color: 'var(--ink-mute)', background: 'var(--panel-3)', border: '1px solid #1c2a28', padding: 9, overflowX: 'auto', maxHeight: 220 }}>
             {JSON.stringify({ '@context': doc['@context'], ...node }, null, 2)}
@@ -137,7 +138,7 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
         <SectionLabel>MORE LIKE THIS</SectionLabel>
         <div className="kb-entity-card-similar-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {results.map((r) => (
-            <div key={r.node['@id']} className="kb-entity-card-similar-row" onClick={() => selectKbEntity(r.node['@id'])} style={{ border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
+            <ClickableDiv key={r.node['@id']} className="kb-entity-card-similar-row" onClick={() => selectKbEntity(r.node['@id'])} style={{ border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
               <div className="kb-entity-card-similar-row-header" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span className="kb-entity-card-similar-name" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--ink-brighter)', flex: 1 }}>
                   {r.node.name}
@@ -149,7 +150,7 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
               <div className="kb-entity-card-similar-reasons" style={{ fontSize: 9, color: 'var(--ink-mute2)', marginTop: 4, lineHeight: 1.5 }}>
                 {r.reasons.join(' · ')}
               </div>
-            </div>
+            </ClickableDiv>
           ))}
           {results.length === 0 && <EmptyNote>No comparable entities found — this entity carries too little parametric data to compare, or nothing else in the graph overlaps yet.</EmptyNote>}
         </div>
@@ -172,7 +173,7 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
       {assocQuery.trim() && (
         <div className="kb-entity-card-associate-candidates" style={{ display: 'flex', flexDirection: 'column', gap: 5, marginTop: 8 }}>
           {candidates.map((c) => (
-            <div
+            <ClickableDiv
               key={c['@id']}
               className="kb-entity-card-associate-candidate-row"
               onClick={() => associateEntities(uri, c['@id'])}
@@ -185,7 +186,7 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
               <span className="kb-entity-card-associate-candidate-type" style={{ fontSize: 8, color: 'var(--ink-faint)' }}>
                 {KG_TYPE_LABEL[c['@type']]}
               </span>
-            </div>
+            </ClickableDiv>
           ))}
           {candidates.length === 0 && <EmptyNote>No matches.</EmptyNote>}
         </div>
@@ -200,7 +201,7 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
           placeholder="urn:… or a GeoServer WFS feature URL"
           style={{ flex: 1, background: 'var(--panel-3)', border: '1px solid var(--hairline-mid)', color: 'var(--ink-bright)', fontSize: 10, padding: '5px 7px', fontFamily: 'var(--font-mono)' }}
         />
-        <div
+        <ClickableDiv
           className="kb-entity-card-associate-uri-button"
           onClick={() => {
             if (!rawUri.trim()) return;
@@ -210,7 +211,7 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
           style={{ padding: '5px 10px', fontSize: 9, letterSpacing: '.1em', fontWeight: 600, color: 'var(--violet)', border: '1px solid var(--violet)', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
         >
           LINK
-        </div>
+        </ClickableDiv>
       </div>
 
       <SectionLabel top={16}>CURRENT ASSOCIATIONS</SectionLabel>
@@ -225,9 +226,9 @@ export default function KbEntityCardBody({ uri, tab }: { uri: string; tab: numbe
               >
                 {target ? target.name : assocUri}
               </span>
-              <span className="kb-entity-card-associate-remove-button" onClick={() => dissociateEntities(uri, assocUri)} style={{ fontSize: 9, color: 'var(--red)', cursor: 'pointer' }}>
+              <ClickableSpan className="kb-entity-card-associate-remove-button" onClick={() => dissociateEntities(uri, assocUri)} style={{ fontSize: 9, color: 'var(--red)', cursor: 'pointer' }}>
                 ✕
-              </span>
+              </ClickableSpan>
             </div>
           );
         })}

@@ -5,6 +5,7 @@ import { fmtRealDateLine, fmtRealDTG, stageForF2T2EA } from '../selectors';
 import { ROES } from '../types';
 import RightRailResizeHandle from './RightRailResizeHandle';
 import CommandBarMenu from './CommandBarMenu';
+import { ClickableDiv } from './Clickable';
 
 const PHASE_LETTERS = ['F', 'F', 'T', 'T', 'E', 'A'];
 const PHASE_NAMES = ['FIND', 'FIX', 'TRACK', 'TARGET', 'ENGAGE', 'ASSESS'];
@@ -286,7 +287,7 @@ export default function CommandBar() {
       {/* ROE + clock */}
       <div className="command-bar-roe-clock" style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 0, width: rightRailWidth, flexShrink: 0, borderLeft: '1px solid var(--hairline)' }}>
         <RightRailResizeHandle />
-        <div className="command-bar-roe" onClick={cycleRoe} style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 16px', cursor: 'pointer', borderRight: '1px solid var(--hairline)', height: '100%' }}>
+        <ClickableDiv className="command-bar-roe" onClick={cycleRoe} title="Cycle rules of engagement" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 16px', cursor: 'pointer', borderRight: '1px solid var(--hairline)', height: '100%' }}>
           <div className="command-bar-roe-label" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)' }}>
             RULES OF ENGAGEMENT
           </div>
@@ -296,7 +297,7 @@ export default function CommandBar() {
               {roe.label}
             </span>
           </div>
-        </div>
+        </ClickableDiv>
         <div className="command-bar-clock" style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 18px', textAlign: 'right' }}>
           <div className="command-bar-clock-dtg" style={{ fontFamily: 'var(--font-display)', fontSize: 20, fontWeight: 700, letterSpacing: '.08em', color: 'var(--amber)', lineHeight: 1, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', minWidth: 150 }}>
             {dtg.split('').map((ch, i) => (

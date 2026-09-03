@@ -8,9 +8,9 @@
 // pendingActions pipeline in store.ts; ACTION_ROUTING below documents the
 // intended owner for every consequential user action, but `wired: true` is
 // only set once an action genuinely goes through submit → pending →
-// adjudicate rather than applying instantly. Currently that's just
-// toggleAppr:strike, routed to the JTCB — everything else keeps its current
-// instant behavior until a later pass generalizes the pattern.
+// adjudicate rather than applying instantly — see ACTION_ROUTING itself
+// for exactly which actions that is today; everything else keeps its
+// current instant behavior until a later pass generalizes the pattern.
 //
 // Every entity below is computer-controlled except 'user' — but nothing
 // about the shape assumes that: `isUser` is just a boolean on an entity that

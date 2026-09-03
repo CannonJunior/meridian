@@ -1,0 +1,41 @@
+# For a local kind cluster loaded via `kind load docker-image` — no
+# registry involved at all, so the GHCR references in ../../base don't
+# resolve. See k8s/README.md's "Local (kind)" section for the full
+# build/load/apply sequence this overlay is meant to be used with.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/cannonjunior/meridian-server
+    newName: meridian-server
+    newTag: kindtest
+  - name: ghcr.io/cannonjunior/meridian-web
+    newName: meridian-web
+    newTag: kindtest
+  - name: ghcr.io/cannonjunior/meridian-history-sim
+    newName: meridian-history-sim
+    newTag: kindtest
+  - name: ghcr.io/cannonjunior/meridian-history-gdelt
+    newName: meridian-history-gdelt
+    newTag: kindtest
+  - name: ghcr.io/cannonjunior/meridian-history-celestrak
+    newName: meridian-history-celestrak
+    newTag: kindtest
+patches:
+  # geoserver stays on kartoza/geoserver:latest (a real, public Docker Hub
+  # image, not one of ours to retag) — IfNotPresent just avoids re-pulling
+  # it from the network on every local test run. Not needed for
+  # correctness: a missing/absent imagePullSecrets Secret is harmless for a
+  # public image regardless of pull policy — confirmed directly against a
+  # kind cluster (a pod referencing a nonexistent pull secret still pulled
+  # and ran fine, just logged a FailedToRetrieveImagePullSecret warning
+  # event) — so ../../base's `imagePullSecrets: [ghcr-pull]` on every
+  # Deployment is deliberately left as-is here rather than patched away.
+  - target:
+      kind: Deployment
+      name: geoserver
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent

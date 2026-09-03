@@ -20,8 +20,36 @@ services:
       - ./postgis-init/60-submarine-cables.sql:/docker-entrypoint-initdb.d/60-submarine-cables.sql:ro
       - ./postgis-init/70-bathymetry.sql:/docker-entrypoint-initdb.d/70-bathymetry.sql:ro
       - ./postgis-init/80-live-entities.sql:/docker-entrypoint-initdb.d/80-live-entities.sql:ro
+      # 85-sorties.sql's own header comment says it's "numbered between
+      # 80-live-entities.sql and 90-live-entities-triggers.sql" — it was
+      # never actually added to this mount list, so a from-scratch volume
+      # has never had a `sorties` table despite server/src/db.ts requiring
+      # one at startup (found while validating this stack's k8s manifests
+      # against a fresh Postgres — the already-running dev volume masked
+      # this because these tables were applied to it by hand at some point
+      # outside of compose's init flow).
+      - ./postgis-init/85-sorties.sql:/docker-entrypoint-initdb.d/85-sorties.sql:ro
       - ./postgis-init/90-live-entities-triggers.sql:/docker-entrypoint-initdb.d/90-live-entities-triggers.sql:ro
       - ./postgis-init/95-drawn-shapes.sql:/docker-entrypoint-initdb.d/95-drawn-shapes.sql:ro
+      # Same gap as 85-sorties.sql above: server/src/db.ts also requires
+      # entity_track_history (kafkaHistoryConsumer.ts's target table) and
+      # geoserver/README.md's "Entity Track History"/live-domain-tracks
+      # layers need their own tables — none of these three were mounted
+      # either. Destination names are 96/97/98, NOT their source files'
+      # own 100/101/110 prefixes: this header's "named to sort after
+      # [10_postgis.sh]" invariant breaks for any "10\d" destination name
+      # (e.g. "100-history.sql" sorts *before* "10_postgis.sh" — '0' < '_'
+      # — so the postgis extension wouldn't exist yet when it ran;
+      # verified this failure mode directly while testing the k8s
+      # manifests against a fresh instance). Two-digit destinations avoid
+      # the whole class of collision the same way 20-95 above already do.
+      - ./postgis-init/100-history.sql:/docker-entrypoint-initdb.d/96-history.sql:ro
+      - ./postgis-init/101-history-fixtures.sql:/docker-entrypoint-initdb.d/97-history-fixtures.sql:ro
+      - ./postgis-init/110-live-domain-tracks.sql:/docker-entrypoint-initdb.d/98-live-domain-tracks.sql:ro
+      # 120-leader-epoch.sql: no rename needed here — "120-..." already
+      # sorts after "10_postgis.sh" (2nd char '2' > '0'), unlike the
+      # 100/101/110 files above.
+      - ./postgis-init/120-leader-epoch.sql:/docker-entrypoint-initdb.d/120-leader-epoch.sql:ro
     ports:
       - "${POSTGIS_PORT:-5555}:5432"
     healthcheck:

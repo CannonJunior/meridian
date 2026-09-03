@@ -21,6 +21,17 @@
 
 import type { FeatureCollection } from 'geojson';
 import { TENTH_FLEET_LOCATIONS } from './tenthFleetLocations';
+// The single canonical source for every color/width/opacity value below
+// that also has a GeoServer-side SLD equivalent (geoserver-init/*_style.sld,
+// used by non-OpenLayers WMS consumers — see TacticalMap.tsx's
+// polygonStyleFor). Previously each side hand-duplicated these values
+// independently with nothing keeping them in sync — already caught once,
+// live: airfields' runway/taxiway stroke width had drifted (SLD: 0.5/0.3,
+// here: 0.4/0.4) before this file and geoserver-init/generate_slds.py were
+// pointed at the same JSON. Import this JSON directly rather than adding a
+// wrapper module — resolveJsonModule (tsconfig.app.json) gives it exact
+// literal types already.
+import LAYER_COLORS from './layerColors.json';
 
 // 'wfs' = fetched from GeoServer at render time (see contextLayerData.ts).
 // 'static' = bundled directly in this file's `staticData` field — for
@@ -29,11 +40,20 @@ import { TENTH_FLEET_LOCATIONS } from './tenthFleetLocations';
 // 'live-raster' = an externally-hosted raster tile feed that changes over
 // time (e.g. weather radar) — not GeoServer/PostGIS-backed at all, and
 // re-fetched periodically rather than once (see rainviewer.ts).
-export type ContextLayerSourceType = 'wfs' | 'static' | 'live-raster';
+// 'wms' = GeoServer-rendered raster tiles (a WMS GetMap request styled by
+// the layer's already-provisioned SLD — see geoserver-init/*_style.sld),
+// as opposed to 'wfs', which fetches the raw feature geometry and styles it
+// client-side. For a large, non-identifiable, purely-visual reference layer
+// (eez is the first: 283 zones, 200MB+ of source data before simplification
+// once genuinely worldwide) this offloads both the fetch size (small tiles
+// vs. the whole dataset) and the render cost (GeoServer paints it once per
+// tile, not every client parsing+styling every feature) — see
+// TacticalMap.tsx's syncContextLayers raster branch for the request itself.
+export type ContextLayerSourceType = 'wfs' | 'static' | 'live-raster' | 'wms';
 // 'mixed' = polygons plus a separate representative point per feature group
 // (e.g. airfields: boundary/runway/taxiway polygons + one center point per
 // airfield) — the point sub-layer is the identifiable one.
-// 'raster' = tiled imagery (live-raster sourceType only), not a vector
+// 'raster' = tiled imagery (live-raster or wms sourceType), not a vector
 // feature layer — no per-feature hit-testing.
 // 'heatmap' = a WFS line/point layer's own vertices, densified and weighted
 // client-side, rendered as a MapLibre heatmap layer — a way to get a
@@ -52,6 +72,8 @@ export interface ContextLayer {
   wfsBaseUrl?: string; // GeoServer WFS endpoint — 'wfs' sourceType only
   layerName?: string; // workspace:layer (used as WFS typeNames) — 'wfs' sourceType only
   staticData?: FeatureCollection; // 'static' sourceType only
+  wmsBaseUrl?: string; // GeoServer WMS endpoint — 'wms' sourceType only
+  wmsLayerName?: string; // workspace:layer (used as the GetMap LAYERS param) — 'wms' sourceType only
   attribution: string;
   defaultVisible: boolean;
   // Whether double-clicking a rendered feature should open an object card.
@@ -81,7 +103,8 @@ export interface ContextLayer {
   lineColor?: string;
   lineWidth?: number;
   lineOpacity?: number;
-  // 'raster' geometryType only — layer paint opacity for the tile layer.
+  // 'raster' geometryType only — layer paint opacity for the tile layer
+  // (live-raster and wms sourceType alike).
   rasterOpacity?: number;
   // 'raster' geometryType, static tile URL only (e.g. a WMS GetMap template
   // using MapLibre's {bbox-epsg-3857} substitution) — set for a layer whose
@@ -98,14 +121,17 @@ export interface ContextLayer {
   // heatmapWeightMap; features/vertices with no match get weight 1.
   heatmapWeightProperty?: string;
   heatmapWeightMap?: Record<string, number>;
-  // 'wfs' sourceType only — the feature property a user-typed search string
-  // (ContextLayerManager.tsx) is matched against, sent to GeoServer as a
-  // CQL_FILTER (`<filterProperty> ILIKE '%text%'`, see contextLayerData.ts)
-  // rather than filtered client-side after a full fetch. Undefined means no
-  // filter box for that layer — only set on layers with one obvious,
-  // meaningful free-text field (a name); layers keyed by an enumerated
-  // category (lane_type, depth_band, status) don't get one, a free-text
-  // search over those isn't a real feature.
+  // 'wfs' or 'wms' sourceType only — the feature property a user-typed
+  // search string (ContextLayerManager.tsx) is matched against, sent to
+  // GeoServer as a CQL_FILTER (`<filterProperty> ILIKE '%text%'`) rather
+  // than filtered client-side after a full fetch. For 'wfs' this reshapes
+  // the GetFeature request (see contextLayerData.ts); for 'wms' it's a
+  // GetMap param applied in place via TileWMS.updateParams (see
+  // TacticalMap.tsx's syncContextLayers), which never re-fetches anything
+  // client-side at all. Undefined means no filter box for that layer — only
+  // set on layers with one obvious, meaningful free-text field (a name);
+  // layers keyed by an enumerated category (lane_type, depth_band, status)
+  // don't get one, a free-text search over those isn't a real feature.
   filterProperty?: string;
 }
 
@@ -123,6 +149,7 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
     attribution: 'NGA World Port Index',
     defaultVisible: false,
     identifiable: true,
+    pointColor: LAYER_COLORS.ports.fill,
     filterProperty: 'name',
   },
   {
@@ -141,70 +168,61 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
   {
     id: 'eez',
     name: 'Exclusive Economic Zones',
-    description: 'Worldwide Exclusive Economic Zone boundaries — 283 national/territorial zones, geometry-simplified for the browser.',
-    sourceType: 'wfs',
-    geometryType: 'polygon',
-    wfsBaseUrl: `${GEOSERVER_URL}/meridian/wfs`,
-    layerName: 'meridian:eez',
+    description: 'Worldwide Exclusive Economic Zone boundaries — 283 national/territorial zones, rendered server-side by GeoServer (WMS) rather than fetched whole as GeoJSON.',
+    // Not identifiable and purely visual reference — exactly the profile
+    // that benefits from GeoServer-rendered tiles instead of a client-side
+    // fetch+parse+style of the whole 283-zone dataset (200MB+ of source
+    // GeoJSON before simplification, once genuinely worldwide). Styled by
+    // the already-provisioned `meridian_eez` SLD (geoserver-init/
+    // eez_style.sld, generated from the same LAYER_COLORS.eez values the
+    // rest of this app used to import directly), not by anything here.
+    sourceType: 'wms',
+    geometryType: 'raster',
+    wmsBaseUrl: `${GEOSERVER_URL}/meridian/wms`,
+    wmsLayerName: 'meridian:eez',
     attribution: 'Flanders Marine Institute (VLIZ), Marine Regions World EEZ v12',
     defaultVisible: false,
     identifiable: false,
-    polygonFillColor: '#5fc9ff',
-    polygonFillOpacity: 0.05,
-    polygonLineColor: '#5fc9ff',
-    polygonLineWidth: 1.1,
-    polygonLineDasharray: [6, 4],
     filterProperty: 'geoname',
   },
   {
     id: 'shipping-lanes',
     name: 'Shipping Lanes',
-    description: 'Worldwide vessel shipping lanes — Major/Middle/Minor routes by traffic importance (hand-traced from nautical charts, real curved paths), plus 12 named strait/canal chokepoints (Gibraltar, Suez, Panama, Malacca...) highlighted separately.',
-    sourceType: 'wfs',
-    geometryType: 'line',
-    wfsBaseUrl: `${GEOSERVER_URL}/meridian/wfs`,
-    layerName: 'meridian:shipping_lanes',
+    description:
+      'Worldwide vessel shipping lanes — Major/Middle/Minor routes by traffic importance (hand-traced from nautical charts, real curved paths), plus 12 named strait/canal chokepoints (Gibraltar, Suez, Panama, Malacca...) highlighted separately. Rendered server-side by GeoServer (WMS), styled by the already-provisioned meridian_shipping_lanes SLD.',
+    sourceType: 'wms',
+    geometryType: 'raster',
+    wmsBaseUrl: `${GEOSERVER_URL}/meridian/wms`,
+    wmsLayerName: 'meridian:shipping_lanes',
     attribution: 'Paul Benden, Global Shipping Lanes (CC BY-SA 4.0); chokepoints from Eurostat SeaRoute marnet network (EUPL-1.2)',
     defaultVisible: false,
     identifiable: false,
-    lineColorProperty: 'lane_type',
-    lineColorMap: { major: '#c77dff', middle: '#9d4edd', minor: '#7b2cbf', chokepoint: '#ffd60a' },
-    lineWidthMap: { major: 1.4, middle: 0.9, minor: 0.5, chokepoint: 2.2 },
-    lineOpacityMap: { major: 0.75, middle: 0.6, minor: 0.4, chokepoint: 0.9 },
   },
   {
     id: 'submarine-cables',
     name: 'Submarine Cables',
     description:
-      'Worldwide submarine telecommunication cable routes — 1,404 cables from OpenStreetMap nautical-chart data, incl. well-known systems like FLAG Europe-Asia and CANTAT-3. Solid = operational, dashed = abandoned.',
-    sourceType: 'wfs',
-    geometryType: 'line',
-    wfsBaseUrl: `${GEOSERVER_URL}/meridian/wfs`,
-    layerName: 'meridian:submarine_cables',
+      'Worldwide submarine telecommunication cable routes — 1,404 cables from OpenStreetMap nautical-chart data, incl. well-known systems like FLAG Europe-Asia and CANTAT-3. Solid = operational, dashed = abandoned. Rendered server-side by GeoServer (WMS).',
+    sourceType: 'wms',
+    geometryType: 'raster',
+    wmsBaseUrl: `${GEOSERVER_URL}/meridian/wms`,
+    wmsLayerName: 'meridian:submarine_cables',
     attribution: 'OpenStreetMap contributors',
     defaultVisible: false,
     identifiable: false,
-    lineColorProperty: 'status',
-    lineColorMap: { operational: '#5b9dff', abandoned: '#5b9dff' },
-    lineWidthMap: { operational: 1.1, abandoned: 0.7 },
-    lineOpacityMap: { operational: 0.8, abandoned: 0.35 },
   },
   {
     id: 'bathymetry-contours',
     name: 'Bathymetry Contours',
     description:
-      'Generalised depth contours (50/100/200/500/1000/2000m), Strait of Gibraltar region — derived from the GEBCO grid, 240 lines simplified for the browser.',
-    sourceType: 'wfs',
-    geometryType: 'line',
-    wfsBaseUrl: `${GEOSERVER_URL}/meridian/wfs`,
-    layerName: 'meridian:bathymetry_contours',
+      'Generalised depth contours (50/100/200/500/1000/2000m), Strait of Gibraltar region — derived from the GEBCO grid. Rendered server-side by GeoServer (WMS).',
+    sourceType: 'wms',
+    geometryType: 'raster',
+    wmsBaseUrl: `${GEOSERVER_URL}/meridian/wms`,
+    wmsLayerName: 'meridian:bathymetry_contours',
     attribution: 'EMODnet Bathymetry Consortium — EMODnet Digital Bathymetry (DTM)',
     defaultVisible: false,
     identifiable: false,
-    lineColorProperty: 'depth_band',
-    lineColorMap: { shallow: '#2e6fa8', mid: '#2467a0', deep: '#173f66' },
-    lineWidthMap: { shallow: 0.5, mid: 0.7, deep: 0.9 },
-    lineOpacityMap: { shallow: 0.5, mid: 0.65, deep: 0.8 },
   },
   {
     id: 'shipping-traffic-intensity',
@@ -245,10 +263,10 @@ export const CONTEXT_LAYERS: ContextLayer[] = [
     attribution: 'Traced in-app via the drawing tool, against captured Google satellite imagery',
     defaultVisible: false,
     identifiable: false,
-    polygonFillColor: '#3fd2e6',
-    polygonFillOpacity: 0.08,
-    polygonLineColor: '#3fd2e6',
-    polygonLineWidth: 1.2,
+    polygonFillColor: LAYER_COLORS.drawnShapes.fill,
+    polygonFillOpacity: LAYER_COLORS.drawnShapes.fillOpacity,
+    polygonLineColor: LAYER_COLORS.drawnShapes.stroke,
+    polygonLineWidth: LAYER_COLORS.drawnShapes.strokeWidth,
     filterProperty: 'object_label',
   },
   {

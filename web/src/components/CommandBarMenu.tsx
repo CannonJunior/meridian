@@ -1,7 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { TUTORIAL_CATEGORIES, TUTORIALS } from '../assets/tutorials';
+import { ClickableDiv } from './Clickable';
 
+// The "Joint Targeting Field Guide" — the doctrine reference this app's own
+// domain logic cites by chapter (e.g. assets/staff.ts's header, "see the
+// Joint Targeting Field Guide (chapters 1-2)"). Lives outside this repo as
+// a published Claude artifact, not a bundled asset — an external,
+// unversioned dependency: if that artifact is ever deleted or made
+// private, this link breaks with no build-time warning.
 const FIELD_GUIDE_URL = 'https://claude.ai/code/artifact/683e9557-56e2-4b29-99c1-87df05022854';
 
 function BarsIcon({ color }: { color: string }) {
@@ -33,7 +40,7 @@ export default function CommandBarMenu() {
 
   return (
     <div className="command-bar-menu" ref={rootRef} style={{ position: 'relative', marginLeft: 10, flexShrink: 0 }}>
-      <div
+      <ClickableDiv
         className="command-bar-menu-button"
         onClick={() => setOpen((v) => !v)}
         title="Menu"
@@ -49,7 +56,7 @@ export default function CommandBarMenu() {
         }}
       >
         <BarsIcon color={open ? 'var(--amber)' : 'var(--ink-mute)'} />
-      </div>
+      </ClickableDiv>
 
       {open && (
         <div className="command-bar-menu-dropdown" style={{ position: 'absolute', top: 32, right: 0, width: 264, background: 'var(--panel-2)', border: '1px solid var(--hairline-mid)', boxShadow: '0 16px 40px rgba(0,0,0,.5)', zIndex: 60 }}>
@@ -73,7 +80,7 @@ export default function CommandBarMenu() {
             ▸ JOINT TARGETING FIELD GUIDE
           </a>
 
-          <div
+          <ClickableDiv
             className="command-bar-menu-item command-bar-menu-item-tutorials"
             onClick={() => setTutorialsExpanded((v) => !v)}
             style={{
@@ -93,7 +100,7 @@ export default function CommandBarMenu() {
             <span className="command-bar-menu-item-tutorials-caret" style={{ fontSize: 9, color: 'var(--ink-faint)' }}>
               {tutorialsExpanded ? '▾' : '▸'}
             </span>
-          </div>
+          </ClickableDiv>
           {tutorialsExpanded && (
             // Grouped by category (Tutorial.category) rather than one flat
             // list, with a max-height + scroll of its own — at 5 tutorials
@@ -115,7 +122,7 @@ export default function CommandBarMenu() {
                       {category.toUpperCase()}
                     </div>
                     {inCategory.map((tu) => (
-                      <div
+                      <ClickableDiv
                         key={tu.id}
                         className="command-bar-menu-tutorial-row"
                         onClick={() => {
@@ -137,7 +144,7 @@ export default function CommandBarMenu() {
                             START HERE
                           </span>
                         )}
-                      </div>
+                      </ClickableDiv>
                     ))}
                   </div>
                 );

@@ -20,6 +20,10 @@
 // by holding the offset back).
 import { Kafka, logLevel } from 'kafkajs';
 import type { Admin, Consumer } from 'kafkajs';
+// Registers the ZSTD codec (see zstdCodec.ts) needed to decompress batches
+// published by kafka/producer*/src/produce.ts, which all send with
+// compression: CompressionTypes.ZSTD.
+import './zstdCodec.js';
 import { pool } from './db.js';
 
 const KAFKA_BROKER = process.env.KAFKA_BROKER ?? 'localhost:9094';

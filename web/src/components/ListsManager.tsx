@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useStore } from '../store';
 import { TARGET_LISTS } from '../assets/targetLists';
 import type { TargetListDef } from '../assets/targetLists';
+import ManagerHeader from './ManagerHeader';
+import { ClickableDiv, ClickableSpan } from './Clickable';
 
 function ListRow({ list, active, onSelect }: { list: TargetListDef; active: boolean; onSelect: () => void }) {
   const [expanded, setExpanded] = useState(false);
@@ -11,7 +13,7 @@ function ListRow({ list, active, onSelect }: { list: TargetListDef; active: bool
       className="lists-manager-row"
       style={{ border: `1px solid ${active ? list.accent : 'var(--hairline-mid)'}`, background: active ? 'rgba(255,255,255,.03)' : 'var(--panel-3)' }}
     >
-      <div className="lists-manager-row-header" onClick={onSelect} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 9px', cursor: 'pointer' }}>
+      <ClickableDiv className="lists-manager-row-header" onClick={onSelect} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 9px', cursor: 'pointer' }}>
         <span
           className="lists-manager-row-radio"
           style={{
@@ -34,7 +36,7 @@ function ListRow({ list, active, onSelect }: { list: TargetListDef; active: bool
           {list.name}
         </span>
         <span className="lists-manager-row-spacer" style={{ flex: 1 }} />
-        <span
+        <ClickableSpan
           className="lists-manager-row-expand-toggle"
           onClick={(e) => {
             e.stopPropagation();
@@ -44,8 +46,8 @@ function ListRow({ list, active, onSelect }: { list: TargetListDef; active: bool
           style={{ fontSize: 9, color: 'var(--ink-faint)', padding: '2px 4px', cursor: 'pointer', flexShrink: 0 }}
         >
           {expanded ? '▲' : '▼'}
-        </span>
-      </div>
+        </ClickableSpan>
+      </ClickableDiv>
 
       <div className="lists-manager-row-description" style={{ fontSize: 9.5, color: 'var(--ink-mute2)', lineHeight: 1.4, padding: '0 9px 9px 30px' }}>
         {list.description}
@@ -69,12 +71,13 @@ export default function ListsManager() {
 
   return (
     <div className="lists-manager" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div className="lists-manager-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="lists-manager-header-accent" style={{ width: 5, height: 14, background: 'var(--yellow)', boxShadow: '0 0 8px var(--yellow)' }} />
-        <span className="lists-manager-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--yellow)', fontWeight: 600 }}>
-          TARGET · LISTS
-        </span>
-      </div>
+      <ManagerHeader
+        className="lists-manager-header"
+        accentClassName="lists-manager-header-accent"
+        titleClassName="lists-manager-title"
+        accentColor="var(--yellow)"
+        title="TARGET · LISTS"
+      />
 
       <div className="lists-manager-list" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div className="lists-manager-intro" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', padding: '0 2px', lineHeight: 1.5 }}>

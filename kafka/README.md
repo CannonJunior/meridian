@@ -169,6 +169,24 @@ per tracked satellite. `server/src/db.ts`'s `pruneRealtimeHistoryLayers()`
 alongside it in `server/src/index.ts`) deletes rows older than 72h from
 just these two `layer_id`s, once at server startup and then hourly.
 
+## Compression
+
+Every producer on this broker (`kafka/producer`, `kafka/producer-celestrak`,
+`kafka/producer-gdelt`, and `server/src/liveDomainKafka.ts`'s in-process
+producer) sends with `compression: CompressionTypes.ZSTD`. kafkajs has no
+built-in ZSTD codec — each producer's package registers one itself
+(`zstdCodec.ts`, one copy per package for the same "no shared package
+between these independent containers" reason `produce.ts`'s `AO_BOUNDS`
+duplication comment gives) backed by `node:zlib`'s native `zstdCompressSync`/
+`zstdDecompressSync` (built into Node since 22.15 — no extra dependency, and
+every image here already runs `node:22-alpine`). Any consumer reading a
+topic these producers write to must import the same `zstdCodec.ts` (for its
+registration side effect) before consuming, or decompression throws
+`KafkaJSNotImplemented` — see `server/src/kafkaHistoryConsumer.ts` and the
+consumer half of `server/src/liveDomainKafka.ts`. See
+`docs/zstd-planning.md` for the reasoning and where else zstd was/wasn't
+judged worth adding.
+
 ## Live Domain Tracks
 
 **Not to be confused with `history-ground-events`/`history-space-tracks`

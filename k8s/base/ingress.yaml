@@ -3,6 +3,22 @@
 # cluster needs to reach `server` directly. Assumes an ingress-nginx
 # controller (annotation below); swap for your controller's equivalent if
 # different.
+#
+# No TLS block, on purpose, not as an oversight — a `tls:` entry here needs
+# a real DNS hostname pointed at this cluster's ingress (not the
+# meridian.example.internal placeholder below) and a cert source, neither
+# of which exist yet. Once both do, the addition is small:
+#   1. Install cert-manager and a ClusterIssuer (e.g. Let's Encrypt via the
+#      ACME HTTP-01 challenge, which this Ingress already satisfies —
+#      it's on plain HTTP right now).
+#   2. Add `cert-manager.io/cluster-issuer: <issuer-name>` to
+#      metadata.annotations above.
+#   3. Add:
+#        spec:
+#          tls:
+#            - hosts: ["<the real hostname>"]
+#              secretName: meridian-tls   # cert-manager creates/rotates this
+# See k8s/README.md's "TLS" section for the same, with more context.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

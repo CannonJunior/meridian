@@ -24,8 +24,9 @@
 // Opt-in via KAFKA_LIVE_DOMAINS_ENABLED, same convention as
 // KAFKA_HISTORY_ENABLED (see index.ts) — `npm run dev` keeps working
 // unmodified with neither Kafka feature's stack up.
-import { Kafka, Partitioners, logLevel } from 'kafkajs';
+import { Kafka, Partitioners, CompressionTypes, logLevel } from 'kafkajs';
 import type { Consumer, Producer } from 'kafkajs';
+import './zstdCodec.js';
 import { pool } from './db.js';
 import { getState, subscribe } from './store.js';
 import { DOMAINS, domainForSensor, domainForTarget, domainForUnit } from './domain.js';
@@ -103,15 +104,49 @@ function messagesByDomain(state: State): Map<Domain, DomainMessage[]> {
 
 let producer: Producer | null = null;
 
+// entity_id -> the last DomainMessage actually published for it, so
+// publishSnapshot can skip entities whose published fields haven't changed.
+// sim.ts's per-tick jitter (decay/trkQ) touches fields that never make it
+// into a DomainMessage at all — only name/affiliation/position/attrs do —
+// so a stationary target's message is identical tick over tick even though
+// `targets` gets a new array (and per-target object) reference every time.
+// A moving target's position legitimately changes most ticks and keeps
+// publishing as before; this only cuts the redundant Kafka produce/consume/
+// DB-upsert cycle for entities where nothing actually changed.
+const lastPublished = new Map<string, DomainMessage>();
+
+function messageContentEqual(a: DomainMessage, b: DomainMessage): boolean {
+  if (a.name !== b.name || a.affiliation !== b.affiliation) return false;
+  if (a.geom.coordinates[0] !== b.geom.coordinates[0] || a.geom.coordinates[1] !== b.geom.coordinates[1]) return false;
+  const aKeys = Object.keys(a.attrs);
+  const bKeys = Object.keys(b.attrs);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) => a.attrs[k] === b.attrs[k]);
+}
+
 function publishSnapshot(state: State): void {
   if (!producer) return;
   const byDomain = messagesByDomain(state);
+  const liveIds = new Set<string>();
   for (const domain of DOMAINS) {
-    const messages = byDomain.get(domain)!;
-    if (messages.length === 0) continue;
+    const all = byDomain.get(domain)!;
+    const changed: DomainMessage[] = [];
+    for (const m of all) {
+      liveIds.add(m.entity_id);
+      const prev = lastPublished.get(m.entity_id);
+      if (prev && messageContentEqual(prev, m)) continue;
+      changed.push(m);
+      lastPublished.set(m.entity_id, m);
+    }
+    if (changed.length === 0) continue;
     producer
-      .send({ topic: topicFor(domain), messages: messages.map((m) => ({ key: m.entity_id, value: JSON.stringify(m) })) })
+      .send({ topic: topicFor(domain), compression: CompressionTypes.ZSTD, messages: changed.map((m) => ({ key: m.entity_id, value: JSON.stringify(m) })) })
       .catch((err) => console.error(`[meridian] live-domain producer: publish to ${topicFor(domain)} failed:`, err));
+  }
+  // Drop tracking for any entity_id no longer present in state, so a
+  // removed entity doesn't hold a slot in this map forever.
+  for (const id of lastPublished.keys()) {
+    if (!liveIds.has(id)) lastPublished.delete(id);
   }
 }
 
@@ -124,10 +159,11 @@ export function startLiveDomainProducer(): void {
       console.log(`[meridian] live-domain producer connected to ${KAFKA_BROKER}`);
       publishSnapshot(getState()); // an initial snapshot, not just the next change
       // sim.ts's per-tick target jitter (decay/trkQ) means `targets` changes
-      // reference most ticks, so this fires close to once a second in
-      // practice — harmless, since the consumer upserts by entity_id, not
-      // append-only: a redundant unchanged republish is a no-op write, not
-      // growing storage.
+      // reference most ticks, so this still fires close to once a second in
+      // practice — but publishSnapshot's own per-entity diff against
+      // lastPublished now filters that down to only entities whose
+      // published fields (position/name/affiliation/attrs) actually
+      // changed, rather than republishing every entity on every tick.
       subscribe((next, prev) => {
         if (next.targets !== prev.targets || next.sensors !== prev.sensors || next.units !== prev.units) {
           publishSnapshot(next);

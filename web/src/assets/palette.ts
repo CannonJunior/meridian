@@ -1,6 +1,11 @@
 // The eight accent colors used throughout the app's theme (theme.css
 // :root), offered as a shared picker palette anywhere a user gets to choose
-// a color for a display attribute (e.g. the Style Manager).
+// a color for a display attribute (e.g. the Style Manager). Deliberately
+// not all ten of theme.css's accent tokens: `--amber-dim` is a shading
+// variant of `--amber`, not a distinct hue, and `--violet` is reserved for
+// this app's own fixed semantics (SPACE domain, 3D mode) rather than a
+// color a user should be able to reassign to something else — both are
+// excluded from this user-facing picker for that reason, not by oversight.
 export interface PaletteColor {
   id: string;
   label: string;

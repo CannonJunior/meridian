@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../store';
 import { ORGANIZATIONS } from '../assets/staff';
 import { fmtLogTime } from '../selectors';
+import ManagerHeader from './ManagerHeader';
+import { ClickableSpan } from './Clickable';
 
 export default function ChatManager() {
   const activeChatOrgId = useStore((s) => s.activeChatOrgId);
@@ -12,6 +14,7 @@ export default function ChatManager() {
   const openChat = useStore((s) => s.openChat);
   const setChatTargetScope = useStore((s) => s.setChatTargetScope);
   const sendChatMessage = useStore((s) => s.sendChatMessage);
+  const reportManagerAction = useStore((s) => s.reportManagerAction);
   const [draft, setDraft] = useState('');
 
   const org = ORGANIZATIONS.find((o) => o.id === activeChatOrgId) ?? ORGANIZATIONS[0];
@@ -37,26 +40,29 @@ export default function ChatManager() {
   const pendingHere = pendingCountByOrg.get(org.id) ?? 0;
 
   function submit() {
-    if (!draft.trim()) return;
+    const trimmed = draft.trim();
+    if (!trimmed) return;
     sendChatMessage(draft);
+    reportManagerAction('chat.message-sent', `${org.acronym}: ${trimmed}`, activeChatTargetId ?? undefined);
     setDraft('');
   }
 
   return (
     <div className="chat-manager" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div className="chat-manager-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="chat-manager-header-accent" style={{ width: 5, height: 14, background: 'var(--red)', boxShadow: '0 0 8px var(--red)' }} />
-        <span className="chat-manager-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--red)', fontWeight: 600 }}>
-          BOARD · COMMS
-        </span>
-      </div>
+      <ManagerHeader
+        className="chat-manager-header"
+        accentClassName="chat-manager-header-accent"
+        titleClassName="chat-manager-title"
+        accentColor="var(--red)"
+        title="BOARD · COMMS"
+      />
 
       <div className="chat-manager-org-tabs" style={{ display: 'flex', flexWrap: 'wrap', gap: 5, padding: '8px 10px', borderBottom: '1px solid var(--hairline)' }}>
         {ORGANIZATIONS.map((o) => {
           const active = o.id === org.id;
           const count = pendingCountByOrg.get(o.id) ?? 0;
           return (
-            <span
+            <ClickableSpan
               key={o.id}
               className="chat-manager-org-tab"
               onClick={() => openChat(o.id, activeChatOrgId === o.id ? activeChatTargetId ?? undefined : undefined)}
@@ -82,7 +88,7 @@ export default function ChatManager() {
                   {count}
                 </span>
               )}
-            </span>
+            </ClickableSpan>
           );
         })}
       </div>
@@ -156,9 +162,9 @@ export default function ChatManager() {
           </span>
         )}
         {scopedTarget && (
-          <span className="chat-manager-scope-clear-button" onClick={() => setChatTargetScope(null)} style={{ fontSize: 8.5, color: 'var(--ink-faint)', cursor: 'pointer' }}>
+          <ClickableSpan className="chat-manager-scope-clear-button" onClick={() => setChatTargetScope(null)} style={{ fontSize: 8.5, color: 'var(--ink-faint)', cursor: 'pointer' }}>
             clear ✕
-          </span>
+          </ClickableSpan>
         )}
       </div>
 

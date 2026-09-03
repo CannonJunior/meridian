@@ -1,0 +1,25 @@
+{
+  "ports": { "fill": "#3fd2e6", "fillOpacity": 0.85, "stroke": "#06090a", "strokeWidth": 0.6 },
+  "airfields": {
+    "boundary": { "fill": "#ffab38", "fillOpacity": 0.06, "stroke": "#ffab38", "strokeWidth": 1.2 },
+    "runway": { "fill": "#cdd9d7", "fillOpacity": 0.85, "stroke": "#06090a", "strokeWidth": 0.4 },
+    "taxiway": { "fill": "#9fb2ae", "fillOpacity": 0.7, "stroke": "#06090a", "strokeWidth": 0.4 }
+  },
+  "eez": { "fill": "#5fc9ff", "fillOpacity": 0.05, "stroke": "#5fc9ff", "strokeWidth": 1.1, "strokeDasharray": [6, 4] },
+  "shippingLanes": {
+    "major": { "stroke": "#c77dff", "strokeWidth": 1.4, "strokeOpacity": 0.75 },
+    "middle": { "stroke": "#9d4edd", "strokeWidth": 0.9, "strokeOpacity": 0.6 },
+    "minor": { "stroke": "#7b2cbf", "strokeWidth": 0.5, "strokeOpacity": 0.4 },
+    "chokepoint": { "stroke": "#ffd60a", "strokeWidth": 2.2, "strokeOpacity": 0.9 }
+  },
+  "submarineCables": {
+    "operational": { "stroke": "#5b9dff", "strokeWidth": 1.1, "strokeOpacity": 0.8 },
+    "abandoned": { "stroke": "#5b9dff", "strokeWidth": 0.7, "strokeOpacity": 0.35, "strokeDasharray": [3, 3] }
+  },
+  "bathymetry": {
+    "shallow": { "stroke": "#2e6fa8", "strokeWidth": 0.5, "strokeOpacity": 0.5 },
+    "mid": { "stroke": "#2467a0", "strokeWidth": 0.7, "strokeOpacity": 0.65 },
+    "deep": { "stroke": "#173f66", "strokeWidth": 0.9, "strokeOpacity": 0.8 }
+  },
+  "drawnShapes": { "fill": "#3fd2e6", "fillOpacity": 0.08, "stroke": "#3fd2e6", "strokeWidth": 1.2 }
+}

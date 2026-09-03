@@ -1,5 +1,8 @@
 import { useStore } from '../store';
 import { TUTORIALS } from '../assets/tutorials';
+import ManagerHeader from './ManagerHeader';
+import { ClickableDiv } from './Clickable';
+import { TYPE_SCALE } from '../layout';
 
 // The guided-tour panel for whichever tutorial is running (assets/
 // tutorials.ts). Each step's own `run()` already performed the real system
@@ -37,18 +40,23 @@ export default function TutorialOverlay() {
         fontFamily: 'var(--font-mono)',
       }}
     >
-      <div className="tutorial-overlay-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="tutorial-overlay-header-accent" style={{ width: 5, height: 14, background: 'var(--amber)', boxShadow: '0 0 8px var(--amber)' }} />
-        <span className="tutorial-overlay-title" style={{ fontFamily: 'var(--font-display)', fontSize: 10.5, letterSpacing: '.16em', color: 'var(--amber)', fontWeight: 600, flex: 1 }}>
-          {tutorial.name.toUpperCase()}
-        </span>
+      <ManagerHeader
+        className="tutorial-overlay-header"
+        accentClassName="tutorial-overlay-header-accent"
+        titleClassName="tutorial-overlay-title"
+        accentColor="var(--amber)"
+        title={tutorial.name.toUpperCase()}
+        titleFontSize={TYPE_SCALE.basePlus}
+        titleLetterSpacing=".16em"
+        titleGrow
+      >
         <span className="tutorial-overlay-step-count" style={{ fontSize: 9, color: 'var(--ink-faint)' }}>
           {tutorialStepIndex + 1} / {tutorial.steps.length}
         </span>
-        <div className="tutorial-overlay-exit-button" onClick={exitTutorial} title="Exit tutorial" style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #2a3d3a', cursor: 'pointer', fontSize: 11, color: 'var(--ink-mute)', flexShrink: 0 }}>
+        <ClickableDiv className="tutorial-overlay-exit-button" onClick={exitTutorial} title="Exit tutorial" style={{ width: 20, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #2a3d3a', cursor: 'pointer', fontSize: 11, color: 'var(--ink-mute)', flexShrink: 0 }}>
           ✕
-        </div>
-      </div>
+        </ClickableDiv>
+      </ManagerHeader>
 
       <div className="tutorial-overlay-body" style={{ padding: '13px 14px', overflowY: 'auto', overflowX: 'hidden', flex: 1 }}>
         <div className="tutorial-overlay-step-title" style={{ fontFamily: 'var(--font-display)', fontSize: 13, fontWeight: 700, color: 'var(--ink-bright)', marginBottom: 8 }}>
@@ -71,21 +79,21 @@ export default function TutorialOverlay() {
 
       <div className="tutorial-overlay-footer" style={{ display: 'flex', gap: 8, padding: '10px 14px', borderTop: '1px solid var(--hairline)' }}>
         {step.fastForward && (
-          <div
+          <ClickableDiv
             className="tutorial-overlay-fast-forward-button"
             onClick={fastForwardTutorial}
             style={{ flex: 1, textAlign: 'center', padding: 8, border: '1px solid var(--cyan)', color: 'var(--cyan)', fontFamily: 'var(--font-display)', fontSize: 9.5, letterSpacing: '.06em', cursor: 'pointer', fontWeight: 600 }}
           >
             ⏩ {step.fastForwardLabel ?? 'FAST-FORWARD'}
-          </div>
+          </ClickableDiv>
         )}
-        <div
+        <ClickableDiv
           className="tutorial-overlay-next-button"
           onClick={advanceTutorial}
           style={{ flex: 1, textAlign: 'center', padding: 8, border: '1px solid var(--amber)', background: 'rgba(255,171,56,.1)', color: 'var(--amber)', fontFamily: 'var(--font-display)', fontSize: 9.5, letterSpacing: '.06em', cursor: 'pointer', fontWeight: 700 }}
         >
           {isLast ? 'FINISH' : 'NEXT ▸'}
-        </div>
+        </ClickableDiv>
       </div>
     </div>
   );

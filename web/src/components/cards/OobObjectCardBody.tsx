@@ -3,6 +3,7 @@ import { useStore } from '../../store';
 import { effectiveStatus, formatLatLng, kindLabel, oobTabKeys, parentOf, pathNodes, siblingObjectsOf, statusMeta } from '../../oobSelectors';
 import { VESSEL_PROFILES } from '../../assets/vesselProfiles';
 import { DrawnShapesNote, EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
+import { ClickableDiv } from '../Clickable';
 
 const STATUS_NOTE: Record<string, string> = {
   VISIBLE: 'Positive custody held — track corroborated by current collection.',
@@ -67,9 +68,9 @@ function IdentifyContactPanel({ node }: { node: ReturnType<typeof pathNodes>[num
             <div className="oob-object-card-identify-assigned-meta" style={{ fontSize: 9.5, color: 'var(--ink-mute2)', marginTop: 4 }}>
               {assignedProfile.countryOfOrigin} · {assignedProfile.typicalRole}
             </div>
-            <div className="oob-object-card-identify-revert-button" onClick={() => clearContactIdentity(node.id)} style={{ marginTop: 9, fontSize: 9, letterSpacing: '.1em', color: 'var(--red)', cursor: 'pointer', display: 'inline-block' }}>
+            <ClickableDiv className="oob-object-card-identify-revert-button" onClick={() => clearContactIdentity(node.id)} style={{ marginTop: 9, fontSize: 9, letterSpacing: '.1em', color: 'var(--red)', cursor: 'pointer', display: 'inline-block' }}>
               ✕ REVERT TO UNIDENTIFIED
-            </div>
+            </ClickableDiv>
           </div>
         </>
       ) : (
@@ -113,7 +114,7 @@ function IdentifyContactPanel({ node }: { node: ReturnType<typeof pathNodes>[num
           <SectionLabel top={16}>CANDIDATES ({candidates.length})</SectionLabel>
           <div className="oob-object-card-identify-candidate-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {candidates.map((c) => (
-              <div
+              <ClickableDiv
                 key={c.id}
                 className="oob-object-card-identify-candidate-row"
                 onClick={() => assignContactIdentity(node.id, c.id)}
@@ -128,7 +129,7 @@ function IdentifyContactPanel({ node }: { node: ReturnType<typeof pathNodes>[num
                 <span className="oob-object-card-identify-candidate-length" style={{ fontSize: 9, color: 'var(--ink-faint)', minWidth: 60, textAlign: 'right' }}>
                   {c.lengthMinM}–{c.lengthMaxM} M
                 </span>
-              </div>
+              </ClickableDiv>
             ))}
             {candidates.length === 0 && <EmptyNote>No reference profiles match these filters.</EmptyNote>}
           </div>
@@ -195,10 +196,12 @@ export default function OobObjectCardBody({ id, tab }: { id: string; tab: number
         <SectionLabel>CHAIN OF COMMAND</SectionLabel>
         <div className="oob-object-card-chain" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {path.map((n, i) => (
-            <div
+            <ClickableDiv
               key={n.id}
               className="oob-object-card-chain-row"
               onClick={() => n.id !== id && selectOob(n.id)}
+              tabIndex={n.id !== id ? 0 : undefined}
+              role={n.id !== id ? 'button' : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -214,7 +217,7 @@ export default function OobObjectCardBody({ id, tab }: { id: string; tab: number
               <span className="oob-object-card-chain-name" style={{ fontSize: 10, color: n.id === id ? 'var(--ink-brighter)' : 'var(--ink-mute)', fontWeight: n.id === id ? 700 : 500 }}>
                 {n.name}
               </span>
-            </div>
+            </ClickableDiv>
           ))}
         </div>
 

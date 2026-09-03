@@ -28,6 +28,8 @@ import { CONTEXT_LAYERS } from '../assets/contextLayers';
 import { loadContextLayerData } from '../contextLayerData';
 import { flattenObjects } from '../oobSelectors';
 import { GOOGLE_STATIC_MAP_SCALE_OPTIONS, GOOGLE_STATIC_MAP_SIZE } from '../googleStaticMap';
+import { ClickableDiv, ClickableSpan } from './Clickable';
+import ManagerHeader from './ManagerHeader';
 
 interface ObjectOption {
   id: string;
@@ -70,34 +72,15 @@ function ringFromGeometry(geometry: GeoJSONPolygon): [number, number][] {
   return geometry.coordinates[0].slice(0, -1) as [number, number][];
 }
 
-export default function DrawingToolManager() {
-  const drawTool = useStore((s) => s.drawTool);
-  const setCaptureScale = useStore((s) => s.setCaptureScale);
-  const requestGoogleCapture = useStore((s) => s.requestGoogleCapture);
-  const resetDrawTool = useStore((s) => s.resetDrawTool);
-  const cancelDrawTool = useStore((s) => s.cancelDrawTool);
-  const saveDrawnShape = useStore((s) => s.saveDrawnShape);
-  const cardKind = useStore((s) => s.cardKind);
-  const cardId = useStore((s) => s.cardId);
-  const drawnShapes = useStore((s) => s.drawnShapes);
-  const shapeEditing = useStore((s) => s.shapeEditing);
-  const startEditingShape = useStore((s) => s.startEditingShape);
-  const saveEditingShape = useStore((s) => s.saveEditingShape);
-
-  const [layerId, setLayerId] = useState<DrawLayerId>('maritime-ports');
-  const [objectQuery, setObjectQuery] = useState('');
-  const [selectedObject, setSelectedObject] = useState<ObjectOption | null>(null);
+// The selectable-object list for whichever draw-target layer is currently
+// chosen (assets/contextLayers.ts's ports/airfields, fetched via WFS same
+// as everywhere else in this app, or the OOB tree, already in memory) —
+// kept as its own hook rather than inline component state so "what can be
+// picked for this layer" reads as one self-contained concern, separate
+// from the rest of the wizard's step/selection/save state below.
+function useObjectOptionsForLayer(layerId: DrawLayerId): ObjectOption[] {
   const [objectOptions, setObjectOptions] = useState<ObjectOption[]>([]);
-  const [shapeName, setShapeName] = useState('');
-  const [shapeKind, setShapeKind] = useState<DrawnShapeKind>('outline');
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [editSaveError, setEditSaveError] = useState<string | null>(null);
-
   useEffect(() => {
-    setSelectedObject(null);
-    setObjectQuery('');
     if (layerId === 'oob') {
       setObjectOptions(flattenObjects().map((n) => ({ id: n.id, label: n.name })));
       return;
@@ -123,6 +106,41 @@ export default function DrawingToolManager() {
       cancelled = true;
     };
   }, [layerId]);
+  return objectOptions;
+}
+
+export default function DrawingToolManager() {
+  const drawTool = useStore((s) => s.drawTool);
+  const setCaptureScale = useStore((s) => s.setCaptureScale);
+  const requestGoogleCapture = useStore((s) => s.requestGoogleCapture);
+  const resetDrawTool = useStore((s) => s.resetDrawTool);
+  const cancelDrawTool = useStore((s) => s.cancelDrawTool);
+  const saveDrawnShape = useStore((s) => s.saveDrawnShape);
+  const reportManagerAction = useStore((s) => s.reportManagerAction);
+  const cardKind = useStore((s) => s.cardKind);
+  const cardId = useStore((s) => s.cardId);
+  const drawnShapes = useStore((s) => s.drawnShapes);
+  const shapeEditing = useStore((s) => s.shapeEditing);
+  const startEditingShape = useStore((s) => s.startEditingShape);
+  const saveEditingShape = useStore((s) => s.saveEditingShape);
+
+  const [layerId, setLayerId] = useState<DrawLayerId>('maritime-ports');
+  const [objectQuery, setObjectQuery] = useState('');
+  const [selectedObject, setSelectedObject] = useState<ObjectOption | null>(null);
+  const objectOptions = useObjectOptionsForLayer(layerId);
+  const [shapeName, setShapeName] = useState('');
+  const [shapeKind, setShapeKind] = useState<DrawnShapeKind>('outline');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editSaveError, setEditSaveError] = useState<string | null>(null);
+
+  // The previous layer's selection/search text doesn't carry over — a new
+  // layer's objectOptions (above) don't include whatever was selected.
+  useEffect(() => {
+    setSelectedObject(null);
+    setObjectQuery('');
+  }, [layerId]);
 
   const filteredOptions = useMemo(() => {
     const q = objectQuery.trim().toLowerCase();
@@ -142,6 +160,7 @@ export default function DrawingToolManager() {
     setSaveError(null);
     try {
       await saveDrawnShape({ name: shapeName.trim(), layerId, objectId: selectedObject.id, objectLabel: selectedObject.label, kind: shapeKind });
+      reportManagerAction('drawing-tool.shape-added', `${shapeName.trim()} added to ${selectedObject.label}.`, selectedObject.id);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Failed to save shape.');
     } finally {
@@ -181,18 +200,20 @@ export default function DrawingToolManager() {
 
   return (
     <div className="draw-tool-manager" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div className="draw-tool-manager-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="draw-tool-manager-header-accent" style={{ width: 5, height: 14, background: 'var(--cyan)', boxShadow: '0 0 8px var(--cyan)' }} />
-        <span className="draw-tool-manager-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--cyan)', fontWeight: 600 }}>
-          DRAWING · TOOL
-        </span>
-        <span className="draw-tool-manager-header-spacer" style={{ flex: 1 }} />
+      <ManagerHeader
+        className="draw-tool-manager-header"
+        accentClassName="draw-tool-manager-header-accent"
+        titleClassName="draw-tool-manager-title"
+        accentColor="var(--cyan)"
+        title="DRAWING · TOOL"
+        titleGrow
+      >
         {!shapeEditing && drawTool.phase !== 'capture' && (
-          <span className="draw-tool-manager-start-over" onClick={handleReset} style={{ fontSize: 9, letterSpacing: '.1em', color: 'var(--ink-faint)', cursor: 'pointer' }}>
+          <ClickableSpan className="draw-tool-manager-start-over" onClick={handleReset} style={{ fontSize: 9, letterSpacing: '.1em', color: 'var(--ink-faint)', cursor: 'pointer' }}>
             START OVER
-          </span>
+          </ClickableSpan>
         )}
-      </div>
+      </ManagerHeader>
 
       {shapeEditing ? (
         <>
@@ -421,14 +442,14 @@ export default function DrawingToolManager() {
                   {filteredOptions.map((o) => {
                     const selected = selectedObject?.id === o.id;
                     return (
-                      <div
+                      <ClickableDiv
                         key={o.id}
                         className="draw-tool-object-option-row"
                         onClick={() => setSelectedObject(o)}
                         style={{ padding: '6px 8px', fontSize: 10, cursor: 'pointer', color: selected ? 'var(--cyan)' : 'var(--ink-mute)', background: selected ? 'rgba(63,210,230,.08)' : 'transparent', borderBottom: '1px solid var(--hairline-subtle)' }}
                       >
                         {o.label}
-                      </div>
+                      </ClickableDiv>
                     );
                   })}
                   {filteredOptions.length === 0 && (

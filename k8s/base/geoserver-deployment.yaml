@@ -1,0 +1,126 @@
+# GeoServer only — postgis stays external/managed (see k8s/README.md's
+# table). Scope is deliberately narrower than geoserver/docker-compose.yml:
+# this gives you a running, PVC-backed GeoServer with an empty data_dir,
+# not a fully-provisioned one. geoserver/geoserver-init/provision.sh (the
+# workspace/datastore/feature-type/style REST calls docker-compose's
+# `geoserver-init` service runs automatically) still needs to be run
+# against it by hand — e.g. `kubectl -n meridian port-forward svc/geoserver
+# 8600:8080` and run that script locally against localhost:8600 with
+# POSTGIS_HOST/POSTGRES_* pointed at the same Postgres this Deployment
+# uses. Porting that script into an in-cluster init Job is a reasonable
+# next increment, not attempted here.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: geoserver-data
+  namespace: meridian
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: geoserver
+  namespace: meridian
+spec:
+  # Pinned to 1 for a structural reason, not just caution: data_dir on the
+  # PVC above is ReadWriteOnce (one node at a time) and GeoServer doesn't
+  # coordinate concurrent writers to it — a second replica would corrupt
+  # or race on the same data_dir, not just duplicate load.
+  replicas: 1
+  strategy:
+    # The default (RollingUpdate) would try to start a second pod against
+    # the same ReadWriteOnce PVC before killing the first — Recreate tears
+    # the old pod down first instead. A short availability gap on deploy,
+    # traded for not needing a second volume.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: geoserver
+  template:
+    metadata:
+      labels:
+        app: geoserver
+    spec:
+      imagePullSecrets:
+        - name: ghcr-pull # unused for this third-party image, harmless if the secret doesn't exist and the image is public
+      containers:
+        - name: geoserver
+          image: kartoza/geoserver:latest # matches the tag geoserver/docker-compose.yml already runs
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: meridian-config
+            - secretRef:
+                name: meridian-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /opt/geoserver/data_dir
+          # NOT /geoserver/web/ (the admin UI) — confirmed live, it 302s to
+          # `./?0` with a fresh Set-Cookie: JSESSIONID on *every* request
+          # that doesn't carry the previous one back, so a cookieless
+          # prober (kubelet's httpGet, like any bare curl -L with no cookie
+          # jar) bounces on that redirect forever ("stopped after 10
+          # redirects", confirmed via `kubectl run --rm -it curl ...`).
+          # geoserver/docker-compose.yml's healthcheck hits this same path
+          # and never notices only because plain `curl -sf` (no -L) never
+          # follows the redirect at all — a 302 isn't a curl -f failure.
+          # WMS GetCapabilities needs no session and returns a clean 200.
+          #
+          # Separately (and still worth keeping regardless of path): a
+          # startupProbe, not a bigger initialDelaySeconds on liveness —
+          # kartoza/geoserver's Tomcat "Server startup" log line lands well
+          # before GeoServer's own webapp context is actually done
+          # initializing data_dir, and a plain liveness initialDelaySeconds
+          # can fire mid-init. A startupProbe holds liveness/readiness off
+          # entirely until the app answers once, mirroring
+          # docker-compose.yml's healthcheck (interval 10s, retries 30,
+          # start_period 30s — effectively ~330s of grace) instead of
+          # guessing a fixed boot time.
+          startupProbe:
+            httpGet:
+              path: /geoserver/ows?service=wms&version=1.3.0&request=GetCapabilities
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /geoserver/ows?service=wms&version=1.3.0&request=GetCapabilities
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /geoserver/ows?service=wms&version=1.3.0&request=GetCapabilities
+              port: 8080
+            periodSeconds: 15
+          # Same reasoning as geoserver/docker-compose.yml's
+          # INITIAL_MEMORY/MAXIMUM_MEMORY comment — sized for this app's
+          # small vector layers, not tile-serving-at-scale.
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "768Mi"
+            limits:
+              cpu: "1"
+              memory: "1536Mi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: geoserver-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: geoserver
+  namespace: meridian
+spec:
+  selector:
+    app: geoserver
+  ports:
+    - port: 8080
+      targetPort: 8080

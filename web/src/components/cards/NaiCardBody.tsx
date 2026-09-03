@@ -1,6 +1,7 @@
 import { useStore } from '../../store';
 import { affColor, affShapeStyle, C, distanceNm, threatColor } from '../../selectors';
 import { EmptyNote, KV, KVGrid, LinkRow, SectionLabel } from './shared';
+import { ClickableDiv } from '../Clickable';
 
 export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
   const nais = useStore((s) => s.nais);
@@ -51,7 +52,7 @@ export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
         <SectionLabel>SENSORS ON COLLECTION</SectionLabel>
         <div className="nai-card-sensor-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {cover.map((s) => (
-            <div key={s.id} className="nai-card-sensor-row" onClick={() => openEntity('sensor', s.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
+            <ClickableDiv key={s.id} className="nai-card-sensor-row" onClick={() => openEntity('sensor', s.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
               <span className="nai-card-sensor-status-dot" style={{ width: 7, height: 7, borderRadius: '50%', background: s.statusColor, flexShrink: 0 }} />
               <span className="nai-card-sensor-callsign" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--ink-brighter)' }}>
                 {s.callsign}
@@ -62,7 +63,7 @@ export default function NaiCardBody({ id, tab }: { id: string; tab: number }) {
               <span className="nai-card-sensor-int-type" style={{ fontSize: 9, color: 'var(--cyan)' }}>
                 {s.intType}
               </span>
-            </div>
+            </ClickableDiv>
           ))}
           {cover.length === 0 && <EmptyNote>No sensors currently tasked to this NAI.</EmptyNote>}
         </div>

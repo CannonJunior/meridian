@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'node:http';
 import { getState, initStore } from './store.js';
 import { pruneAirTrackHistory, pruneRealtimeHistoryLayers } from './db.js';
+import { publishNotification, pruneNotifications } from './notifications.js';
 import { attachWs } from './ws.js';
 import { tick } from './sim.js';
 import { startLiveSync } from './liveSync.js';
@@ -27,9 +28,14 @@ async function main() {
   // db.ts's pruneRealtimeHistoryLayers doc comment) — the two real-data
   // producers added this session have no retention of their own.
   pruneRealtimeHistoryLayers().catch((err) => console.error('[meridian] realtime history prune failed:', err));
+  // Same RT-03-class safeguard for the notifications table (see
+  // notifications.ts's pruneNotifications doc comment) — without it the
+  // table grows unbounded past each row's own expires_at.
+  pruneNotifications().catch((err) => console.error('[meridian] notification prune failed:', err));
   setInterval(() => {
     pruneAirTrackHistory().catch((err) => console.error('[meridian] air-track history prune failed:', err));
     pruneRealtimeHistoryLayers().catch((err) => console.error('[meridian] realtime history prune failed:', err));
+    pruneNotifications().catch((err) => console.error('[meridian] notification prune failed:', err));
   }, 60 * 60 * 1000);
 
   const app = express();
@@ -90,6 +96,36 @@ async function main() {
       return;
     }
     res.json(updated);
+  });
+
+  // Generic relay for the client-defined custom notification rules feature
+  // (NotificationCenterManager.tsx / web/src/assets/managerActions.ts) —
+  // any manager can report "a user just did X" here without this server
+  // needing its own copy of the client's action catalog; it only validates
+  // shape, not meaning, and always broadcasts (see notifications.ts) since
+  // whether any given browser actually cares is decided client-side by
+  // notificationTypeEnabled against that browser's own NotificationRules.
+  const MANAGER_ACTION_ID_RE = /^[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+  const MAX_MANAGER_ACTION_TEXT_LEN = 300;
+  app.post('/api/manager-actions', (req, res) => {
+    const { actionId, title, body, targetId } = req.body ?? {};
+    if (typeof actionId !== 'string' || !MANAGER_ACTION_ID_RE.test(actionId)) {
+      res.status(400).json({ error: 'actionId is required and must look like "manager.action-name"' });
+      return;
+    }
+    if (typeof title !== 'string' || !title.trim() || title.length > MAX_MANAGER_ACTION_TEXT_LEN) {
+      res.status(400).json({ error: 'title is required' });
+      return;
+    }
+    publishNotification({
+      scope: 'broadcast',
+      type: `action:${actionId}`,
+      priority: 'info',
+      title,
+      body: typeof body === 'string' ? body.slice(0, MAX_MANAGER_ACTION_TEXT_LEN) : null,
+      payload: typeof targetId === 'string' ? { targetId } : {},
+    });
+    res.status(202).json({ ok: true });
   });
 
   app.delete('/api/drawn-shapes/:id', async (req, res) => {

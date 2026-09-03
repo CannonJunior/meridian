@@ -20,7 +20,8 @@
 // across runs (e.g. a golden-file test), truncate entity_track_history
 // first rather than relying on event_id collisions to dedupe for you.
 import { randomUUID } from 'node:crypto';
-import { Kafka, Partitioners, logLevel } from 'kafkajs';
+import { Kafka, Partitioners, CompressionTypes, logLevel } from 'kafkajs';
+import './zstdCodec.js';
 
 const KAFKA_BROKER = process.env.KAFKA_BROKER ?? 'kafka:9092';
 const TOPIC = process.env.KAFKA_HISTORY_TOPIC ?? 'meridian.telemetry.history.v1';
@@ -177,6 +178,7 @@ async function main() {
 
     await producer.send({
       topic: TOPIC,
+      compression: CompressionTypes.ZSTD,
       messages: events.map((ev) => ({ key: ev.entity_id, value: JSON.stringify(ev) })),
     });
     publishedCount += events.length;

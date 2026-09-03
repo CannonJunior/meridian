@@ -238,6 +238,28 @@ export interface State {
   sorties: Sortie[];
 }
 
+// NOT YET USED — no code in this repo constructs or reads a
+// LeaderEnvelope today. This is the intended envelope shape for whatever
+// the elected leader will publish on meridian.state.patch.v1 /
+// meridian.notification.v1 once leaderFanout.ts (referenced here, but not
+// yet written) and store.ts's applyRemotePatch (also not yet written)
+// exist — see leaderElection.ts's header for the full list of what's
+// still missing to make the elected-leader HA design real. Left in place
+// as the agreed shape for that future work, not as evidence it's running.
+// `epoch` is the fencing token minted from server_leader_epoch_seq
+// (120-leader-epoch.sql) at the moment a leader term began — every
+// consumer would drop anything with an epoch lower than the highest it
+// has already seen, so a "zombie leader" (one that keeps producing
+// briefly after actually losing the advisory lock) could never have a
+// stale message accepted. `full`, when true, would mean `payload` is a
+// complete State replacement (sent once, right after a leader term
+// begins) rather than a Partial<State> patch to merge.
+export interface LeaderEnvelope<T> {
+  epoch: number;
+  payload: T;
+  full?: boolean;
+}
+
 export type ActionMessage =
   | { type: 'action'; name: 'selectTarget'; args: { id: string } }
   | { type: 'action'; name: 'setView'; args: { view: View } }

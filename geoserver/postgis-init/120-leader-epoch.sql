@@ -1,0 +1,14 @@
+-- Backs server/src/leaderElection.ts's fencing tokens for the elected-leader
+-- HA design (SERVER_HA_ENABLED) — every pg_try_advisory_lock() acquisition
+-- mints the next value here as that leadership term's epoch, stamped on
+-- every message the leader publishes to meridian.state.patch.v1 /
+-- meridian.notification.v1 so a "zombie leader" (one that keeps producing
+-- briefly after actually losing the lock — a GC pause, a partial network
+-- partition) can never have its stale messages accepted: every consumer
+-- tracks the highest epoch it has seen and drops anything lower. A single
+-- global sequence, not one per topic — the two topics never need to be
+-- compared against each other, but every value this sequence ever hands out
+-- must be unique and increasing regardless of which topic (or neither) ends
+-- up using it, and one sequence is simpler than keeping two in lockstep for
+-- no benefit.
+CREATE SEQUENCE IF NOT EXISTS server_leader_epoch_seq;

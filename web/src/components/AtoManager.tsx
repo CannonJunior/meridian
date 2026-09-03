@@ -2,13 +2,15 @@ import { useMemo } from 'react';
 import { useStore } from '../store';
 import { ATO_DAYS, atoDayFor, atoDayPhaseColor, atoDayPhaseLabel, fmtSortieTime, sortieStatusColor } from '../selectors';
 import type { AtoDay, Sortie, SortieMissionType } from '../types';
+import ManagerHeader from './ManagerHeader';
+import { ClickableDiv, ClickableSpan } from './Clickable';
 
 const GRID_COLS = '78px 96px 84px 84px 1fr 96px';
 
 function DayCell({ day, count, selected, onClick }: { day: AtoDay; count: number; selected: boolean; onClick: () => void }) {
   const color = atoDayPhaseColor(day);
   return (
-    <div
+    <ClickableDiv
       className="ato-manager-day-cell"
       onClick={onClick}
       style={{
@@ -32,13 +34,13 @@ function DayCell({ day, count, selected, onClick }: { day: AtoDay; count: number
       <span className="ato-manager-day-cell-count" style={{ fontSize: 9.5, color: 'var(--ink-dim2)', fontVariantNumeric: 'tabular-nums' }}>
         {count}
       </span>
-    </div>
+    </ClickableDiv>
   );
 }
 
 function MissionTypeChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
-    <span
+    <ClickableSpan
       className="ato-manager-mission-type-chip"
       onClick={onClick}
       style={{
@@ -54,14 +56,14 @@ function MissionTypeChip({ label, active, onClick }: { label: string; active: bo
       }}
     >
       {label}
-    </span>
+    </ClickableSpan>
   );
 }
 
 function SortieRow({ sortie, selected, onClick }: { sortie: Sortie; selected: boolean; onClick: () => void }) {
   const color = sortieStatusColor(sortie.status);
   return (
-    <div
+    <ClickableDiv
       className="ato-manager-sortie-row"
       onClick={onClick}
       style={{
@@ -94,7 +96,7 @@ function SortieRow({ sortie, selected, onClick }: { sortie: Sortie; selected: bo
       <span className="ato-manager-sortie-row-status" style={{ fontSize: 8.5, letterSpacing: '.04em', color, fontWeight: 600, textAlign: 'right' }}>
         {sortie.status}
       </span>
-    </div>
+    </ClickableDiv>
   );
 }
 
@@ -130,16 +132,18 @@ export default function AtoManager() {
 
   return (
     <div className="ato-manager" style={{ display: 'flex', flexDirection: 'column', minHeight: 0, borderRight: '1px solid var(--hairline)', overflow: 'hidden', background: 'var(--panel-1)' }}>
-      <div className="ato-manager-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="ato-manager-header-accent" style={{ width: 5, height: 14, background: 'var(--amber)', boxShadow: '0 0 8px var(--amber)' }} />
-        <span className="ato-manager-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--amber)', fontWeight: 600 }}>
-          AIR TASKING
-        </span>
+      <ManagerHeader
+        className="ato-manager-header"
+        accentClassName="ato-manager-header-accent"
+        titleClassName="ato-manager-title"
+        accentColor="var(--amber)"
+        title="AIR TASKING"
+      >
         <span className="ato-manager-header-spacer" style={{ flex: 1 }} />
         <span className="ato-manager-header-summary" style={{ fontSize: 9, color: 'var(--ink-faint)', letterSpacing: '.08em' }}>
           {sortiesForDay.length} SORTIES · {selectedAtoDay}
         </span>
-      </div>
+      </ManagerHeader>
 
       <div className="ato-manager-timeline-strip" style={{ display: 'flex', gap: 4, padding: '10px 10px 8px' }}>
         {ATO_DAYS.map((d) => (

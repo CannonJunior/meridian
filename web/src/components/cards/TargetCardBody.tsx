@@ -25,6 +25,7 @@ import {
 import { APPR_DEFS, EmptyNote, KV, KVGrid, LinkRow, ProgressRow, SectionLabel } from './shared';
 import { TARGET_LISTS, listsForTarget } from '../../assets/targetLists';
 import { orgById, roleLabel, staffById } from '../../assets/staff';
+import { ClickableDiv, ClickableSpan } from '../Clickable';
 
 export default function TargetCardBody({ id, tab }: { id: string; tab: number }) {
   const targets = useStore((s) => s.targets);
@@ -75,7 +76,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
           {currentLists.map((listId) => {
             const def = TARGET_LISTS.find((l) => l.id === listId)!;
             return (
-              <span
+              <ClickableSpan
                 key={listId}
                 className="target-card-list-badge"
                 onClick={() => setActiveListId(listId)}
@@ -84,7 +85,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
                 style={{ fontFamily: 'var(--font-display)', fontSize: 9, letterSpacing: '.06em', padding: '3px 7px', border: `1px solid ${def.accent}`, color: def.accent, fontWeight: 700, cursor: 'pointer' }}
               >
                 {def.acronym}
-              </span>
+              </ClickableSpan>
             );
           })}
           {currentLists.length === 0 && <EmptyNote>Not currently on any target list.</EmptyNote>}
@@ -94,18 +95,18 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
             {nominationPending ? (
               <span className="target-card-nomination-pending" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 9, letterSpacing: '.04em', color: 'var(--amber)' }}>
                 … NOMINATION PENDING — {nominationOrg?.acronym ?? nominationPending.orgId.toUpperCase()} · DUE {fmtLogTime(nominationPending.adjudicationDueAt)}
-                <span className="target-card-nomination-discuss-button" onClick={() => openChat(nominationPending.orgId, t.id)} style={{ color: 'var(--red)', cursor: 'pointer', fontWeight: 700 }}>
+                <ClickableSpan className="target-card-nomination-discuss-button" onClick={() => openChat(nominationPending.orgId, t.id)} style={{ color: 'var(--red)', cursor: 'pointer', fontWeight: 700 }}>
                   ▸ DISCUSS
-                </span>
+                </ClickableSpan>
               </span>
             ) : (
-              <span
+              <ClickableSpan
                 className="target-card-nomination-submit-button"
                 onClick={() => submitTargetNomination(t.id)}
                 style={{ fontSize: 9, letterSpacing: '.06em', color: 'var(--cyan)', cursor: 'pointer', fontWeight: 600 }}
               >
                 ▸ NOMINATE FOR PRIORITIZATION (HPTL)
-              </span>
+              </ClickableSpan>
             )}
           </div>
         )}
@@ -160,13 +161,13 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
                     <div className="target-card-adjudication-rationale" style={{ fontSize: 9.5, color: 'var(--ink-mute)', marginTop: 4, lineHeight: 1.4 }}>
                       {a.rationale}
                     </div>
-                    <span
+                    <ClickableSpan
                       className="target-card-adjudication-discuss-button"
                       onClick={() => openChat(a.orgId, t.id)}
                       style={{ display: 'inline-block', marginTop: 5, fontSize: 8.5, letterSpacing: '.04em', color: 'var(--red)', cursor: 'pointer', fontWeight: 700 }}
                     >
                       ▸ DISCUSS WITH {org?.acronym ?? a.orgId.toUpperCase()}
-                    </span>
+                    </ClickableSpan>
                   </div>
                 );
               })}
@@ -210,7 +211,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
             </span>
             <div className="target-card-observation-body" style={{ flex: 1 }}>
               <div className="target-card-observation-source" style={{ fontSize: 9, color: 'var(--cyan)' }}>
-                <span style={{ color: 'var(--ink-mute)' }}>{o.sensor}</span> · {o.int}
+                <span className="target-card-observation-source-sensor" style={{ color: 'var(--ink-mute)' }}>{o.sensor}</span> · {o.int}
               </div>
               <div className="target-card-observation-note" style={{ fontSize: 10, color: 'var(--ink)', marginTop: 2, lineHeight: 1.4 }}>
                 {o.note}
@@ -359,7 +360,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
           const border = x.assigned ? C.green : recommended ? '#5a4420' : 'var(--hairline-subtle)';
           const bg = x.assigned ? 'rgba(95,227,154,.07)' : 'var(--panel-3)';
           return (
-            <div key={x.data.id} className="target-card-effector-row" onClick={() => assignEffector(x.data.id)} style={{ border: `1px solid ${border}`, background: bg, padding: '7px 9px', cursor: 'pointer' }}>
+            <ClickableDiv key={x.data.id} className="target-card-effector-row" onClick={() => assignEffector(x.data.id)} style={{ border: `1px solid ${border}`, background: bg, padding: '7px 9px', cursor: 'pointer' }}>
               <div className="target-card-effector-row-header" style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                 <span className="target-card-effector-callsign" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--ink-brighter)' }}>
                   {x.data.callsign}
@@ -397,7 +398,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
                   TOT {x.data.tot}
                 </span>
               </div>
-            </div>
+            </ClickableDiv>
           );
         })}
       </div>
@@ -409,7 +410,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
           const pendingOrg = pending ? orgById(pending.orgId) : undefined;
           const boxColor = pending ? 'var(--amber)' : on ? C.green : 'var(--ink-faint)';
           return (
-            <div
+            <ClickableDiv
               key={a.k}
               className="target-card-authorization-row"
               onClick={() => {
@@ -436,7 +437,7 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
               {pending && (
                 <span className="target-card-authorization-pending-note" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 7.5, letterSpacing: '.04em', color: 'var(--amber)', flexShrink: 0 }}>
                   {pendingOrg?.acronym ?? pending.orgId.toUpperCase()} · DUE {fmtLogTime(pending.adjudicationDueAt)}
-                  <span
+                  <ClickableSpan
                     className="target-card-authorization-discuss-button"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -445,10 +446,10 @@ export default function TargetCardBody({ id, tab }: { id: string; tab: number })
                     style={{ color: 'var(--red)', cursor: 'pointer', fontWeight: 700 }}
                   >
                     ▸ DISCUSS
-                  </span>
+                  </ClickableSpan>
                 </span>
               )}
-            </div>
+            </ClickableDiv>
           );
         })}
       </div>

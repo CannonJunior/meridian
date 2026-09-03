@@ -45,6 +45,16 @@ body {
 * {
   box-sizing: border-box;
 }
+/* Every div/span standing in for a button (see components/Clickable.tsx)
+   gets role="button" — a single global rule here covers all of them, so
+   the visible focus ring doesn't have to be reimplemented per inline style
+   object the way everything else in this app is. Real <button> elements
+   get it too, for the same reason CommandBar.tsx's didn't have one either. */
+[role='button']:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 1px;
+}
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;

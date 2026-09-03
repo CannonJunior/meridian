@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { useStore } from '../store';
 import { effectiveStatus, flattenObjects, statusMeta } from '../oobSelectors';
 import type { OobNode } from '../assets/oob';
@@ -56,14 +57,34 @@ function RangeRings({ n, project, radarColor, weaponColor }: { n: OobNode; proje
   );
 }
 
-function ObjectMarker({ n, project, selected, onSelect, contactIdentityAssignments }: { n: OobNode; project: ProjectLL; selected: boolean; onSelect: () => void; contactIdentityAssignments: Record<string, string> }) {
+// Memoized because n (from the module-scope OBJECTS array below, computed
+// once and never recreated) and contactIdentityAssignments (only replaced
+// when the user actually assigns/clears a contact ID) are both stable
+// across the sim's ~1/sec tick — unlike TacticalMap.tsx's TrackSymbol,
+// whose own `t` prop mutates every tick (decay/trkQ jitter) and so gets no
+// benefit from memoizing. onSelect is `selectOob` itself (a stable zustand
+// action reference), not a per-node closure, specifically so passing it
+// here doesn't create a new prop identity every render and defeat this.
+const ObjectMarker = memo(function ObjectMarker({
+  n,
+  project,
+  selected,
+  onSelect,
+  contactIdentityAssignments,
+}: {
+  n: OobNode;
+  project: ProjectLL;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  contactIdentityAssignments: Record<string, string>;
+}) {
   if (n.lng == null || n.lat == null) return null;
   const { x, y } = project(n.lng, n.lat);
   const status = effectiveStatus(n, contactIdentityAssignments);
   const meta = statusMeta(status);
 
   return (
-    <g className="oob-marker" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onClick={onSelect} opacity={meta.opacity}>
+    <g className="oob-marker" style={{ cursor: 'pointer', pointerEvents: 'auto' }} onClick={() => onSelect(n.id)} opacity={meta.opacity}>
       <rect className="oob-marker-shape" x={x - 6} y={y - 6} width={12} height={12} fill="#0a1316" stroke={meta.color} strokeWidth={selected ? 2.5 : 1.5} strokeDasharray={meta.dash} transform={`rotate(45 ${x} ${y})`} />
       {status === 'DESTROYED' ? (
         <text className="oob-marker-destroyed-glyph" x={x} y={y + 4} fill={meta.color} fontSize={12} fontWeight={700} textAnchor="middle" fontFamily="Chakra Petch">
@@ -84,7 +105,7 @@ function ObjectMarker({ n, project, selected, onSelect, contactIdentityAssignmen
       </text>
     </g>
   );
-}
+});
 
 export default function OobMapLayer({ project, width, height }: { project: ProjectLL; width: number; height: number }) {
   const selectedId = useStore((s) => s.oobSelectedId);
@@ -97,7 +118,7 @@ export default function OobMapLayer({ project, width, height }: { project: Proje
     <svg className="oob-map-layer" viewBox={`0 0 ${width} ${height}`} width={width} height={height} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
       {selected && <RangeRings n={selected} project={project} radarColor={oobStyle.radarColor} weaponColor={oobStyle.weaponColor} />}
       {OBJECTS.map((n) => (
-        <ObjectMarker key={n.id} n={n} project={project} selected={n.id === selectedId} onSelect={() => selectOob(n.id)} contactIdentityAssignments={contactIdentityAssignments} />
+        <ObjectMarker key={n.id} n={n} project={project} selected={n.id === selectedId} onSelect={selectOob} contactIdentityAssignments={contactIdentityAssignments} />
       ))}
     </svg>
   );

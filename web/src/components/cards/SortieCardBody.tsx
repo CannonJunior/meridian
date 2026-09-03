@@ -2,6 +2,7 @@ import { useStore } from '../../store';
 import { atoDayFor, atoDayPhaseLabel, fmtSortieTime, sortieStatusColor } from '../../selectors';
 import type { BdaPhaseStatus } from '../../types';
 import { EmptyNote, KV, KVGrid, SectionLabel } from './shared';
+import { ClickableDiv } from '../Clickable';
 
 const BDA_PHASE_COLOR: Record<BdaPhaseStatus, string> = {
   PENDING: 'var(--ink-faint)',
@@ -72,14 +73,14 @@ export default function SortieCardBody({ id, tab }: { id: string; tab: number })
         <SectionLabel>LINKED TARGETS</SectionLabel>
         <div className="sortie-card-target-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {linkedTargets.map((t) => (
-            <div key={t.id} className="sortie-card-target-row" onClick={() => openEntity('target', t.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
+            <ClickableDiv key={t.id} className="sortie-card-target-row" onClick={() => openEntity('target', t.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
               <span className="sortie-card-target-row-id" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 700, color: 'var(--ink-brighter)' }}>
                 {t.id.slice(1)}
               </span>
               <span className="sortie-card-target-row-name" style={{ fontSize: 10, color: 'var(--ink-mute)', flex: 1 }}>
                 {t.name} · {t.type}
               </span>
-            </div>
+            </ClickableDiv>
           ))}
           {sortie.targetIds.length === 0 && <EmptyNote>No targets linked — {sortie.missionType} sorties task against supported sorties or a collection requirement instead (see below).</EmptyNote>}
         </div>
@@ -87,14 +88,14 @@ export default function SortieCardBody({ id, tab }: { id: string; tab: number })
         <SectionLabel top={16}>SUPPORTS</SectionLabel>
         <div className="sortie-card-supported-list" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {supported.map((s) => (
-            <div key={s.id} className="sortie-card-supported-row" onClick={() => openEntity('sortie', s.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
+            <ClickableDiv key={s.id} className="sortie-card-supported-row" onClick={() => openEntity('sortie', s.id)} style={{ display: 'flex', alignItems: 'center', gap: 9, border: '1px solid #1c2a28', background: 'var(--panel-3)', padding: '7px 9px', cursor: 'pointer' }}>
               <span className="sortie-card-supported-row-callsign" style={{ fontFamily: 'var(--font-display)', fontSize: 11, fontWeight: 600, color: 'var(--ink-brighter)', flex: 1 }}>
                 {s.callsign}
               </span>
               <span className="sortie-card-supported-row-mission-type" style={{ fontSize: 9.5, color: 'var(--cyan)' }}>
                 {s.missionType}
               </span>
-            </div>
+            </ClickableDiv>
           ))}
           {sortie.supportedSortieIds.length === 0 && <EmptyNote>Not in support of another sortie.</EmptyNote>}
         </div>

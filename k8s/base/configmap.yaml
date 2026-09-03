@@ -10,15 +10,36 @@ data:
   PGPORT: "5432"
   PGDATABASE: "meridian"
   PGUSER: "meridian"
-  GEOSERVER_WFS_URL: "http://geoserver.example.internal/geoserver/meridian/wfs"
+  # geoserver-deployment.yaml's Service is named "geoserver", in this same
+  # namespace, so plain in-cluster DNS resolves it — no placeholder here
+  # unlike PGHOST/KAFKA_BROKER above, which point outside the cluster.
+  GEOSERVER_WFS_URL: "http://geoserver:8080/geoserver/meridian/wfs"
   KAFKA_BROKER: "kafka.example.internal:9092"
   KAFKA_HISTORY_ENABLED: "false"
   KAFKA_LIVE_DOMAINS_ENABLED: "false"
   KAFKA_HISTORY_TOPIC: "meridian.telemetry.history.v1"
+  # Elected-leader HA (server/src/leaderElection.ts) — off by default, same
+  # convention as the two flags above. base/ deliberately never sets this to
+  # "true" itself (see k8s/overlays/ha/ once it exists): flipping it must
+  # come bundled with also switching server-deployment.yaml's replicas and
+  # rollout strategy, not as an independent ConfigMap edit.
+  SERVER_HA_ENABLED: "false"
+  KAFKA_ACTIONS_TOPIC: "meridian.actions.v1"
+  KAFKA_STATE_PATCH_TOPIC: "meridian.state.patch.v1"
+  KAFKA_NOTIFICATION_TOPIC: "meridian.notification.v1"
 
   # --- web (nginx upstream — matches the server Service name below) ---
   SERVER_UPSTREAM: "server"
   SERVER_PORT: "8799"
+
+  # --- geoserver (geoserver-deployment.yaml) ---
+  # Matches geoserver/docker-compose.yml's own defaults/rationale exactly —
+  # see that file's INITIAL_MEMORY/MAXIMUM_MEMORY comment.
+  GEOSERVER_ADMIN_USER: "admin"
+  SKIP_DEMO_DATA: "true"
+  CORS_ENABLED: "true"
+  INITIAL_MEMORY: "512M"
+  MAXIMUM_MEMORY: "1G"
 
   # --- history-sim producer (kafka/producer/src/produce.ts) ---
   # Names here are what the container's process.env actually reads — NOT

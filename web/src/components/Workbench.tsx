@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useStore } from '../store';
 import { affColor, affShapeStyle, C, effName, STAGES, threatColor } from '../selectors';
 import type { Target } from '../types';
+import { ClickableDiv } from './Clickable';
 
 export default function Workbench() {
   const targets = useStore((s) => s.targets);
@@ -60,7 +61,10 @@ function BoardCard({ t, selected, effLabel, onDragStart, onSelect, onOpen }: { t
   const priColor = t.pri && t.pri <= 3 ? C.amber : '#7a8d8a';
 
   return (
-    <div
+    // Enter/Space activates onSelect the same as a click, so this card is
+    // reachable and selectable via keyboard — drag-to-advance-stage itself
+    // has no keyboard equivalent (a separate feature, not attempted here).
+    <ClickableDiv
       className="workbench-board-card"
       draggable
       onDragStart={onDragStart}
@@ -91,6 +95,6 @@ function BoardCard({ t, selected, effLabel, onDragStart, onSelect, onOpen }: { t
           {effLabel}
         </span>
       </div>
-    </div>
+    </ClickableDiv>
   );
 }

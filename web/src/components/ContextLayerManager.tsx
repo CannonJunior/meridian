@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { MouseEvent } from 'react';
+import type { KeyboardEvent, MouseEvent } from 'react';
 import { useStore } from '../store';
 import { CONTEXT_LAYERS } from '../assets/contextLayers';
 import type { ContextLayer } from '../assets/contextLayers';
+import ManagerHeader from './ManagerHeader';
+import { ClickableDiv } from './Clickable';
 
 const FILTER_DEBOUNCE_MS = 400;
 
@@ -29,8 +31,15 @@ function LayerFilterInput({ layer }: { layer: ContextLayer }) {
   }
 
   // Typing/clicking into the box must not toggle the layer row's own
-  // onClick (visibility) handler underneath it.
+  // onClick (visibility) handler underneath it — the row is now a
+  // ClickableDiv (keyboard-activatable on Enter/Space), so a keydown guard
+  // is needed here too: without it, every Space typed into this box while
+  // filtering would also toggle the layer off/on, since keydown bubbles up
+  // to the row's own onKeyDown.
   function stopRowClick(e: MouseEvent) {
+    e.stopPropagation();
+  }
+  function stopRowKeyDown(e: KeyboardEvent) {
     e.stopPropagation();
   }
 
@@ -40,6 +49,7 @@ function LayerFilterInput({ layer }: { layer: ContextLayer }) {
       value={value}
       onChange={(e) => handleChange(e.target.value)}
       onClick={stopRowClick}
+      onKeyDown={stopRowKeyDown}
       placeholder={`FILTER BY ${layer.filterProperty!.toUpperCase()}…`}
       style={{
         width: '100%',
@@ -61,12 +71,13 @@ export default function ContextLayerManager() {
 
   return (
     <div className="context-layer-manager" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-1)', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
-      <div className="context-layer-manager-header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--hairline)', background: 'linear-gradient(180deg,#0d1416,#0a0f10)' }}>
-        <span className="context-layer-manager-header-accent" style={{ width: 5, height: 14, background: 'var(--green)', boxShadow: '0 0 8px var(--green)' }} />
-        <span className="context-layer-manager-title" style={{ fontFamily: 'var(--font-display)', fontSize: 11, letterSpacing: '.2em', color: 'var(--green)', fontWeight: 600 }}>
-          CONTEXT · LAYERS
-        </span>
-      </div>
+      <ManagerHeader
+        className="context-layer-manager-header"
+        accentClassName="context-layer-manager-header-accent"
+        titleClassName="context-layer-manager-title"
+        accentColor="var(--green)"
+        title="CONTEXT · LAYERS"
+      />
 
       <div className="context-layer-manager-list" style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div className="context-layer-manager-intro" style={{ fontSize: 9, letterSpacing: '.18em', color: 'var(--ink-faint)', padding: '0 2px', lineHeight: 1.5 }}>
@@ -76,7 +87,7 @@ export default function ContextLayerManager() {
         {CONTEXT_LAYERS.map((layer) => {
           const on = !!visibility[layer.id];
           return (
-            <div
+            <ClickableDiv
               key={layer.id}
               className="context-layer-row"
               onClick={() => toggleContextLayer(layer.id)}
@@ -105,7 +116,7 @@ export default function ContextLayerManager() {
                 </span>
                 <span className="context-layer-row-spacer" style={{ flex: 1 }} />
                 <span className="context-layer-row-source-badge" style={{ fontSize: 8, letterSpacing: '.1em', color: layer.sourceType === 'live-raster' ? 'var(--amber)' : 'var(--ink-faint)' }}>
-                  {layer.sourceType === 'wfs' ? 'WFS' : layer.sourceType === 'static' ? 'STATIC' : 'LIVE'}
+                  {layer.sourceType === 'wfs' ? 'WFS' : layer.sourceType === 'static' ? 'STATIC' : layer.sourceType === 'wms' ? 'WMS' : 'LIVE'}
                 </span>
               </div>
               <div className="context-layer-row-description" style={{ fontSize: 9.5, color: 'var(--ink-mute2)', marginTop: 6, lineHeight: 1.4 }}>
@@ -115,7 +126,7 @@ export default function ContextLayerManager() {
                 SOURCE · {layer.attribution}
               </div>
               {layer.filterProperty && <LayerFilterInput layer={layer} />}
-            </div>
+            </ClickableDiv>
           );
         })}
       </div>

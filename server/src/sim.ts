@@ -1,6 +1,7 @@
 import { update } from './store.js';
 import { AO_BOUNDS } from './aoBounds.js';
 import { clamp, destinationPoint, SIM_MINUTES_PER_TICK, sensorName } from './helpers.js';
+import { publishNotification } from './notifications.js';
 import type { LogEntry, State, Target } from './types.js';
 
 // Ported 1:1 from `tick()` in Meridian Fires C2.dc.html (lines ~813-846),
@@ -55,6 +56,13 @@ export function tick(): void {
         u.trkQ = 0;
         const entry: LogEntry = { t: nt, tag: 'BDA', text: `${u.name} — weapons impact, assessed DESTROYED. BDA pending.`, tag2: 'bda' };
         log = [entry, ...log];
+        // v1's only real notification producer (see the notification
+        // system design plan §2) — deliberately narrow: only a genuine
+        // real server-side event, not the still-client-only
+        // PendingAction/approval workflow. broadcast scope since there's
+        // no per-user targeting concept this maps to yet (every connected
+        // operator watches the same shared tactical picture).
+        publishNotification({ scope: 'broadcast', type: 'bda-complete', priority: 'critical', title: `${u.name} — BDA pending`, body: entry.text, payload: { targetId: u.id } });
       }
       return u;
     });

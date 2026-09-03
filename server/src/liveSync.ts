@@ -1,5 +1,5 @@
 import pg from 'pg';
-import { fetchNaiById, fetchSensorById, fetchTargetById, fetchUnitById } from './db.js';
+import { fetchNaiById, fetchSensorById, fetchTargetById, fetchUnitById, pgConnectionConfig } from './db.js';
 import { update } from './store.js';
 import type { FriendlyUnit, Nai, Sensor, Target } from './types.js';
 
@@ -79,20 +79,19 @@ async function handleChange(change: ChangePayload): Promise<void> {
   }
 }
 
-function connectionConfig() {
-  return {
-    host: process.env.PGHOST ?? 'localhost',
-    port: Number(process.env.PGPORT ?? process.env.POSTGIS_PORT ?? 5555),
-    database: process.env.PGDATABASE ?? process.env.POSTGRES_DB ?? 'meridian',
-    user: process.env.PGUSER ?? process.env.POSTGRES_USER ?? 'meridian',
-    password: process.env.PGPASSWORD ?? process.env.POSTGRES_PASSWORD ?? 'meridian',
-  };
-}
-
 const RECONNECT_DELAY_MS = 3000;
 
+// Module-level so stopLiveSync() (below) can tear down whatever connection
+// is currently live, and so the error handler below can tell an
+// intentional stop apart from an unexpected drop and skip its own
+// reconnect in that case.
+let currentClient: pg.Client | null = null;
+let stopped = false;
+
 export function startLiveSync(): void {
-  const client = new pg.Client(connectionConfig());
+  stopped = false;
+  const client = new pg.Client(pgConnectionConfig());
+  currentClient = client;
 
   client.on('notification', (msg) => {
     if (!msg.payload) return;
@@ -109,8 +108,11 @@ export function startLiveSync(): void {
   // A dropped LISTEN connection is silent otherwise — nothing else
   // notices, since the app keeps working fine off the WebSocket/sim tick
   // alone. Reconnect so external WFS-T edits keep flowing rather than
-  // quietly stop being picked up after, say, a Postgres restart.
+  // quietly stop being picked up after, say, a Postgres restart. Not on an
+  // intentional stopLiveSync() — that call already expects (and caused)
+  // this event.
   client.on('error', (err) => {
+    if (stopped) return;
     console.error('[meridian] live-sync connection error, reconnecting in %dms:', RECONNECT_DELAY_MS, err);
     client.end().catch(() => {});
     setTimeout(startLiveSync, RECONNECT_DELAY_MS);
@@ -121,7 +123,23 @@ export function startLiveSync(): void {
     .then(() => client.query(`LISTEN ${CHANNEL}`))
     .then(() => console.log(`[meridian] live-sync listening on Postgres channel "${CHANNEL}"`))
     .catch((err) => {
+      if (stopped) return;
       console.error('[meridian] live-sync failed to connect, retrying in %dms:', RECONNECT_DELAY_MS, err);
       setTimeout(startLiveSync, RECONNECT_DELAY_MS);
     });
+}
+
+// Written for the elected-leader HA design (SERVER_HA_ENABLED) — a replica
+// that loses leadership would need to stop applying external WFS-T edits
+// itself (it's no longer the one process whose store.ts state is
+// authoritative) rather than racing the new leader's own liveSync
+// connection. NOT YET CALLED anywhere: leaderElection.ts isn't wired into
+// index.ts, so nothing currently invokes this — see that file's header for
+// what's still missing.
+export async function stopLiveSync(): Promise<void> {
+  stopped = true;
+  if (currentClient) {
+    await currentClient.end().catch(() => {});
+    currentClient = null;
+  }
 }

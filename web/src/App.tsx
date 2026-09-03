@@ -12,6 +12,7 @@ import ListsManager from './components/ListsManager';
 import ChatManager from './components/ChatManager';
 import StyleManager from './components/StyleManager';
 import DrawingToolManager from './components/DrawingToolManager';
+import NotificationCenterManager from './components/NotificationCenterManager';
 import CenterPanel from './components/CenterPanel';
 import TargetWorkup from './components/TargetWorkup';
 import BottomPanel from './components/BottomPanel';
@@ -81,6 +82,9 @@ export default function App() {
         </div>
         <div className="app-manager-slot app-manager-slot-draw" style={{ display: activeManager === 'draw' ? 'contents' : 'none' }}>
           <DrawingToolManager />
+        </div>
+        <div className="app-manager-slot app-manager-slot-notifications" style={{ display: activeManager === 'notifications' ? 'contents' : 'none' }}>
+          <NotificationCenterManager />
         </div>
         <CenterPanel />
         <TargetWorkup />

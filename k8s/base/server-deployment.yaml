@@ -1,0 +1,110 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+  namespace: meridian
+spec:
+  # Pinned to 1 — not a placeholder to bump later without other changes.
+  # server/src/store.ts's live state is in-process memory (`let state`),
+  # and server/src/sim.ts's tick runs on every replica independently with
+  # no leader election or distributed lock; a second replica would run its
+  # own divergent simulation, double-write Postgres every tick, and give
+  # different WebSocket clients different live pictures depending which
+  # pod they land on. Scaling this tier for real needs the tick/state
+  # ownership moved out of the process first (e.g. one elected leader
+  # ticking + persisting, others read-only) — out of scope for this pass.
+  replicas: 1
+  # The default (RollingUpdate) would still start a second pod before
+  # killing the first on every rollout — exactly the two-writer scenario
+  # replicas: 1 above exists to prevent, just triggered by a deploy instead
+  # of a manual scale-up. Found live: .github/scripts/k8s-smoke-test.sh's
+  # `rollout restart` produced two concurrent server pods, both racing the
+  # same tiny Postgres, and both got OOM-killed under the resulting memory
+  # pressure. Recreate (same choice geoserver-deployment.yaml makes, for
+  # its own, different reason) tears the old pod down first instead — a
+  # short availability gap on deploy, same trade made there.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      # GHCR packages default to private — needed once this pulls from a
+      # real cluster (kind's own load doesn't need it, see k8s/README.md).
+      # `kubectl create secret docker-registry ghcr-pull --docker-server
+      # =ghcr.io --docker-username=<gh-user> --docker-password=<PAT with
+      # read:packages> -n meridian`
+      imagePullSecrets:
+        - name: ghcr-pull
+      containers:
+        - name: server
+          # Built and pushed by .github/workflows/ci.yml's docker-build job
+          # on every push to main. :latest moves with main; pin to a
+          # specific :<git-sha> tag instead once there's an actual release
+          # process to gate what "deployed" means.
+          image: ghcr.io/cannonjunior/meridian-server:latest
+          ports:
+            - containerPort: 8799
+          envFrom:
+            - configMapRef:
+                name: meridian-config
+            - secretRef:
+                name: meridian-secrets
+          # /healthz itself (server/src/index.ts) has no DB/GeoServer/Kafka
+          # dependency — but the process doesn't start *listening* until
+          # after main()'s `await initStore()` (a real Postgres round-trip,
+          # seedFresh()'s ~20 sequential INSERTs on a first boot) resolves,
+          # so a slow Postgres still means nothing answers /healthz yet,
+          # not a probe failure server itself could recover from by
+          # restarting. Confirmed live via
+          # .github/scripts/k8s-smoke-test.sh: under real contention (every
+          # other Deployment in k8s/base/ starting at once, including
+          # geoserver briefly before it's scaled to 0), initStore() took
+          # long enough that the *liveness* probe's default failureThreshold
+          # (3) fired first — "Liveness probe failed: connection refused"
+          # repeatedly, then "Killing ... failed liveness probe" — killing
+          # the pod mid-initStore(), before it had ever bound the port even
+          # once. A startupProbe (same fix as
+          # base/geoserver-deployment.yaml's, for the same class of bug)
+          # holds liveness/readiness off until the app answers once,
+          # instead of a fixed initialDelaySeconds guess.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8799
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8799
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8799
+            periodSeconds: 10
+          # Starting points, not measured values — tune from real usage.
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: server
+  namespace: meridian
+spec:
+  selector:
+    app: server
+  ports:
+    - port: 8799
+      targetPort: 8799

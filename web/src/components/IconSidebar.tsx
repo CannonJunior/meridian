@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { useStore } from '../store';
 import type { Manager } from '../store';
+import { ClickableDiv } from './Clickable';
 
 function ContextIcon({ color }: { color: string }) {
   return (
@@ -95,6 +96,21 @@ function LayersIcon({ color }: { color: string }) {
   );
 }
 
+function BellIcon({ color }: { color: string }) {
+  return (
+    <svg className="icon-sidebar-glyph icon-sidebar-glyph-notifications" width="20" height="20" viewBox="0 0 20 20" fill="none">
+      <path
+        className="icon-sidebar-notifications-glyph-bell"
+        d="M10 3C7.5 3 6 4.8 6 7.2V9.5C6 10.6 5.6 11.6 5 12.4C4.6 12.9 4.9 13.6 5.5 13.6H14.5C15.1 13.6 15.4 12.9 15 12.4C14.4 11.6 14 10.6 14 9.5V7.2C14 4.8 12.5 3 10 3Z"
+        stroke={color}
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+      <path className="icon-sidebar-notifications-glyph-clapper" d="M8.3 15.5C8.6 16.2 9.3 16.7 10 16.7C10.7 16.7 11.4 16.2 11.7 15.5" stroke={color} strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function AtoIcon({ color }: { color: string }) {
   return (
     <svg className="icon-sidebar-glyph icon-sidebar-glyph-ato" width="20" height="20" viewBox="0 0 20 20" fill="none">
@@ -117,22 +133,25 @@ const MANAGERS: { id: Manager; label: string; accent: string; icon: (c: string) 
   { id: 'lists', label: 'TARGET LISTS', accent: 'var(--yellow)', icon: (c) => <ListsIcon color={c} /> },
   { id: 'chat', label: 'BOARD COMMS', accent: 'var(--red)', icon: (c) => <ChatIcon color={c} /> },
   { id: 'style', label: 'STYLE MANAGER', accent: 'var(--amber)', icon: (c) => <StyleIcon color={c} /> },
+  { id: 'notifications', label: 'NOTIFICATIONS', accent: 'var(--red-crit)', icon: (c) => <BellIcon color={c} /> },
 ];
 
 export default function IconSidebar() {
   const activeManager = useStore((s) => s.activeManager);
   const setActiveManager = useStore((s) => s.setActiveManager);
+  const unreadNotificationCount = useStore((s) => s.unreadNotificationCount);
 
   return (
     <div className="icon-sidebar" style={{ borderRight: '1px solid var(--hairline)', background: 'var(--panel-2)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '10px 0', minHeight: 0 }}>
       {MANAGERS.map((m) => {
         const active = activeManager === m.id;
+        const unread = m.id === 'notifications' ? unreadNotificationCount : 0;
         return (
-          <div
+          <ClickableDiv
             key={m.id}
             className={`icon-sidebar-button icon-sidebar-button-${m.id}`}
             onClick={() => setActiveManager(m.id)}
-            title={m.label}
+            title={unread > 0 ? `${m.label} — ${unread} unread` : m.label}
             style={{
               width: 40,
               height: 40,
@@ -143,10 +162,34 @@ export default function IconSidebar() {
               background: active ? 'rgba(63,210,230,.08)' : 'transparent',
               borderLeft: `2px solid ${active ? m.accent : 'transparent'}`,
               flexShrink: 0,
+              position: 'relative',
             }}
           >
             {m.icon(active ? m.accent : 'var(--ink-faint)')}
-          </div>
+            {unread > 0 && (
+              <span
+                className="icon-sidebar-notifications-badge"
+                style={{
+                  position: 'absolute',
+                  top: 4,
+                  right: 4,
+                  minWidth: 14,
+                  height: 14,
+                  padding: '0 3px',
+                  borderRadius: 7,
+                  background: 'var(--red-crit)',
+                  color: '#06090a',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 8.5,
+                  fontWeight: 700,
+                  lineHeight: '14px',
+                  textAlign: 'center',
+                }}
+              >
+                {unread > 99 ? '99+' : unread}
+              </span>
+            )}
+          </ClickableDiv>
         );
       })}
     </div>

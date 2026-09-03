@@ -14,6 +14,6 @@ dist/
 !.env.example
 !**/.env.example
 
-# Same convention for the k8s Secret template (k8s/secret.example.yaml
-# stays tracked; a filled-in k8s/secret.yaml must not be).
-k8s/secret.yaml
+# Same convention for the k8s Secret template (k8s/base/secret.example.yaml
+# stays tracked; a filled-in k8s/base/secret.yaml must not be).
+k8s/base/secret.yaml

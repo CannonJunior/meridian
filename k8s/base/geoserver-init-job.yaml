@@ -1,0 +1,55 @@
+# Mirrors geoserver/docker-compose.yml's geoserver-init service: runs
+# provision.sh (workspace -> datastores -> feature types -> styles) against
+# the geoserver Deployment once it's up. provision.sh already polls
+# geoserver's own REST API in a wait loop before doing anything (see its
+# own header), so this doesn't need an initContainer to block on readiness
+# — a naive retry via backoffLimit is enough if it races anyway.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: geoserver-init
+  namespace: meridian
+spec:
+  # provision.sh is idempotent (every step is "create or no-op" — see its
+  # header comment) and this Job's Secret/ConfigMap values never change
+  # between runs, so a re-apply reusing the same completed Job name is the
+  # normal path, not a special case.
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: provision
+          image: curlimages/curl:8.10.1 # same image/version geoserver/docker-compose.yml's geoserver-init runs
+          command: ["/bin/sh", "/init/provision.sh"]
+          env:
+            - name: GEOSERVER_ADMIN_USER
+              valueFrom:
+                configMapKeyRef: { name: meridian-config, key: GEOSERVER_ADMIN_USER }
+            - name: GEOSERVER_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: meridian-secrets, key: GEOSERVER_ADMIN_PASSWORD }
+            # provision.sh's own var names (POSTGIS_HOST/POSTGRES_*) differ
+            # from meridian-config's (PGHOST/PGDATABASE/PGUSER) — aliased
+            # via valueFrom rather than duplicating the same value under a
+            # second key that could drift out of sync.
+            - name: POSTGIS_HOST
+              valueFrom:
+                configMapKeyRef: { name: meridian-config, key: PGHOST }
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef: { name: meridian-config, key: PGDATABASE }
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef: { name: meridian-config, key: PGUSER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: meridian-secrets, key: PGPASSWORD }
+          volumeMounts:
+            - name: init
+              mountPath: /init
+      volumes:
+        - name: init
+          configMap:
+            name: geoserver-init
+            defaultMode: 0755

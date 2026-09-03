@@ -27,7 +27,8 @@
 // unusable. Override via CELESTRAK_GROUP for a different curated set (see
 // celestrak.org/NORAD/elements/ for the full list of named groups).
 import { randomUUID } from 'node:crypto';
-import { Kafka, Partitioners, logLevel } from 'kafkajs';
+import { Kafka, Partitioners, CompressionTypes, logLevel } from 'kafkajs';
+import './zstdCodec.js';
 import { degreesLat, degreesLong, eciToGeodetic, gstime, propagate, twoline2satrec } from 'satellite.js';
 import type { SatRec } from 'satellite.js';
 
@@ -154,7 +155,7 @@ async function main() {
     const now = new Date();
     const events = sats.map((s) => buildEvent(s, now)).filter((e): e is NonNullable<typeof e> => e != null);
     if (events.length > 0) {
-      await producer.send({ topic: TOPIC, messages: events.map((ev) => ({ key: ev.entity_id, value: JSON.stringify(ev) })) });
+      await producer.send({ topic: TOPIC, compression: CompressionTypes.ZSTD, messages: events.map((ev) => ({ key: ev.entity_id, value: JSON.stringify(ev) })) });
       console.log(`[celestrak] published ${events.length} position(s) at ${now.toISOString()}`);
     }
     await sleep(PROPAGATE_SECONDS * 1000);

@@ -17,8 +17,11 @@ import type { ContextLayer } from './assets/contextLayers';
 const cache = new Map<string, Promise<FeatureCollection>>();
 
 // Doubles an embedded single quote, same rule as SQL/CQL string literals —
-// mirrors server/src/historyQuery.ts's cqlString escaping.
-function cqlString(value: string): string {
+// mirrors server/src/historyQuery.ts's cqlString escaping. Exported for
+// TacticalMap.tsx's syncContextLayers, which builds an equivalent
+// CQL_FILTER for 'wms' sourceType layers (a WMS GetMap param, not a WFS
+// GetFeature one) — same escaping requirement, one implementation.
+export function cqlString(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 

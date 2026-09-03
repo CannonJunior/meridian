@@ -3,6 +3,7 @@ import { useStore } from '../store';
 import { affColor, affShapeStyle, C, effName, sensorName, statusColorFor, STAGES, confColor } from '../selectors';
 import type { Target } from '../types';
 import { hasActiveReattackRecommendationIndexed, indexSortiesByBdaTarget, TARGET_LISTS, targetsForList } from '../assets/targetLists';
+import { ClickableDiv } from './Clickable';
 
 const GRID_COLS = '34px 96px 1fr 64px 96px 52px 70px 100px 58px';
 const AFF_FULL: Record<Target['aff'], string> = { HOS: 'HOSTILE', UNK: 'UNKNOWN', FRD: 'FRIENDLY', NEU: 'NEUTRAL' };
@@ -99,7 +100,7 @@ export default function CollectionTable() {
           const reattack = hasActiveReattackRecommendationIndexed(t.id, reattackIndex);
           const statusColor = reattack ? C.amber : statusColorFor(t);
           return (
-            <div
+            <ClickableDiv
               key={t.id}
               className="collection-table-row"
               onClick={() => selectTarget(t.id)}
@@ -146,7 +147,7 @@ export default function CollectionTable() {
               <span className="collection-table-cell-status" style={{ fontSize: 8, letterSpacing: '.04em', color: statusColor, fontWeight: 600 }}>
                 {reattack ? '⚠ REATTACK' : t.status}
               </span>
-            </div>
+            </ClickableDiv>
           );
         })}
       </div>
